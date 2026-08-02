@@ -11,6 +11,7 @@
 	let query = $state('');
 	let results = $state<SearchResult[]>([]);
 	let loading = $state(false);
+	let pending = $state(false);
 	let open = $state(false);
 	let inputEl = $state<HTMLInputElement>();
 
@@ -24,22 +25,28 @@
 
 	$effect(() => {
 		const q = query.trim();
-		// Clear previous results immediately so a slow debounce never flashes
-		// the old query's matches.
+		// No debounce: this is a local SQLite query, so fire immediately on every
+		// keystroke. The guard below discards out-of-order responses. The
+		// "Searching…" row only appears if a request is genuinely slow (>250ms).
 		results = [];
+		pending = true;
+		loading = false;
 		if (q.length < 2) {
-			loading = false;
+			pending = false;
 			return;
 		}
-		loading = true;
-		const timer = setTimeout(async () => {
-			const res = await searchNotes(q);
+		const slowTimer = setTimeout(() => {
+			loading = true;
+		}, 250);
+		void searchNotes(q).then((res) => {
 			if (query.trim() === q) {
 				results = res;
+				pending = false;
 				loading = false;
+				clearTimeout(slowTimer);
 			}
-		}, 150);
-		return () => clearTimeout(timer);
+		});
+		return () => clearTimeout(slowTimer);
 	});
 
 	function pick(path: string) {
@@ -74,7 +81,9 @@
 			{#if loading}
 				<div class="row muted">Searching…</div>
 			{:else if results.length === 0}
-				<div class="row muted">No results</div>
+				{#if !pending}
+					<div class="row muted">No results</div>
+				{/if}
 			{:else}
 				{#each results as r (r.path)}
 					<button class="row" onmousedown={() => pick(r.path)}>
