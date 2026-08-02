@@ -22,7 +22,7 @@
  */
 
 import { syntaxTree } from '@codemirror/language';
-import { RangeSetBuilder } from '@codemirror/state';
+import { RangeSetBuilder, StateEffect } from '@codemirror/state';
 import {
 	Decoration,
 	EditorView,
@@ -31,6 +31,23 @@ import {
 	type DecorationSet,
 	type ViewUpdate
 } from '@codemirror/view';
+
+// Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
+// regardless of where the cursor is. Entered with Escape, exited by clicking
+// back into the editor. The boolean is mirrored into the plugin via a StateEffect
+// so the decoration set is rebuilt when it flips.
+let previewOn = false;
+export const previewModeEffect = StateEffect.define<boolean>();
+
+export function isPreviewMode() {
+	return previewOn;
+}
+
+export function setPreviewMode(view: EditorView, on: boolean) {
+	if (previewOn === on) return;
+	previewOn = on;
+	view.dispatch({ effects: previewModeEffect.of(on) });
+}
 
 class CheckboxWidget extends WidgetType {
 	constructor(
@@ -102,6 +119,7 @@ interface PendingDecoration {
 }
 
 function isLineActive(view: EditorView, from: number, to: number): boolean {
+	if (previewOn) return false;
 	const cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
 	const startLine = view.state.doc.lineAt(from).number;
 	const endLine = view.state.doc.lineAt(to).number;
@@ -191,7 +209,12 @@ export const livePreview = ViewPlugin.fromClass(
 			this.decorations = buildDecorations(view);
 		}
 		update(update: ViewUpdate) {
-			if (update.docChanged || update.selectionSet || update.viewportChanged) {
+			if (
+				update.docChanged ||
+				update.selectionSet ||
+				update.viewportChanged ||
+				update.transactions.some((tr) => tr.effects.some((e) => e.is(previewModeEffect)))
+			) {
 				this.decorations = buildDecorations(update.view);
 			}
 		}

@@ -4,7 +4,7 @@
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 	import { markdownLanguage, baseTheme } from './markdownSetup';
-	import { livePreview } from './livePreview';
+	import { livePreview, setPreviewMode, isPreviewMode } from './livePreview';
 
 	interface Props {
 		value: string;
@@ -28,6 +28,20 @@
 				baseTheme,
 				lineNumbers(),
 				EditorView.lineWrapping,
+				EditorView.domEventHandlers({
+					keydown: (e, view) => {
+						if (e.key === 'Escape') {
+							// Full preview: render the whole note, stop the cursor
+							// blinking. Click back into the editor to resume editing.
+							e.preventDefault();
+							setPreviewMode(view, true);
+							view.contentDOM.blur();
+						}
+					},
+					mousedown: (e, view) => {
+						if (isPreviewMode()) setPreviewMode(view, false);
+					}
+				}),
 				EditorView.updateListener.of((update) => {
 					if (update.docChanged && !suppressChange) {
 						onChange(update.state.doc.toString());
