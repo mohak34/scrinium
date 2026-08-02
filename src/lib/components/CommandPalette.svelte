@@ -73,6 +73,9 @@
 
 	$effect(() => {
 		const q = query.trim();
+		// Drop stale results right away so the list never flashes the previous
+		// query's notes while the new search is debouncing.
+		results = [];
 		loading = q.length >= 2;
 		const timer = setTimeout(async () => {
 			const res = await searchNotes(q);

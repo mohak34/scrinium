@@ -24,8 +24,10 @@
 
 	$effect(() => {
 		const q = query.trim();
+		// Clear previous results immediately so a slow debounce never flashes
+		// the old query's matches.
+		results = [];
 		if (q.length < 2) {
-			results = [];
 			loading = false;
 			return;
 		}
