@@ -6,7 +6,7 @@
 	import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 	import { markdownLanguage, baseTheme } from './markdownSetup';
 	import { livePreview, setPreviewMode, isPreviewMode } from './livePreview';
-	import { toggleWrap, setHeading, toggleBullet } from './formatting';
+	import { toggleWrap, setHeading, toggleBullet, toggleTask } from './formatting';
 
 	interface Props {
 		value: string;
@@ -35,7 +35,8 @@
 					{ key: 'Mod-4', run: setHeading(4) },
 					{ key: 'Mod-5', run: setHeading(5) },
 					{ key: 'Mod-6', run: setHeading(6) },
-					{ key: 'Mod-Shift-b', run: toggleBullet }
+					{ key: 'Mod-Shift-b', run: toggleBullet },
+					{ key: 'Mod-l', run: toggleTask }
 				]),
 				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
 				search({ top: true }),

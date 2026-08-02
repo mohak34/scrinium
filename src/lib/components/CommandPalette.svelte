@@ -52,6 +52,7 @@
 		{ label: 'Heading 5', hint: `${mod}5` },
 		{ label: 'Heading 6', hint: `${mod}6` },
 		{ label: 'Toggle bullet list', hint: `${mod}Shift+B` },
+		{ label: 'Toggle task checkbox', hint: `${mod}L` },
 		{ label: 'Find in note', hint: `${mod}F` },
 		{ label: 'Find & replace', hint: `${mod}H` },
 		{ label: 'Full preview', hint: 'Esc' },

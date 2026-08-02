@@ -44,6 +44,40 @@ export function setHeading(level: number) {
 	};
 }
 
+// Toggle a task checkbox on the current line: checks/unchecks an existing
+// `- [ ]` / `- [x]`, upgrades a plain bullet to a checkbox, or inserts a fresh
+// `- [ ]` when the line is empty. Keeps any leading indentation intact.
+export function toggleTask(view: EditorView): boolean {
+	const line = view.state.doc.lineAt(view.state.selection.main.head);
+	const task = /^(\s*)- \[([ xX])\]\s?/.exec(line.text);
+	if (task) {
+		const marker = task[2] === ' ' ? '[x]' : '[ ]';
+		view.dispatch({
+			changes: {
+				from: line.from + task[1].length + 2,
+				to: line.from + task[1].length + 5,
+				insert: marker
+			}
+		});
+		return true;
+	}
+	const bullet = /^(\s*)- /.exec(line.text);
+	if (bullet) {
+		view.dispatch({
+			changes: {
+				from: line.from,
+				to: line.from + bullet[0].length,
+				insert: `${bullet[1]}- [ ] `
+			}
+		});
+		return true;
+	}
+	view.dispatch({
+		changes: { from: line.from, to: line.from, insert: '- [ ] ' }
+	});
+	return true;
+}
+
 // Toggle a "- " bullet on the current line.
 export function toggleBullet(view: EditorView): boolean {
 	const line = view.state.doc.lineAt(view.state.selection.main.head);
