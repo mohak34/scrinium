@@ -108,6 +108,28 @@ export function toggleTask(view: EditorView): boolean {
 	return true;
 }
 
+// Remove the task checkbox from every selected line, turning "- [ ] foo" /
+// "- [x] foo" back into plain text. Lines without a checkbox are untouched.
+// This is the inverse of toggleTask, so a block of tasks can always be unlisted
+// regardless of its check states. Leading indentation is preserved.
+export function removeTask(view: EditorView): boolean {
+	const lines = selectedLines(view);
+	const taskRe = /^(\s*)- \[([ xX])\]\s?/;
+	const changes = lines
+		.map((l) => {
+			const m = taskRe.exec(l.text);
+			if (!m) return null;
+			return {
+				from: l.from + m[1].length,
+				to: l.from + m[0].length,
+				insert: ''
+			};
+		})
+		.filter((c): c is NonNullable<typeof c> => c !== null);
+	view.dispatch({ changes });
+	return true;
+}
+
 // Toggle "- " bullets on the selected line(s). If every selected line is
 // already a bullet, they are all removed; otherwise bullets are added to the
 // lines that lack one. Leading indentation is preserved either way.
