@@ -43,6 +43,24 @@ export function isPreviewMode() {
 	return previewOn;
 }
 
+// Given a document position, find the link URL that position sits on - the
+// text of a `URL` node directly inside a `Link`/`Autolink`, or a bare top-level
+// `URL` (GFM auto-link). Returns null when the position is not on a link.
+export function urlAtPos(view: EditorView, pos: number): string | null {
+	const node = syntaxTree(view.state).resolveInner(pos, -1);
+	let cur = node;
+	while (cur && !['Link', 'Autolink', 'URL'].includes(cur.name)) cur = cur.parent;
+	if (!cur) return null;
+	if (cur.name === 'URL') return view.state.sliceDoc(cur.from, cur.to);
+	const cursor = cur.cursor();
+	if (cursor.firstChild()) {
+		do {
+			if (cursor.name === 'URL') return view.state.sliceDoc(cursor.from, cursor.to);
+		} while (cursor.nextSibling());
+	}
+	return null;
+}
+
 export function setPreviewMode(view: EditorView, on: boolean) {
 	if (previewOn === on) return;
 	previewOn = on;

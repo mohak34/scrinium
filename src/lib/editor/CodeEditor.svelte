@@ -5,7 +5,7 @@
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 	import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 	import { markdownLanguage, baseTheme } from './markdownSetup';
-	import { livePreview, setPreviewMode, isPreviewMode } from './livePreview';
+	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos } from './livePreview';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask } from './formatting';
 
 	interface Props {
@@ -59,6 +59,27 @@
 					},
 					mousedown: (e, view) => {
 						if (isPreviewMode()) setPreviewMode(view, false);
+						// Ctrl/Cmd+click on a link: stop CodeMirror from adding a
+						// multi-cursor selection so the click can open the tab.
+						if (e.ctrlKey || e.metaKey) {
+							const pos = view.posAtCoords(e);
+							if (pos !== null && urlAtPos(view, pos)) return true;
+						}
+					},
+					click: (e, view) => {
+						// Ctrl/Cmd+click on a link opens it in a new tab. A plain
+						// click keeps the normal editor behaviour (cursor placement).
+						if (e.ctrlKey || e.metaKey) {
+							const pos = view.posAtCoords(e);
+							if (pos !== null) {
+								const url = urlAtPos(view, pos);
+								if (url) {
+									e.preventDefault();
+									window.open(url, '_blank', 'noopener,noreferrer');
+									return true;
+								}
+							}
+						}
 					}
 				}),
 				EditorView.updateListener.of((update) => {
