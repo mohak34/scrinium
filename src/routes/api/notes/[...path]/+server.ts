@@ -1,7 +1,14 @@
 import { json, text, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { readNote, writeNote, createFolder, renamePath, moveToTrash } from '$lib/server/vault';
-import { upsertNoteMeta, deleteNoteMetaByPrefix, renameNoteMeta } from '$lib/server/db';
+import {
+	upsertNoteMeta,
+	deleteNoteMetaByPrefix,
+	renameNoteMeta,
+	indexNote,
+	deleteNoteIndexByPrefix,
+	renameNoteIndex
+} from '$lib/server/db';
 
 // Auth is already enforced in src/hooks.server.ts for everything under /api
 // except /api/auth itself - see that file for the actual gate.
@@ -19,6 +26,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 
 	const title = content.split('\n')[0]?.replace(/^#+\s*/, '').slice(0, 200) || params.path;
 	upsertNoteMeta(params.path, title, Date.now());
+	indexNote(params.path, title, content);
 
 	return json({ ok: true });
 };
@@ -37,6 +45,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (!body?.newPath || typeof body.newPath !== 'string') throw error(400, 'Invalid request');
 	await renamePath(params.path, body.newPath);
 	renameNoteMeta(params.path, body.newPath);
+	renameNoteIndex(params.path, body.newPath);
 	return json({ ok: true });
 };
 
@@ -44,5 +53,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	if (!params.path) throw error(400, 'Invalid path');
 	await moveToTrash(params.path);
 	deleteNoteMetaByPrefix(params.path);
+	deleteNoteIndexByPrefix(params.path);
 	return json({ ok: true });
 };

@@ -22,6 +22,18 @@ db.exec(`
 	);
 `);
 
+// Full-text search index over note contents (SQLite FTS5). The path column is
+// stored but not searchable; title + body are. Rebuilt/updated from the vault
+// by the PUT/PATCH/DELETE endpoints and a one-time startup scan.
+db.exec(`
+	CREATE VIRTUAL TABLE IF NOT EXISTS note_fts USING fts5(
+		path UNINDEXED,
+		title,
+		body,
+		tokenize = 'porter unicode61'
+	);
+`);
+
 export function upsertNoteMeta(relPath: string, title: string, updatedAt: number) {
 	db.prepare(
 		`INSERT INTO note_meta (path, title, updated_at) VALUES (?, ?, ?)
@@ -49,4 +61,66 @@ export function renameNoteMeta(oldPath: string, newPath: string) {
 
 export function listNoteMeta() {
 	return db.prepare(`SELECT path, title, updated_at FROM note_meta ORDER BY updated_at DESC`).all();
+}
+
+export function indexNote(relPath: string, title: string, body: string) {
+	db.prepare(`DELETE FROM note_fts WHERE path = ?`).run(relPath);
+	db.prepare(`INSERT INTO note_fts (path, title, body) VALUES (?, ?, ?)`).run(relPath, title, body);
+}
+
+export function deleteNoteIndex(relPath: string) {
+	db.prepare(`DELETE FROM note_fts WHERE path = ?`).run(relPath);
+}
+
+export function deleteNoteIndexByPrefix(relPath: string) {
+	db.prepare(`DELETE FROM note_fts WHERE path = ? OR path LIKE ?`).run(relPath, `${relPath}/%`);
+}
+
+export function renameNoteIndex(oldPath: string, newPath: string) {
+	const rows = db
+		.prepare(`SELECT path, title, body FROM note_fts WHERE path = ? OR path LIKE ?`)
+		.all(oldPath, `${oldPath}/%`) as { path: string; title: string; body: string }[];
+	for (const row of rows) {
+		const renamed = newPath + row.path.slice(oldPath.length);
+		db.prepare(`DELETE FROM note_fts WHERE path = ?`).run(row.path);
+		db.prepare(`INSERT INTO note_fts (path, title, body) VALUES (?, ?, ?)`).run(
+			renamed,
+			row.title,
+			row.body
+		);
+	}
+}
+
+export interface SearchResult {
+	path: string;
+	title: string;
+	snippet: string;
+}
+
+export function searchNotes(q: string): SearchResult[] {
+	// Quote each whitespace-separated token so arbitrary user input can't break
+	// the FTS5 MATCH syntax, and split on ~ to keep it a proper phrase per token.
+	const match = q
+		.split(/\s+/)
+		.filter(Boolean)
+		.map((t) => `"${t.replace(/"/g, '""')}"`)
+		.join(' ');
+	if (!match) return [];
+	const rows = db
+		.prepare(
+			`SELECT path, title, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
+			 FROM note_fts WHERE note_fts MATCH ? ORDER BY rank LIMIT 30`
+		)
+		.all(match) as { path: string; title: string; snip: string | null }[];
+	return rows.map((r) => ({
+		path: r.path,
+		title: r.title,
+		snippet: r.snip ?? ''
+	}));
+}
+
+export function listRecentNotes(limit = 15) {
+	return db
+		.prepare(`SELECT path, title FROM note_meta ORDER BY updated_at DESC LIMIT ?`)
+		.all(limit) as { path: string; title: string }[];
 }

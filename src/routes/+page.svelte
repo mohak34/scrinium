@@ -4,6 +4,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import CodeEditor from '$lib/editor/CodeEditor.svelte';
+	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import { activePath, loadTree, loadNote, scheduleSave, flushSave } from '$lib/stores/vault';
 
 	const MIN_SIDEBAR = 180;
@@ -16,12 +17,23 @@
 	let collapsed = $state(false);
 	let resizing = $state(false);
 	let dividerHover = $state(false);
+	let paletteOpen = $state(false);
 
 	onMount(() => {
 		const saved = Number(localStorage.getItem('scrinium:sidebarWidth'));
 		if (Number.isFinite(saved) && saved >= MIN_SIDEBAR) sidebarWidth = saved;
 		collapsed = localStorage.getItem('scrinium:sidebarCollapsed') === '1';
 		loadTree();
+
+		const key = (e: KeyboardEvent) => {
+			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+				e.preventDefault();
+				paletteOpen = !paletteOpen;
+			} else if (e.key === 'Escape' && paletteOpen) {
+				paletteOpen = false;
+			}
+		};
+		window.addEventListener('keydown', key);
 
 		const move = (e: PointerEvent) => {
 			if (!resizing) return;
@@ -40,6 +52,7 @@
 			void flushSave();
 		});
 		return () => {
+			window.removeEventListener('keydown', key);
 			window.removeEventListener('pointermove', move);
 			window.removeEventListener('pointerup', up);
 		};
@@ -98,6 +111,10 @@
 		{/if}
 	</div>
 </div>
+
+{#if paletteOpen}
+	<CommandPalette onSelect={openNote} onClose={() => (paletteOpen = false)} />
+{/if}
 
 <style>
 	.layout {

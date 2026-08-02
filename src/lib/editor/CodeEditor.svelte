@@ -3,8 +3,10 @@
 	import { EditorState } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+	import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 	import { markdownLanguage, baseTheme } from './markdownSetup';
 	import { livePreview, setPreviewMode, isPreviewMode } from './livePreview';
+	import { toggleWrap, setHeading, toggleBullet } from './formatting';
 
 	interface Props {
 		value: string;
@@ -22,7 +24,22 @@
 			parent: container,
 			extensions: [
 				history(),
-				keymap.of([...defaultKeymap, ...historyKeymap]),
+				keymap.of([
+					{ key: 'Mod-b', run: toggleWrap('**') },
+					{ key: 'Mod-i', run: toggleWrap('*') },
+					{ key: 'Mod-Shift-x', run: toggleWrap('~~') },
+					{ key: 'Mod-`', run: toggleWrap('`') },
+					{ key: 'Mod-1', run: setHeading(1) },
+					{ key: 'Mod-2', run: setHeading(2) },
+					{ key: 'Mod-3', run: setHeading(3) },
+					{ key: 'Mod-4', run: setHeading(4) },
+					{ key: 'Mod-5', run: setHeading(5) },
+					{ key: 'Mod-6', run: setHeading(6) },
+					{ key: 'Mod-Shift-b', run: toggleBullet }
+				]),
+				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+				search({ top: true }),
+				highlightSelectionMatches({ minSelectionLength: 2 }),
 				markdownLanguage(),
 				livePreview,
 				baseTheme,

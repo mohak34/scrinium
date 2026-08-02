@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import FileTree from './FileTree.svelte';
 	import ContextMenu from './ContextMenu.svelte';
+	import SearchBox from './SearchBox.svelte';
 	import {
 		tree,
 		createNote,
@@ -17,6 +19,7 @@
 		canDrop,
 		clearDragState
 	} from '$lib/stores/filetree';
+	import { createRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
 
 	interface Props {
@@ -27,6 +30,18 @@
 	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ entry: VaultEntry } | null>(null);
+
+	// The command palette signals "create a note/folder here" through the shared
+	// createRequest store; hand it over to the inline create inputs.
+	onMount(() => {
+		const unsub = createRequest.subscribe((req) => {
+			if (req) {
+				createTarget = req;
+				createRequest.set(null);
+			}
+		});
+		return unsub;
+	});
 
 	function sanitizeName(raw: string, kind: 'note' | 'folder'): string | null {
 		let name = raw.trim().replace(/[\\/:*?"<>|]/g, '');
@@ -139,6 +154,7 @@
 			+
 		</button>
 	</div>
+	<SearchBox {onSelect} />
 	<div
 		class="tree"
 		class:drop-root={$dropRoot}

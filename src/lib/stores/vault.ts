@@ -13,6 +13,18 @@ export const saveStatus = writable<'idle' | 'saving' | 'saved' | 'error'>('idle'
 
 const encPath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
 
+export interface SearchResult {
+	path: string;
+	title: string;
+	snippet: string;
+}
+
+export async function searchNotes(q: string): Promise<SearchResult[]> {
+	const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+	if (!res.ok) return [];
+	return res.json();
+}
+
 export async function loadTree() {
 	const res = await fetch('/api/tree');
 	if (res.ok) tree.set(await res.json());
