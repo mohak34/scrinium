@@ -113,7 +113,11 @@
 </div>
 
 {#if paletteOpen}
-	<CommandPalette onSelect={openNote} onClose={() => (paletteOpen = false)} />
+	<CommandPalette
+		onSelect={openNote}
+		onClose={() => (paletteOpen = false)}
+		onToggleSidebar={toggleCollapse}
+	/>
 {/if}
 
 <style>

@@ -6,3 +6,7 @@ import { writable } from 'svelte/store';
 export const createRequest = writable<{ parent: string | null; kind: 'note' | 'folder' } | null>(
 	null
 );
+
+// Bumped to ask the sidebar's search box to take focus (command palette action).
+export const focusSearchRequest = writable(0);
+

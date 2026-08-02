@@ -1,20 +1,25 @@
 <script lang="ts">
 	import { searchNotes, type SearchResult } from '$lib/stores/vault';
-	import { createRequest } from '$lib/stores/actions';
+	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
+	import { signOut } from '$lib/auth-client';
 
 	interface Props {
 		onSelect: (path: string) => void;
 		onClose: () => void;
+		onToggleSidebar: () => void;
 	}
-	let { onSelect, onClose }: Props = $props();
+	let { onSelect, onClose, onToggleSidebar }: Props = $props();
 
-	interface ActionItem {
+	const mod =
+		typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
+
+	interface Command {
 		label: string;
 		hint: string;
-		run: () => void;
+		run?: () => void;
 	}
 
-	const actions: ActionItem[] = [
+	const commands: Command[] = [
 		{
 			label: 'New note',
 			hint: 'Create a note at the vault root',
@@ -24,10 +29,36 @@
 			label: 'New folder',
 			hint: 'Create a folder at the vault root',
 			run: () => createRequest.set({ parent: null, kind: 'folder' })
-		}
+		},
+		{
+			label: 'Open search',
+			hint: 'Jump to the sidebar search box',
+			run: () => focusSearchRequest.update((n) => n + 1)
+		},
+		{
+			label: 'Toggle sidebar',
+			hint: 'Collapse or expand the sidebar',
+			run: () => onToggleSidebar()
+		},
+		{ label: 'Sign out', hint: 'End this session', run: () => signOut() },
+		{ label: 'Bold', hint: `${mod}B` },
+		{ label: 'Italic', hint: `${mod}I` },
+		{ label: 'Strikethrough', hint: `${mod}Shift+X` },
+		{ label: 'Inline code', hint: `${mod}\`` },
+		{ label: 'Heading 1', hint: `${mod}1` },
+		{ label: 'Heading 2', hint: `${mod}2` },
+		{ label: 'Heading 3', hint: `${mod}3` },
+		{ label: 'Heading 4', hint: `${mod}4` },
+		{ label: 'Heading 5', hint: `${mod}5` },
+		{ label: 'Heading 6', hint: `${mod}6` },
+		{ label: 'Toggle bullet list', hint: `${mod}Shift+B` },
+		{ label: 'Find in note', hint: `${mod}F` },
+		{ label: 'Find & replace', hint: `${mod}H` },
+		{ label: 'Full preview', hint: 'Esc' },
+		{ label: 'Open command palette', hint: `${mod}K` }
 	];
 
-	type PaletteItem = { kind: 'action'; item: ActionItem } | { kind: 'note'; item: SearchResult };
+	type PaletteItem = { kind: 'command'; item: Command } | { kind: 'note'; item: SearchResult };
 
 	let query = $state('');
 	let results = $state<SearchResult[]>([]);
@@ -53,12 +84,15 @@
 		return () => clearTimeout(timer);
 	});
 
-	const filteredActions = $derived(
-		actions.filter((a) => a.label.toLowerCase().includes(query.trim().toLowerCase()))
-	);
+	const filteredCommands = $derived(() => {
+		const q = query.trim().toLowerCase();
+		return commands.filter(
+			(c) => c.label.toLowerCase().includes(q) || c.hint.toLowerCase().includes(q)
+		);
+	});
 
 	const items = $derived<PaletteItem[]>([
-		...filteredActions.map((a): PaletteItem => ({ kind: 'action', item: a })),
+		...filteredCommands().map((c): PaletteItem => ({ kind: 'command', item: c })),
 		...results.map((r): PaletteItem => ({ kind: 'note', item: r }))
 	]);
 
@@ -72,7 +106,7 @@
 	});
 
 	function run(item: PaletteItem) {
-		if (item.kind === 'action') item.item.run();
+		if (item.kind === 'command') item.item.run?.();
 		else onSelect(item.item.path);
 		onClose();
 	}

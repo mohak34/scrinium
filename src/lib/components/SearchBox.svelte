@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { searchNotes, type SearchResult } from '$lib/stores/vault';
+	import { focusSearchRequest } from '$lib/stores/actions';
 
 	interface Props {
 		onSelect: (path: string) => void;
@@ -11,6 +13,14 @@
 	let loading = $state(false);
 	let open = $state(false);
 	let inputEl = $state<HTMLInputElement>();
+
+	// The command palette's "Open search" command requests focus here.
+	onMount(() => {
+		const unsub = focusSearchRequest.subscribe((n) => {
+			if (n) inputEl?.focus();
+		});
+		return unsub;
+	});
 
 	$effect(() => {
 		const q = query.trim();
