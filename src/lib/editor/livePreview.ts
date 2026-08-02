@@ -48,7 +48,7 @@ export function isPreviewMode() {
 // `URL` (GFM auto-link). Returns null when the position is not on a link.
 export function urlAtPos(view: EditorView, pos: number): string | null {
 	const node = syntaxTree(view.state).resolveInner(pos, -1);
-	let cur = node;
+	let cur: typeof node | null = node;
 	while (cur && !['Link', 'Autolink', 'URL'].includes(cur.name)) cur = cur.parent;
 	if (!cur) return null;
 	if (cur.name === 'URL') return view.state.sliceDoc(cur.from, cur.to);
