@@ -90,13 +90,14 @@ export async function createFolder(path: string) {
 	await loadTree();
 }
 
-export async function renamePath(oldPath: string, newPath: string) {
-	await fetch(`/api/notes/${encPath(oldPath)}`, {
+export async function renamePath(oldPath: string, newPath: string): Promise<boolean> {
+	const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ newPath })
 	});
 	await loadTree();
+	return res.ok;
 }
 
 export async function deletePath(path: string) {

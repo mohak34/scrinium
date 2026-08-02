@@ -137,34 +137,47 @@
 	{#each entries as entry (entry.path)}
 		<li>
 			{#if entry.type === 'directory'}
-				<div
-					class="dir"
-					class:dragging={$dragPath === entry.path}
-					class:drop-target={$dropDir === entry.path}
-					role="button"
-					tabindex="0"
-					draggable="true"
-					onclick={() => toggleDir(entry.path)}
-					onkeydown={(e) => {
-						if (e.key === 'Enter' || e.key === ' ') {
+				{#if renameTarget?.entry.path === entry.path}
+					<input
+						class="rename-input"
+						bind:this={renameInput}
+						bind:value={renameName}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') commitRename(entry);
+							if (e.key === 'Escape') cancelRename();
+						}}
+						onblur={() => commitRename(entry)}
+					/>
+				{:else}
+					<div
+						class="dir"
+						class:dragging={$dragPath === entry.path}
+						class:drop-target={$dropDir === entry.path}
+						role="button"
+						tabindex="0"
+						draggable="true"
+						onclick={() => toggleDir(entry.path)}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								toggleDir(entry.path);
+							}
+						}}
+						oncontextmenu={(e) => {
 							e.preventDefault();
-							toggleDir(entry.path);
-						}
-					}}
-					oncontextmenu={(e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						onContextMenu(entry, e.clientX, e.clientY);
-					}}
-					ondragstart={(e) => startDrag(e, entry)}
-					ondragend={endDrag}
-					ondragover={(e) => folderDragOver(e, entry)}
-					ondragleave={() => folderDragLeave(entry)}
-					ondrop={(e) => folderDrop(e, entry)}
-				>
-					<span class="chevron">{$collapsedDirs.has(entry.path) ? '▸' : '▾'}</span>
-					{entry.name}
-				</div>
+							e.stopPropagation();
+							onContextMenu(entry, e.clientX, e.clientY);
+						}}
+						ondragstart={(e) => startDrag(e, entry)}
+						ondragend={endDrag}
+						ondragover={(e) => folderDragOver(e, entry)}
+						ondragleave={() => folderDragLeave(entry)}
+						ondrop={(e) => folderDrop(e, entry)}
+					>
+						<span class="chevron">{$collapsedDirs.has(entry.path) ? '▸' : '▾'}</span>
+						{entry.name}
+					</div>
+				{/if}
 				{#if !$collapsedDirs.has(entry.path)}
 					<FileTree
 						entries={entry.children ?? []}

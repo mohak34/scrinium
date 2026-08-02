@@ -14,9 +14,7 @@ export const baseTheme = EditorView.theme(
 		},
 		'.cm-content': {
 			fontFamily: "'iA Writer Quattro', 'Inter', system-ui, sans-serif",
-			padding: '2rem 3rem',
-			maxWidth: '780px',
-			margin: '0 auto',
+			padding: '2rem 1.5rem',
 			lineHeight: '1.65'
 		},
 		'.cm-line': { padding: '0 2px' },

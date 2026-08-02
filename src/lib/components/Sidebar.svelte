@@ -14,6 +14,7 @@
 	} from '$lib/stores/vault';
 	import {
 		expandDir,
+		renameDir,
 		dragPath,
 		dropRoot,
 		canDrop,
@@ -72,12 +73,16 @@
 	}
 
 	async function commitRename(path: string, rawName: string) {
-		const kind = renameTarget?.entry.type === 'directory' ? 'folder' : 'note';
+		const entry = renameTarget?.entry;
+		const kind = entry?.type === 'directory' ? 'folder' : 'note';
 		const name = sanitizeName(rawName, kind);
 		if (name) {
 			const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
 			const newPath = joinPath(parent, name);
-			if (newPath !== path) await renamePath(path, newPath);
+			if (newPath !== path) {
+				const ok = await renamePath(path, newPath);
+				if (ok && entry?.type === 'directory') renameDir(path, newPath);
+			}
 		}
 		renameTarget = null;
 	}

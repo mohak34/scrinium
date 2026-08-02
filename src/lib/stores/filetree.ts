@@ -20,6 +20,20 @@ export function expandDir(path: string) {
 	});
 }
 
+// Folders keep their collapsed state through a rename (and any subfolders
+// underneath get their keys rewritten too).
+export function renameDir(oldPath: string, newPath: string) {
+	collapsedDirs.update((s) => {
+		const next = new Set<string>();
+		for (const p of s) {
+			if (p === oldPath) next.add(newPath);
+			else if (p.startsWith(oldPath + '/')) next.add(newPath + p.slice(oldPath.length));
+			else next.add(p);
+		}
+		return next;
+	});
+}
+
 // Drag-and-drop state, shared across the recursive FileTree instances so a
 // drag started on one level can highlight a drop target on any other level.
 export const dragPath = writable<string | null>(null);
