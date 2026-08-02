@@ -1,0 +1,9 @@
+# Copy the block below into your VPS's /etc/caddy/Caddyfile (or append if
+# Caddy already serves other domains/subdomains on this box).
+#
+# Caddy handles the Let's Encrypt certificate automatically - nothing else
+# to configure for TLS.
+
+scrinium.yourdomain.com {
+	reverse_proxy localhost:3000
+}

@@ -1,0 +1,23 @@
+# Copy to /etc/systemd/system/scrinium.service on your VPS, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now scrinium
+#
+# Adjust User, WorkingDirectory and paths to match where you deployed the
+# built app (see README "Deploying to your VPS").
+
+[Unit]
+Description=Scrinium
+After=network.target
+
+[Service]
+Type=simple
+User=scrinium
+WorkingDirectory=/opt/scrinium/app
+EnvironmentFile=/opt/scrinium/app/.env
+Environment=PORT=3000
+ExecStart=/usr/bin/node /opt/scrinium/app/build/index.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
