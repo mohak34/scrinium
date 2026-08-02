@@ -63,6 +63,7 @@
 	let query = $state('');
 	let results = $state<SearchResult[]>([]);
 	let loading = $state(false);
+	let pending = $state(false);
 	let selected = $state(0);
 	let inputEl = $state<HTMLInputElement>();
 	let listEl = $state<HTMLDivElement>();
@@ -72,19 +73,25 @@
 	});
 
 	$effect(() => {
+		// No debounce: the search is a local SQLite query, so fire immediately on
+		// every keystroke. The guard below discards out-of-order responses. A
+		// "Searching…" row only appears if a request is genuinely slow (>250ms).
 		const q = query.trim();
-		// Drop stale results right away so the list never flashes the previous
-		// query's notes while the new search is debouncing.
 		results = [];
-		loading = q.length >= 2;
-		const timer = setTimeout(async () => {
-			const res = await searchNotes(q);
+		pending = true;
+		loading = false;
+		const slowTimer = setTimeout(() => {
+			loading = true;
+		}, 250);
+		void searchNotes(q).then((res) => {
 			if (query.trim() === q) {
 				results = res;
+				pending = false;
 				loading = false;
+				clearTimeout(slowTimer);
 			}
-		}, 120);
-		return () => clearTimeout(timer);
+		});
+		return () => clearTimeout(slowTimer);
 	});
 
 	const filteredCommands = $derived(() => {
@@ -145,7 +152,9 @@
 			{#if loading}
 				<div class="item muted">Searching…</div>
 			{:else if items.length === 0}
-				<div class="item muted">No results</div>
+				{#if !pending}
+					<div class="item muted">No results</div>
+				{/if}
 			{:else}
 				{#each items as it, i (it.kind === 'note' ? it.item.path : it.item.label)}
 					<button
