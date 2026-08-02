@@ -101,6 +101,7 @@
 	});
 
 	$effect(() => {
+		const sel = selected;
 		const el = listEl?.querySelector<HTMLElement>('.item.selected');
 		el?.scrollIntoView({ block: 'nearest' });
 	});
