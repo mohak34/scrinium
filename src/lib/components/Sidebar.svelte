@@ -1,8 +1,22 @@
 <script lang="ts">
 	import FileTree from './FileTree.svelte';
 	import ContextMenu from './ContextMenu.svelte';
-	import { tree, createNote, createFolder, renamePath, deletePath, type VaultEntry } from '$lib/stores/vault';
-	import { expandDir } from '$lib/stores/filetree';
+	import {
+		tree,
+		createNote,
+		createFolder,
+		renamePath,
+		deletePath,
+		movePath,
+		type VaultEntry
+	} from '$lib/stores/vault';
+	import {
+		expandDir,
+		dragPath,
+		dropRoot,
+		canDrop,
+		clearDragState
+	} from '$lib/stores/filetree';
 	import { signOut } from '$lib/auth-client';
 
 	interface Props {
@@ -57,6 +71,25 @@
 		menu = { x, y, entry };
 	}
 
+	async function onMove(path: string, toDir: string | null) {
+		const ok = await movePath(path, toDir);
+		if (ok && toDir) expandDir(toDir);
+	}
+
+	function rootDragOver(e: DragEvent) {
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		if (canDrop($dragPath, null)) dropRoot.set(true);
+	}
+
+	function rootDrop(e: DragEvent) {
+		e.preventDefault();
+		dropRoot.set(false);
+		const source = $dragPath;
+		dragPath.set(null);
+		if (source && canDrop(source, null)) void onMove(source, null);
+	}
+
 	const menuItems = $derived.by(() => {
 		if (!menu) return [];
 		const entry = menu.entry;
@@ -64,6 +97,12 @@
 			return [
 				{ label: 'New note', action: () => (createTarget = { parent: null, kind: 'note' }) },
 				{ label: 'New folder', action: () => (createTarget = { parent: null, kind: 'folder' }) }
+			];
+		}
+		if (entry.type === 'file') {
+			return [
+				{ label: 'Rename', action: () => (renameTarget = { entry }) },
+				{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
 			];
 		}
 		return [
@@ -74,7 +113,7 @@
 			{
 				label: 'New folder',
 				action: () => {
-					if (entry.type === 'directory') expandDir(entry.path);
+					expandDir(entry.path);
 					createTarget = { parent: entry.path, kind: 'folder' };
 				}
 			},
@@ -86,10 +125,8 @@
 
 <aside
 	oncontextmenu={(e) => {
-		if (e.target === e.currentTarget) {
-			e.preventDefault();
-			menu = { x: e.clientX, y: e.clientY, entry: null };
-		}
+		e.preventDefault();
+		menu = { x: e.clientX, y: e.clientY, entry: null };
 	}}
 >
 	<div class="header">
@@ -102,11 +139,19 @@
 			+
 		</button>
 	</div>
-	<div class="tree">
+	<div
+		class="tree"
+		class:drop-root={$dropRoot}
+		role="group"
+		ondragover={rootDragOver}
+		ondragleave={() => dropRoot.set(false)}
+		ondrop={rootDrop}
+	>
 		<FileTree
 			entries={$tree}
 			{onSelect}
 			onContextMenu={onEntryContextMenu}
+			{onMove}
 			{createTarget}
 			{renameTarget}
 			onCreate={commitCreate}
@@ -125,7 +170,7 @@
 
 <style>
 	aside {
-		width: 240px;
+		width: 100%;
 		flex-shrink: 0;
 		background: #191a21;
 		border-right: 1px solid #24262f;
@@ -162,6 +207,10 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: 0.25rem;
+	}
+	.tree.drop-root {
+		background: #1b1e27;
+		box-shadow: inset 0 0 0 1px #4f7cff;
 	}
 	.footer {
 		padding: 0.6rem;

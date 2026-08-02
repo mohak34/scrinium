@@ -1,13 +1,22 @@
 <script lang="ts">
 	import type { VaultEntry } from '$lib/stores/vault';
 	import { activePath } from '$lib/stores/vault';
-	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
+	import {
+		collapsedDirs,
+		toggleDir,
+		dragPath,
+		dropDir,
+		dropRoot,
+		canDrop,
+		clearDragState
+	} from '$lib/stores/filetree';
 	import FileTree from './FileTree.svelte';
 
 	interface Props {
 		entries: VaultEntry[];
 		onSelect: (path: string) => void;
 		onContextMenu: (entry: VaultEntry, x: number, y: number) => void;
+		onMove: (path: string, toDir: string | null) => void;
 		dirPath?: string | null;
 		depth?: number;
 		createTarget?: { parent: string | null; kind: 'note' | 'folder' } | null;
@@ -21,6 +30,7 @@
 		entries,
 		onSelect,
 		onContextMenu,
+		onMove,
 		dirPath = null,
 		depth = 0,
 		createTarget = null,
@@ -30,6 +40,39 @@
 		onCancelCreate,
 		onCancelRename
 	}: Props = $props();
+
+	function startDrag(e: DragEvent, entry: VaultEntry) {
+		dragPath.set(entry.path);
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', entry.path);
+		}
+	}
+
+	function endDrag() {
+		clearDragState();
+	}
+
+	function folderDragOver(e: DragEvent, entry: VaultEntry) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		if (canDrop($dragPath, entry.path)) dropDir.set(entry.path);
+	}
+
+	function folderDragLeave(entry: VaultEntry) {
+		if ($dropDir === entry.path) dropDir.set(null);
+	}
+
+	function folderDrop(e: DragEvent, entry: VaultEntry) {
+		e.preventDefault();
+		e.stopPropagation();
+		const source = $dragPath;
+		dropDir.set(null);
+		dropRoot.set(false);
+		dragPath.set(null);
+		if (source && canDrop(source, entry.path)) onMove(source, entry.path);
+	}
 
 	let createName = $state('');
 	let createInput = $state<HTMLInputElement>();
@@ -96,8 +139,11 @@
 			{#if entry.type === 'directory'}
 				<div
 					class="dir"
+					class:dragging={$dragPath === entry.path}
+					class:drop-target={$dropDir === entry.path}
 					role="button"
 					tabindex="0"
+					draggable="true"
 					onclick={() => toggleDir(entry.path)}
 					onkeydown={(e) => {
 						if (e.key === 'Enter' || e.key === ' ') {
@@ -110,6 +156,11 @@
 						e.stopPropagation();
 						onContextMenu(entry, e.clientX, e.clientY);
 					}}
+					ondragstart={(e) => startDrag(e, entry)}
+					ondragend={endDrag}
+					ondragover={(e) => folderDragOver(e, entry)}
+					ondragleave={() => folderDragLeave(entry)}
+					ondrop={(e) => folderDrop(e, entry)}
 				>
 					<span class="chevron">{$collapsedDirs.has(entry.path) ? '▸' : '▾'}</span>
 					{entry.name}
@@ -119,6 +170,7 @@
 						entries={entry.children ?? []}
 						{onSelect}
 						{onContextMenu}
+						{onMove}
 						dirPath={entry.path}
 						depth={depth + 1}
 						{createTarget}
@@ -145,11 +197,24 @@
 					<button
 						class="file"
 						class:active={$activePath === entry.path}
+						class:dragging={$dragPath === entry.path}
+						draggable="true"
 						onclick={() => onSelect(entry.path)}
 						oncontextmenu={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
 							onContextMenu(entry, e.clientX, e.clientY);
+						}}
+						ondragstart={(e) => startDrag(e, entry)}
+						ondragend={endDrag}
+						ondragover={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+						}}
+						ondrop={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
 						}}
 					>
 						{entry.name.replace(/\.md$/, '')}
@@ -198,6 +263,16 @@
 	.dir:hover {
 		color: #c9cbd6;
 	}
+	.dir.drop-target {
+		background: #2a3350;
+		box-shadow: inset 0 0 0 1px #4f7cff;
+		border-radius: 6px;
+		color: #c9cbd6;
+	}
+	.dir.dragging,
+	.file.dragging {
+		opacity: 0.4;
+	}
 	.chevron {
 		font-size: 0.7rem;
 		width: 0.9rem;
@@ -227,7 +302,8 @@
 		color: #fff;
 	}
 	.rename-input {
-		width: 100%;
+		margin-left: 0.5rem;
+		width: calc(100% - 0.5rem);
 		background: #14151a;
 		border: 1px solid #4f7cff;
 		border-radius: 5px;

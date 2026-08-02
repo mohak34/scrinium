@@ -19,3 +19,29 @@ export function expandDir(path: string) {
 		return next;
 	});
 }
+
+// Drag-and-drop state, shared across the recursive FileTree instances so a
+// drag started on one level can highlight a drop target on any other level.
+export const dragPath = writable<string | null>(null);
+export const dropDir = writable<string | null>(null);
+export const dropRoot = writable<boolean>(false);
+
+export function parentDirOf(path: string): string | null {
+	const i = path.lastIndexOf('/');
+	return i === -1 ? null : path.slice(0, i);
+}
+
+// A folder (or the root) is a valid drop target unless it IS the dragged item
+// or one of its descendants (a folder can't be moved into itself).
+export function canDrop(source: string | null, target: string | null): boolean {
+	if (!source) return false;
+	if (!target) return true;
+	if (target === source || source.startsWith(target + '/')) return false;
+	return true;
+}
+
+export function clearDragState() {
+	dragPath.set(null);
+	dropDir.set(null);
+	dropRoot.set(false);
+}

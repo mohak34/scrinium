@@ -95,3 +95,23 @@ export async function deletePath(path: string) {
 		activePath.set(null);
 	}
 }
+
+// Drag-and-drop move: same fs.rename underneath, but the target is a folder
+// (or null for the vault root) and the basename is preserved. Keeps the open
+// note's editor pinned to the note when it (or an ancestor folder) moves.
+export async function movePath(from: string, toDir: string | null): Promise<boolean> {
+	const name = from.split('/').pop()!;
+	const newPath = toDir ? `${toDir}/${name}` : name;
+	if (newPath === from) return true;
+	const res = await fetch(`/api/notes/${encPath(from)}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ newPath })
+	});
+	await loadTree();
+	const current = get(activePath);
+	if (current && (current === from || current.startsWith(from + '/'))) {
+		activePath.set(newPath + current.slice(from.length));
+	}
+	return res.ok;
+}

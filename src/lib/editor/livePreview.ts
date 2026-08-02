@@ -61,6 +61,21 @@ class CheckboxWidget extends WidgetType {
 	}
 }
 
+class BulletWidget extends WidgetType {
+	toDOM() {
+		const span = document.createElement('span');
+		span.className = 'cm-bullet';
+		span.textContent = '•';
+		return span;
+	}
+	eq(other: BulletWidget) {
+		return true;
+	}
+	ignoreEvent() {
+		return true;
+	}
+}
+
 const HEADING_CLASS: Record<string, string> = {
 	ATXHeading1: 'cm-heading-1',
 	ATXHeading2: 'cm-heading-2',
@@ -132,6 +147,17 @@ function buildDecorations(view: EditorView): DecorationSet {
 
 				if (HIDEABLE_MARKS.has(node.name) && !active) {
 					pending.push({ from: node.from, to: node.to, deco: Decoration.replace({}) });
+				}
+
+				// Turn a bare bullet marker ("-", "*", "+") into a "•" dot while
+				// the cursor is elsewhere. Ordered-list markers ("1.") are left
+				// alone, hence the single-char check.
+				if (node.name === 'ListMark' && !active && /^[-*+]$/.test(view.state.doc.sliceString(node.from, node.to))) {
+					pending.push({
+						from: node.from,
+						to: node.to,
+						deco: Decoration.replace({ widget: new BulletWidget() })
+					});
 				}
 
 				if (node.name === 'TaskMarker') {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { EditorState } from '@codemirror/state';
-	import { EditorView, keymap, highlightActiveLine } from '@codemirror/view';
+	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 	import { markdownLanguage, baseTheme } from './markdownSetup';
 	import { livePreview } from './livePreview';
@@ -26,7 +26,7 @@
 				markdownLanguage(),
 				livePreview,
 				baseTheme,
-				highlightActiveLine(),
+				lineNumbers(),
 				EditorView.lineWrapping,
 				EditorView.updateListener.of((update) => {
 					if (update.docChanged && !suppressChange) {
