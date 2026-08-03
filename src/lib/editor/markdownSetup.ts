@@ -13,8 +13,7 @@ export const baseTheme = EditorView.theme(
 			color: 'var(--on-surface)'
 		},
 		'.cm-scroller': {
-			fontFamily: 'inherit',
-			padding: '48px 0 96px'
+			fontFamily: 'inherit'
 		},
 		'.cm-content': {
 			fontFamily: "var(--font-ui)",

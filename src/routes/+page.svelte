@@ -108,14 +108,12 @@
 		<TabBar activePath={$activePath} onActivate={openNote} />
 		<div class="editor-scroll">
 			{#if $activePath}
-				<div class="editor-column">
-					<CodeEditor
-						bind:this={editorRef}
-						value={currentContent}
-						{onChange}
-						notePath={$activePath}
-					/>
-				</div>
+				<CodeEditor
+					bind:this={editorRef}
+					value={currentContent}
+					{onChange}
+					notePath={$activePath}
+				/>
 			{:else}
 				<div class="empty">Select a note, or create one from the sidebar.</div>
 			{/if}
@@ -193,11 +191,6 @@
 		min-height: 0;
 		overflow: hidden;
 		padding: 0 var(--gutter);
-	}
-	.editor-column {
-		max-width: var(--editor-max-width);
-		margin: 0 auto;
-		height: 100%;
 	}
 	.empty {
 		flex: 1;
