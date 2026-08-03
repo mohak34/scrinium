@@ -160,7 +160,7 @@
 			onclick={() => (createTarget = { parent: null, kind: 'note' })}
 			title="New note"
 		>
-			+
+			<span class="material-symbols-outlined">add</span>
 		</button>
 	</div>
 	<SearchBox {onSelect} />
@@ -187,7 +187,10 @@
 		/>
 	</div>
 	<div class="footer">
-		<button class="signout" onclick={signOut}>Sign out</button>
+		<button class="footer-item" onclick={signOut}>
+			<span class="material-symbols-outlined">logout</span>
+			<span>Sign out</span>
+		</button>
 	</div>
 	{#if menu}
 		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
@@ -198,8 +201,8 @@
 	aside {
 		width: 100%;
 		flex-shrink: 0;
-		background: #191a21;
-		border-right: 1px solid #24262f;
+		background: #15161c;
+		border-right: 1px solid var(--border-default);
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
@@ -208,49 +211,65 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.9rem 0.9rem 0.6rem;
+		height: 48px;
+		padding: 0 var(--gutter);
+		flex-shrink: 0;
 	}
 	.brand {
-		font-weight: 600;
-		font-size: 0.95rem;
-		color: #e6e6e6;
+		font-size: var(--font-editor-title-size);
+		line-height: var(--font-editor-title-lh);
+		font-weight: var(--font-editor-title-weight);
+		letter-spacing: var(--font-editor-title-tracking);
+		color: var(--on-surface);
 	}
 	.icon-btn {
-		background: #24262f;
-		border: none;
-		color: #c9cbd6;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		width: 24px;
 		height: 24px;
-		border-radius: 6px;
+		border: none;
+		border-radius: var(--radius);
+		background: none;
+		color: var(--on-surface-variant);
 		cursor: pointer;
-		font-size: 1rem;
 		line-height: 1;
 	}
 	.icon-btn:hover {
-		background: #2e313d;
+		background: var(--surface-container-low);
+		color: var(--on-surface);
 	}
 	.tree {
 		flex: 1;
 		overflow-y: auto;
-		padding: 0.25rem;
+		padding: 0.25rem 0;
 	}
 	.tree.drop-root {
-		background: #1b1e27;
-		box-shadow: inset 0 0 0 1px #4f7cff;
+		background: var(--surface-container-low);
+		box-shadow: inset 0 0 0 1px var(--primary);
 	}
 	.footer {
-		padding: 0.6rem;
-		border-top: 1px solid #24262f;
+		padding: var(--panel-padding);
+		border-top: 1px solid var(--border-default);
+		flex-shrink: 0;
 	}
-	.signout {
+	.footer-item {
+		display: flex;
+		align-items: center;
+		gap: var(--stack-gap);
+		width: 100%;
+		height: 28px;
+		padding: 0 8px;
 		background: none;
 		border: none;
-		color: #6b6e7a;
-		font-size: 0.8rem;
+		border-radius: var(--radius);
+		color: var(--on-surface-variant);
+		font-size: var(--font-ui-small);
 		cursor: pointer;
-		padding: 0.3rem 0.4rem;
+		text-align: left;
 	}
-	.signout:hover {
-		color: #c9cbd6;
+	.footer-item:hover {
+		background: var(--surface-container-low);
+		color: var(--on-surface);
 	}
 </style>

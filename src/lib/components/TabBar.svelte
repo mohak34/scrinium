@@ -49,40 +49,41 @@
 	.tabbar {
 		display: flex;
 		align-items: center;
-		gap: 2px;
-		height: 34px;
-		padding: 0 0.5rem;
-		border-bottom: 1px solid #24262f;
+		gap: var(--stack-gap);
+		height: 40px;
+		padding: 0 var(--gutter);
+		border-bottom: 1px solid var(--border-default);
 		overflow-x: auto;
 		overflow-y: hidden;
 		scrollbar-width: thin;
 		flex-shrink: 0;
-		background: #14151a;
+		flex-wrap: nowrap;
+		background: var(--surface);
 	}
 	.tab {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		height: 26px;
-		padding: 0 0.5rem;
+		gap: var(--stack-gap);
+		height: 28px;
+		padding: 0 var(--panel-padding);
 		border: none;
-		border-radius: 6px 6px 0 0;
+		border-radius: var(--radius);
 		background: transparent;
-		color: #8a8d99;
-		font-size: 0.78rem;
+		color: var(--on-surface-variant);
+		font-size: var(--font-ui-small);
 		font-family: inherit;
 		cursor: pointer;
 		white-space: nowrap;
 		max-width: 220px;
 	}
 	.tab:hover {
-		background: #1d1f27;
-		color: #c9cbd6;
+		background: var(--surface-container-low);
+		color: var(--on-surface);
 	}
 	.tab.active {
-		background: #1d1f27;
-		color: #e6e6e6;
-		box-shadow: inset 0 2px 0 #4f7cff;
+		background: var(--surface-container-high);
+		color: var(--on-surface);
+		box-shadow: inset 0 2px 0 var(--primary);
 	}
 	.tab-name {
 		overflow: hidden;
@@ -95,17 +96,17 @@
 		width: 16px;
 		height: 16px;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--radius-sm);
 		background: none;
 		font-size: 0.85rem;
 		line-height: 1;
-		color: #6b6e7a;
+		color: var(--outline);
 		cursor: pointer;
 		flex-shrink: 0;
 		padding: 0;
 	}
 	.tab-close:hover {
-		background: #2e313d;
-		color: #ff6b6b;
+		background: var(--surface-container-high);
+		color: var(--error);
 	}
 </style>

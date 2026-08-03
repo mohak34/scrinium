@@ -6,7 +6,7 @@
 	<div class="login-card">
 		<h1>Scrinium</h1>
 		<p>Sign in with the Google account on the allowlist.</p>
-		<button onclick={signInWithGoogle}>Continue with Google</button>
+		<button class="signin" onclick={signInWithGoogle}>Continue with Google</button>
 	</div>
 </div>
 
@@ -16,36 +16,39 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: #14151a;
-		color: #e6e6e6;
-		font-family: system-ui, sans-serif;
+		background: var(--background);
+		color: var(--on-surface);
+		font-family: var(--font-ui);
 	}
 	.login-card {
 		text-align: center;
 		padding: 2.5rem 3rem;
-		border-radius: 12px;
-		background: #1c1e26;
-		border: 1px solid #2a2d38;
+		border-radius: var(--radius-lg);
+		background: var(--surface-container);
+		border: 1px solid var(--border-raised);
 	}
 	h1 {
 		margin: 0 0 0.25rem;
-		font-size: 1.5rem;
+		font-size: var(--font-editor-title-size);
+		line-height: var(--font-editor-title-lh);
+		color: var(--on-surface);
 	}
 	p {
-		color: #9a9daa;
+		color: var(--on-surface-variant);
 		margin: 0 0 1.5rem;
-		font-size: 0.9rem;
+		font-size: var(--font-ui-small);
 	}
-	button {
-		background: #4f7cff;
-		color: white;
+	.signin {
+		background: var(--primary);
+		color: var(--on-primary);
 		border: none;
 		padding: 0.65rem 1.25rem;
-		border-radius: 8px;
-		font-size: 0.95rem;
+		border-radius: var(--radius);
+		font-size: var(--font-ui-medium);
+		font-family: var(--font-ui);
 		cursor: pointer;
 	}
-	button:hover {
-		background: #6690ff;
+	.signin:hover {
+		background: var(--primary-fixed);
 	}
 </style>

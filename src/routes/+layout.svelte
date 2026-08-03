@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import '@fontsource-variable/inter';
+	import '@material-symbols/font-400';
+	import '$lib/design/theme.css';
 
 	let { children } = $props();
 
@@ -15,14 +18,10 @@
 
 <svelte:head>
 	<style>
-		* {
-			box-sizing: border-box;
-		}
 		html,
 		body {
-			margin: 0;
 			height: 100%;
-			background: #14151a;
+			overflow: hidden;
 		}
 	</style>
 </svelte:head>
