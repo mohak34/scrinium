@@ -13,13 +13,12 @@ export const baseTheme = EditorView.theme(
 			color: 'var(--on-surface)'
 		},
 		'.cm-scroller': {
-			fontFamily: 'inherit',
-			lineHeight: '1.7'
+			fontFamily: 'inherit'
 		},
 		'.cm-content': {
 			fontFamily: "var(--font-ui)",
-			padding: '0',
-			lineHeight: '1.7'
+			padding: '2rem 1.5rem',
+			lineHeight: '1.65'
 		},
 		'.cm-line': { padding: '0 2px' },
 		'&.cm-focused': { outline: 'none' },
@@ -28,7 +27,6 @@ export const baseTheme = EditorView.theme(
 			color: '#3f424d',
 			border: 'none',
 			fontSize: '0.75rem',
-			lineHeight: '1.7',
 			userSelect: 'none'
 		},
 		'.cm-lineNumbers .cm-gutterElement': { padding: '0 0.5rem 0 0.75rem', minWidth: '1rem' },

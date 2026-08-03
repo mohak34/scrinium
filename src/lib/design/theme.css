@@ -108,8 +108,6 @@ body {
 	background: var(--background);
 	color: var(--on-surface);
 	font-family: var(--font-ui);
-	font-size: var(--font-ui-small);
-	line-height: var(--font-ui-small-lh);
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
