@@ -18,6 +18,7 @@
 	let resizing = $state(false);
 	let dividerHover = $state(false);
 	let paletteOpen = $state(false);
+	let imagePreview = $state<string | null>(null);
 
 	onMount(() => {
 		const saved = Number(localStorage.getItem('scrinium:sidebarWidth'));
@@ -31,6 +32,8 @@
 				paletteOpen = !paletteOpen;
 			} else if (e.key === 'Escape' && paletteOpen) {
 				paletteOpen = false;
+			} else if (e.key === 'Escape' && imagePreview) {
+				imagePreview = null;
 			}
 		};
 		window.addEventListener('keydown', key);
@@ -77,6 +80,12 @@
 		const path = get(activePath);
 		if (path) scheduleSave(path, newContent);
 	}
+
+	// The asset API is auth-gated; the preview <img> authenticates via the
+	// same-origin session cookie like everything else.
+	function assetUrl(path: string) {
+		return '/api/assets/' + path.split('/').map(encodeURIComponent).join('/');
+	}
 </script>
 
 <div class="layout">
@@ -86,7 +95,7 @@
 		class:resizing={resizing}
 		style="width: {collapsed ? 0 : sidebarWidth}px"
 	>
-		<Sidebar onSelect={openNote} />
+		<Sidebar onSelect={openNote} onOpenAsset={(path) => (imagePreview = path)} />
 	</div>
 	<div
 		class="divider"
@@ -118,6 +127,17 @@
 		onClose={() => (paletteOpen = false)}
 		onToggleSidebar={toggleCollapse}
 	/>
+{/if}
+
+{#if imagePreview}
+	<div
+		class="img-overlay"
+		role="presentation"
+		title="Click outside or press Esc to close"
+		onmousedown={(e) => e.target === e.currentTarget && (imagePreview = null)}
+	>
+		<img class="img-preview" src={assetUrl(imagePreview)} alt={imagePreview} />
+	</div>
 {/if}
 
 <style>
@@ -168,5 +188,22 @@
 		color: #6b6e7a;
 		font-family: system-ui, sans-serif;
 		font-size: 0.9rem;
+	}
+	.img-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 950;
+		background: rgba(0, 0, 0, 0.75);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 2rem;
+	}
+	.img-preview {
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+		border-radius: 6px;
+		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
 	}
 </style>

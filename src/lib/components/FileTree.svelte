@@ -15,6 +15,7 @@
 	interface Props {
 		entries: VaultEntry[];
 		onSelect: (path: string) => void;
+		onOpenAsset: (path: string) => void;
 		onContextMenu: (entry: VaultEntry, x: number, y: number) => void;
 		onMove: (path: string, toDir: string | null) => void;
 		dirPath?: string | null;
@@ -29,6 +30,7 @@
 	let {
 		entries,
 		onSelect,
+		onOpenAsset,
 		onContextMenu,
 		onMove,
 		dirPath = null,
@@ -131,13 +133,6 @@
 		renameCommitted = true;
 		onCancelRename();
 	}
-
-	// Open an attachment in a new tab - the image is served by the auth-gated
-	// asset API, which the browser authenticates with the session cookie.
-	function openAsset(path: string) {
-		const url = '/api/assets/' + path.split('/').map(encodeURIComponent).join('/');
-		window.open(url, '_blank', 'noopener,noreferrer');
-	}
 </script>
 
 <ul style="--depth: {depth}">
@@ -189,6 +184,7 @@
 					<FileTree
 						entries={entry.children ?? []}
 						{onSelect}
+						{onOpenAsset}
 						{onContextMenu}
 						{onMove}
 						dirPath={entry.path}
@@ -248,13 +244,13 @@
 					title={entry.name}
 					role="button"
 					tabindex={viewable ? 0 : -1}
-					onclick={viewable ? () => openAsset(entry.path) : undefined}
+					onclick={viewable ? () => onOpenAsset(entry.path) : undefined}
 					onkeydown={
 						viewable
 							? (e) => {
 									if (e.key === 'Enter' || e.key === ' ') {
 										e.preventDefault();
-										openAsset(entry.path);
+										onOpenAsset(entry.path);
 									}
 								}
 							: undefined

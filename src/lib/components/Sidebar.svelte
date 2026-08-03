@@ -25,8 +25,9 @@
 
 	interface Props {
 		onSelect: (path: string) => void;
+		onOpenAsset: (path: string) => void;
 	}
-	let { onSelect }: Props = $props();
+	let { onSelect, onOpenAsset }: Props = $props();
 
 	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
@@ -171,6 +172,7 @@
 		<FileTree
 			entries={$tree}
 			{onSelect}
+			{onOpenAsset}
 			onContextMenu={onEntryContextMenu}
 			{onMove}
 			{createTarget}
