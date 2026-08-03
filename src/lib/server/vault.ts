@@ -19,7 +19,7 @@ export interface VaultEntry {
  * This is the ONLY function that should turn client-provided paths into
  * real filesystem paths - never build fs paths anywhere else.
  */
-function safeResolve(relPath: string): string {
+export function safeResolve(relPath: string): string {
 	const cleaned = relPath.replace(/^\/+/, '');
 	const resolved = path.resolve(VAULT_DIR, cleaned);
 	if (resolved !== VAULT_DIR && !resolved.startsWith(VAULT_DIR + path.sep)) {
@@ -38,6 +38,22 @@ export async function readNote(relPath: string): Promise<string> {
 		return await fs.readFile(fullPath, 'utf-8');
 	} catch (e: unknown) {
 		if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw error(404, 'Note not found');
+		throw e;
+	}
+}
+
+export async function writeAsset(relPath: string, data: Buffer): Promise<void> {
+	const fullPath = safeResolve(relPath);
+	await fs.mkdir(path.dirname(fullPath), { recursive: true });
+	await fs.writeFile(fullPath, data);
+}
+
+export async function readAsset(relPath: string): Promise<Buffer> {
+	const fullPath = safeResolve(relPath);
+	try {
+		return await fs.readFile(fullPath);
+	} catch (e: unknown) {
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw error(404, 'Not found');
 		throw e;
 	}
 }
