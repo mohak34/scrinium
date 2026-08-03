@@ -27,7 +27,12 @@ export const baseTheme = EditorView.theme(
 			fontSize: '0.75rem',
 			userSelect: 'none'
 		},
-		'.cm-lineNumbers .cm-gutterElement': { padding: '0 0.5rem 0 0.75rem', minWidth: '1rem' },
+		'.cm-lineNumbers .cm-gutterElement': {
+			padding: '0 0.5rem 0 0.75rem',
+			minWidth: '1rem',
+			display: 'flex',
+			alignItems: 'center'
+		},
 		'.cm-cursor': { borderLeftColor: 'var(--on-surface)' },
 		'.cm-selectionBackground': { backgroundColor: 'var(--selection-bg) !important' },
 
