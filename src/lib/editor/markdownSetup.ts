@@ -9,11 +9,12 @@ export const baseTheme = EditorView.theme(
 		'&': {
 			height: '100%',
 			fontSize: '15px',
+			fontFamily: 'system-ui, sans-serif',
 			backgroundColor: 'var(--background)',
 			color: 'var(--on-surface)'
 		},
 		'.cm-content': {
-			fontFamily: "'iA Writer Quattro', 'Inter', system-ui, sans-serif",
+			fontFamily: 'system-ui, sans-serif',
 			padding: '2rem 1.5rem',
 			lineHeight: '1.65'
 		},
