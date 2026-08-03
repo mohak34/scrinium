@@ -26,6 +26,39 @@
 		view.dispatch({ effects: noteDirEffect.of(dir) });
 	});
 
+	async function uploadImage(file: File): Promise<string | null> {
+		const form = new FormData();
+		form.append('file', file);
+		try {
+			const res = await fetch('/api/attachments', { method: 'POST', body: form });
+			if (!res.ok) return null;
+			const data = await res.json();
+			return typeof data.path === 'string' ? data.path : null;
+		} catch {
+			return null;
+		}
+	}
+
+	// Upload pasted images and insert their markdown reference at the cursor.
+	// Failed uploads are skipped silently rather than leaving broken refs.
+	async function insertImages(view: EditorView, files: File[]) {
+		let insert = '';
+		for (const file of files) {
+			const rel = await uploadImage(file);
+			if (!rel) continue;
+			const name = file.name.replace(/\.[^.]+$/, '') || 'image';
+			insert += `![${name}](${rel})\n`;
+		}
+		if (!insert) return;
+		const pos = view.state.selection.main.head;
+		const line = view.state.doc.lineAt(pos);
+		const needsBreak = pos > line.from;
+		view.dispatch({
+			changes: { from: pos, insert: needsBreak ? `\n${insert}` : insert },
+			selection: { anchor: pos + insert.length + (needsBreak ? 1 : 0) }
+		});
+	}
+
 	onMount(() => {
 		view = new EditorView({
 			doc: value,
@@ -89,6 +122,18 @@
 								}
 							}
 						}
+					},
+					paste: (e, view) => {
+						// Paste an image from the clipboard: upload it to the vault
+						// and insert the markdown reference. Non-image pastes keep
+						// the default behaviour.
+						const files = Array.from(e.clipboardData?.files ?? []).filter((f) =>
+							f.type.startsWith('image/')
+						);
+						if (!files.length) return false;
+						e.preventDefault();
+						void insertImages(view, files);
+						return true;
 					}
 				}),
 				EditorView.updateListener.of((update) => {
