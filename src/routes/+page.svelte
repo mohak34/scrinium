@@ -234,6 +234,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		overflow: hidden;
 	}
 	.img-stage {
 		display: flex;
@@ -241,7 +242,6 @@
 		justify-content: center;
 		max-width: 100%;
 		max-height: 100%;
-		overflow: auto;
 		padding: 3.5rem 1.5rem 1.5rem;
 	}
 	.img-preview {
