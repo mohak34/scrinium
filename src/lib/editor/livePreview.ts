@@ -22,7 +22,7 @@
  */
 
 import { syntaxTree } from '@codemirror/language';
-import { RangeSetBuilder, StateEffect } from '@codemirror/state';
+import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import {
 	Decoration,
 	EditorView,
@@ -38,6 +38,20 @@ import {
 // so the decoration set is rebuilt when it flips.
 let previewOn = false;
 export const previewModeEffect = StateEffect.define<boolean>();
+
+// The folder of the note being edited, used to resolve relative image URLs in
+// the markdown (e.g. "attachments/foo.png" from a note in a subfolder). Kept in
+// a StateField so the decoration set rebuilds when the note changes.
+export const noteDirEffect = StateEffect.define<string | null>();
+export const noteDirField = StateField.define<string | null>({
+	create: () => null,
+	update(value, tr) {
+		for (const e of tr.effects) {
+			if (e.is(noteDirEffect)) return e.value;
+		}
+		return value;
+	}
+});
 
 export function isPreviewMode() {
 	return previewOn;
@@ -105,6 +119,52 @@ class BulletWidget extends WidgetType {
 	}
 	eq(other: BulletWidget) {
 		return true;
+	}
+	ignoreEvent() {
+		return true;
+	}
+}
+
+// Turn a markdown image reference into a browser-loadable URL. Absolute
+// (http(s)/data) URLs pass through; anything else is resolved against the
+// folder of the note being edited and served through the auth-gated asset API.
+function resolveAssetUrl(url: string, noteDir: string | null): string | null {
+	const clean = url.trim();
+	if (!clean) return null;
+	if (/^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith('/')) return clean;
+	const joined = noteDir ? `${noteDir}/${clean}` : clean;
+	const parts: string[] = [];
+	for (const seg of joined.split('/')) {
+		if (!seg || seg === '.') continue;
+		if (seg === '..') {
+			parts.pop();
+			continue;
+		}
+		parts.push(seg);
+	}
+	if (!parts.length) return null;
+	return '/api/assets/' + parts.map(encodeURIComponent).join('/');
+}
+
+class ImageWidget extends WidgetType {
+	constructor(
+		readonly url: string,
+		readonly alt: string,
+		readonly noteDir: string | null
+	) {
+		super();
+	}
+	eq(other: ImageWidget) {
+		return other.url === this.url;
+	}
+	toDOM() {
+		const img = document.createElement('img');
+		const src = resolveAssetUrl(this.url, this.noteDir);
+		img.src = src ?? '';
+		img.alt = this.alt;
+		img.className = 'cm-image';
+		img.loading = 'lazy';
+		return img;
 	}
 	ignoreEvent() {
 		return true;
@@ -205,6 +265,34 @@ function buildDecorations(view: EditorView): DecorationSet {
 						deco: Decoration.replace({ widget: new CheckboxWidget(checked, node.from) })
 					});
 				}
+
+				// Render the whole image markdown as a real <img> while the cursor
+				// is elsewhere (and always in full preview). Returning false stops
+				// the walk from also decorating the inner LinkMark/URL nodes, which
+				// would overlap this replacement and break the RangeSetBuilder.
+				if (node.name === 'Image' && !active) {
+					const urlNode = node.node.getChild('URL');
+					if (urlNode) {
+						const firstMark = node.node.getChild('LinkMark');
+						const secondMark = firstMark?.nextSibling;
+						const alt =
+							firstMark && secondMark
+								? view.state.sliceDoc(firstMark.to, secondMark.from)
+								: '';
+						pending.push({
+							from: node.from,
+							to: node.to,
+							deco: Decoration.replace({
+								widget: new ImageWidget(
+									view.state.sliceDoc(urlNode.from, urlNode.to),
+									alt,
+									view.state.field(noteDirField, false) ?? null
+								)
+							})
+						});
+					}
+					return false;
+				}
 			}
 		});
 	}
@@ -231,7 +319,11 @@ export const livePreview = ViewPlugin.fromClass(
 				update.docChanged ||
 				update.selectionSet ||
 				update.viewportChanged ||
-				update.transactions.some((tr) => tr.effects.some((e) => e.is(previewModeEffect)))
+				update.transactions.some(
+					(tr) =>
+						tr.effects.some((e) => e.is(previewModeEffect)) ||
+						tr.effects.some((e) => e.is(noteDirEffect))
+				)
 			) {
 				this.decorations = buildDecorations(update.view);
 			}

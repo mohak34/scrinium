@@ -5,18 +5,26 @@
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 	import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 	import { markdownLanguage, baseTheme } from './markdownSetup';
-	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos } from './livePreview';
+	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask } from './formatting';
 
 	interface Props {
 		value: string;
 		onChange: (value: string) => void;
+		notePath?: string;
 	}
-	let { value, onChange }: Props = $props();
+	let { value, onChange, notePath }: Props = $props();
 
 	let container: HTMLDivElement;
 	let view: EditorView | undefined;
 	let suppressChange = false;
+
+	// Resolve relative image URLs against the folder of the open note.
+	$effect(() => {
+		if (!view) return;
+		const dir = notePath ? notePath.split('/').slice(0, -1).join('/') || null : null;
+		view.dispatch({ effects: noteDirEffect.of(dir) });
+	});
 
 	onMount(() => {
 		view = new EditorView({
@@ -43,6 +51,7 @@
 				search({ top: true }),
 				highlightSelectionMatches({ minSelectionLength: 2 }),
 				markdownLanguage(),
+				noteDirField,
 				livePreview,
 				baseTheme,
 				lineNumbers(),

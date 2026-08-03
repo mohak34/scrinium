@@ -54,6 +54,15 @@ export const baseTheme = EditorView.theme(
 			fontSize: '0.9em'
 		},
 		'.cm-link': { color: '#7aa2ff', textDecoration: 'underline' },
+		// Rendered image: full-width lines, unmounted when the cursor leaves.
+		'& .cm-image': {
+			display: 'block',
+			maxWidth: '100%',
+			maxHeight: '60vh',
+			margin: '0.4em 0',
+			borderRadius: '6px',
+			objectFit: 'contain'
+		},
 		'.cm-task-checkbox': {
 			marginRight: '0.4em',
 			verticalAlign: 'middle',

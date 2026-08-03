@@ -105,7 +105,7 @@
 	<div class="main">
 		<TopBar path={$activePath} />
 		{#if $activePath}
-			<CodeEditor bind:this={editorRef} value={currentContent} {onChange} />
+			<CodeEditor bind:this={editorRef} value={currentContent} {onChange} notePath={$activePath} />
 		{:else}
 			<div class="empty">Select a note, or create one from the sidebar.</div>
 		{/if}
