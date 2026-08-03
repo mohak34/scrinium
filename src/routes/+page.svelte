@@ -21,9 +21,9 @@
 	let imagePreview = $state<string | null>(null);
 	let zoom = $state(100);
 
-	const MIN_ZOOM = 25;
-	const MAX_ZOOM = 300;
-	const ZOOM_STEP = 25;
+	const MIN_ZOOM = 10;
+	const MAX_ZOOM = 500;
+	const ZOOM_STEP = 10;
 
 	onMount(() => {
 		const saved = Number(localStorage.getItem('scrinium:sidebarWidth'));
@@ -231,15 +231,14 @@
 		inset: 0;
 		z-index: 950;
 		background: rgba(0, 0, 0, 0.75);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
+		display: grid;
+		overflow: auto;
 	}
 	.img-stage {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		margin: auto;
 		max-width: 100%;
 		max-height: 100%;
 		padding: 3.5rem 1.5rem 1.5rem;
@@ -252,7 +251,7 @@
 		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
 	}
 	.zoom-controls {
-		position: absolute;
+		position: fixed;
 		top: 1rem;
 		right: 1rem;
 		display: flex;
