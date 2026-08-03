@@ -16,6 +16,7 @@
 		expandDir,
 		renameDir,
 		dragPath,
+		dragKind,
 		dropRoot,
 		canDrop,
 		clearDragState
@@ -100,15 +101,17 @@
 	function rootDragOver(e: DragEvent) {
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		if (canDrop($dragPath, null)) dropRoot.set(true);
+		if (canDrop($dragPath, null, $dragKind)) dropRoot.set(true);
 	}
 
 	function rootDrop(e: DragEvent) {
 		e.preventDefault();
 		dropRoot.set(false);
 		const source = $dragPath;
+		const kind = $dragKind;
 		dragPath.set(null);
-		if (source && canDrop(source, null)) void onMove(source, null);
+		dragKind.set(null);
+		if (source && kind && canDrop(source, null, kind)) void onMove(source, null);
 	}
 
 	const menuItems = $derived.by(() => {

@@ -37,6 +37,7 @@ export function renameDir(oldPath: string, newPath: string) {
 // Drag-and-drop state, shared across the recursive FileTree instances so a
 // drag started on one level can highlight a drop target on any other level.
 export const dragPath = writable<string | null>(null);
+export const dragKind = writable<'file' | 'directory' | null>(null);
 export const dropDir = writable<string | null>(null);
 export const dropRoot = writable<boolean>(false);
 
@@ -46,16 +47,24 @@ export function parentDirOf(path: string): string | null {
 }
 
 // A folder (or the root) is a valid drop target unless it IS the dragged item
-// or one of its descendants (a folder can't be moved into itself).
-export function canDrop(source: string | null, target: string | null): boolean {
-	if (!source) return false;
+// or one of its descendants (a folder can't be moved into itself). A file is
+// always droppable on any folder - including its own ancestors, which is the
+// normal way to move a file up out of a subfolder.
+export function canDrop(
+	source: string | null,
+	target: string | null,
+	kind: 'file' | 'directory' | null
+): boolean {
+	if (!source || !kind) return false;
 	if (!target) return true;
-	if (target === source || source.startsWith(target + '/')) return false;
+	if (target === source) return false;
+	if (kind === 'directory' && source.startsWith(target + '/')) return false;
 	return true;
 }
 
 export function clearDragState() {
 	dragPath.set(null);
+	dragKind.set(null);
 	dropDir.set(null);
 	dropRoot.set(false);
 }

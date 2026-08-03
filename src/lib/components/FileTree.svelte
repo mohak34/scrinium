@@ -5,6 +5,7 @@
 		collapsedDirs,
 		toggleDir,
 		dragPath,
+		dragKind,
 		dropDir,
 		dropRoot,
 		canDrop,
@@ -45,6 +46,7 @@
 
 	function startDrag(e: DragEvent, entry: VaultEntry) {
 		dragPath.set(entry.path);
+		dragKind.set(entry.type);
 		if (e.dataTransfer) {
 			e.dataTransfer.effectAllowed = 'move';
 			e.dataTransfer.setData('text/plain', entry.path);
@@ -59,7 +61,7 @@
 		e.preventDefault();
 		e.stopPropagation();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		if (canDrop($dragPath, entry.path)) dropDir.set(entry.path);
+		if (canDrop($dragPath, entry.path, $dragKind)) dropDir.set(entry.path);
 	}
 
 	function folderDragLeave(entry: VaultEntry) {
@@ -70,10 +72,12 @@
 		e.preventDefault();
 		e.stopPropagation();
 		const source = $dragPath;
+		const kind = $dragKind;
 		dropDir.set(null);
 		dropRoot.set(false);
 		dragPath.set(null);
-		if (source && canDrop(source, entry.path)) onMove(source, entry.path);
+		dragKind.set(null);
+		if (source && kind && canDrop(source, entry.path, kind)) onMove(source, entry.path);
 	}
 
 	let createName = $state('');
