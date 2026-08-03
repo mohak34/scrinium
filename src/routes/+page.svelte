@@ -141,12 +141,7 @@
 {/if}
 
 {#if imagePreview}
-	<div
-		class="img-overlay"
-		role="presentation"
-		title="Click outside or press Esc to close"
-		onmousedown={(e) => e.target === e.currentTarget && (imagePreview = null)}
-	>
+	<div class="img-overlay" role="presentation">
 		<div class="zoom-controls">
 			<button
 				class="zoom-btn"
@@ -164,6 +159,10 @@
 				onclick={() => (zoom = Math.min(MAX_ZOOM, zoom + ZOOM_STEP))}
 			>
 				+
+			</button>
+			<span class="zoom-sep"></span>
+			<button class="zoom-btn close" title="Close (Esc)" onclick={() => (imagePreview = null)}>
+				✕
 			</button>
 		</div>
 		<div class="img-stage">
@@ -278,6 +277,16 @@
 	}
 	.zoom-btn:hover {
 		background: #2e313d;
+	}
+	.zoom-btn.close:hover {
+		background: #3a2226;
+		color: #ff6b6b;
+	}
+	.zoom-sep {
+		width: 1px;
+		height: 18px;
+		background: #2a2d38;
+		margin: 0 0.1rem;
 	}
 	.zoom-pct {
 		min-width: 52px;
