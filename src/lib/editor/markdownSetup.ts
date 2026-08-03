@@ -12,11 +12,8 @@ export const baseTheme = EditorView.theme(
 			backgroundColor: 'var(--background)',
 			color: 'var(--on-surface)'
 		},
-		'.cm-scroller': {
-			fontFamily: 'inherit'
-		},
 		'.cm-content': {
-			fontFamily: "var(--font-ui)",
+			fontFamily: "'iA Writer Quattro', 'Inter', system-ui, sans-serif",
 			padding: '2rem 1.5rem',
 			lineHeight: '1.65'
 		},
