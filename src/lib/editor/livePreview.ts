@@ -31,6 +31,7 @@ import {
 	type DecorationSet,
 	type ViewUpdate
 } from '@codemirror/view';
+import type { SyntaxNode } from '@lezer/common';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
 // regardless of where the cursor is. Entered with Escape, exited by clicking
@@ -171,6 +172,76 @@ class ImageWidget extends WidgetType {
 	}
 }
 
+// Obsidian-style callouts: a blockquote whose first line is "[!TYPE] title".
+// Rendered as a styled box while the cursor is away from it; raw blockquote
+// text (editable) when the cursor is on any of its lines.
+const CALLOUTS: Record<string, string> = {
+	note: 'i',
+	tip: '✦',
+	important: '!',
+	warning: '⚠',
+	caution: '✕'
+};
+
+const CALLOUT_RE = /^\s*>+\s*\[!\s*([a-z]+)\s*\]\s*(.*)$/i;
+
+function parseCallout(
+	view: EditorView,
+	node: SyntaxNode
+): { type: string; title: string; content: string } | null {
+	const firstLine = view.state.doc.lineAt(node.from);
+	const match = firstLine.text.match(CALLOUT_RE);
+	if (!match) return null;
+	const type = match[1].toLowerCase();
+	if (!CALLOUTS[type]) return null;
+	const title = match[2].trim() || type.charAt(0).toUpperCase() + type.slice(1);
+	const start = firstLine.number;
+	const end = view.state.doc.lineAt(node.to).number;
+	const lines: string[] = [];
+	for (let n = start + 1; n <= end; n++) {
+		lines.push(view.state.doc.line(n).text.replace(/^\s*>+\s?/, ''));
+	}
+	return { type, title, content: lines.join('\n') };
+}
+
+class CalloutWidget extends WidgetType {
+	constructor(
+		readonly type: string,
+		readonly title: string,
+		readonly content: string
+	) {
+		super();
+	}
+	eq(other: CalloutWidget) {
+		return (
+			other.type === this.type &&
+			other.title === this.title &&
+			other.content === this.content
+		);
+	}
+	toDOM() {
+		const wrap = document.createElement('div');
+		wrap.className = `cm-callout cm-callout-${this.type}`;
+		const header = document.createElement('div');
+		header.className = 'cm-callout-title';
+		const icon = document.createElement('span');
+		icon.className = 'cm-callout-icon';
+		icon.textContent = CALLOUTS[this.type];
+		header.append(icon, document.createTextNode(this.title));
+		wrap.appendChild(header);
+		if (this.content) {
+			const body = document.createElement('div');
+			body.className = 'cm-callout-content';
+			body.textContent = this.content;
+			wrap.appendChild(body);
+		}
+		return wrap;
+	}
+	ignoreEvent() {
+		return true;
+	}
+}
+
 const HEADING_CLASS: Record<string, string> = {
 	ATXHeading1: 'cm-heading-1',
 	ATXHeading2: 'cm-heading-2',
@@ -292,6 +363,20 @@ function buildDecorations(view: EditorView): DecorationSet {
 						});
 					}
 					return false;
+				}
+
+				if (node.name === 'Blockquote') {
+					const callout = parseCallout(view, node.node);
+					if (callout && !active) {
+						pending.push({
+							from: node.from,
+							to: node.to,
+							deco: Decoration.replace({
+								widget: new CalloutWidget(callout.type, callout.title, callout.content)
+							})
+						});
+						return false;
+					}
 				}
 			}
 		});
