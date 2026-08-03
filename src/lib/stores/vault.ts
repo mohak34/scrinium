@@ -11,6 +11,27 @@ export const tree = writable<VaultEntry[]>([]);
 export const activePath = writable<string | null>(null);
 export const saveStatus = writable<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+// Open tabs, oldest first. The active note is the last one opened (or the
+// neighbour chosen by closeTab) - activePath stays the single source of truth.
+export const openTabs = writable<string[]>([]);
+
+export function openTab(path: string) {
+	openTabs.update((tabs) => (tabs.includes(path) ? tabs : [...tabs, path]));
+	activePath.set(path);
+}
+
+export function closeTab(path: string) {
+	const tabs = get(openTabs);
+	const idx = tabs.indexOf(path);
+	if (idx === -1) return;
+	const remaining = tabs.filter((t) => t !== path);
+	openTabs.set(remaining);
+	if (get(activePath) === path) {
+		const next = remaining[Math.min(idx, remaining.length - 1)] ?? null;
+		activePath.set(next);
+	}
+}
+
 const encPath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
 
 export interface SearchResult {
@@ -107,6 +128,7 @@ export async function deletePath(path: string) {
 	if (current && (current === path || current.startsWith(path + '/'))) {
 		activePath.set(null);
 	}
+	openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
 }
 
 // Drag-and-drop move: same fs.rename underneath, but the target is a folder
@@ -126,5 +148,12 @@ export async function movePath(from: string, toDir: string | null): Promise<bool
 	if (current && (current === from || current.startsWith(from + '/'))) {
 		activePath.set(newPath + current.slice(from.length));
 	}
+	openTabs.update((tabs) =>
+		tabs.map((t) => {
+			if (t === from) return newPath;
+			if (t.startsWith(from + '/')) return newPath + t.slice(from.length);
+			return t;
+		})
+	);
 	return res.ok;
 }

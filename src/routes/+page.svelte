@@ -3,15 +3,39 @@
 	import { get } from 'svelte/store';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
+	import TabBar from '$lib/components/TabBar.svelte';
 	import CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
-	import { activePath, loadTree, loadNote, scheduleSave, flushSave } from '$lib/stores/vault';
+	import { activePath, loadTree, loadNote, scheduleSave, flushSave, openTab } from '$lib/stores/vault';
 
 	const MIN_SIDEBAR = 180;
 	const MAX_SIDEBAR = 520;
 
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
+	let lastLoadedPath = $state<string | null>('');
+
+	// Loading the active note's content happens here so that ANY activePath
+	// change - opening a note, or closeTab switching to a neighbour - reloads
+	// the right content. Sidebar/command palette/clicking a tab only ever need
+	// to register the tab and set the active path.
+	$effect(() => {
+		const path = $activePath;
+		if (path === lastLoadedPath) return;
+		lastLoadedPath = path;
+		if (!path) {
+			currentContent = '';
+			return;
+		}
+		void (async () => {
+			await flushSave();
+			const content = await loadNote(path);
+			if ($activePath === path) {
+				currentContent = content;
+				editorRef?.setDoc(content);
+			}
+		})();
+	});
 
 	let sidebarWidth = $state(240);
 	let collapsed = $state(false);
@@ -75,9 +99,7 @@
 		// Finish saving the current note before swapping, so the debounce never
 		// drops edits made right before switching.
 		await flushSave();
-		activePath.set(path);
-		currentContent = await loadNote(path);
-		editorRef?.setDoc(currentContent);
+		openTab(path);
 	}
 
 	function onChange(newContent: string) {
@@ -124,6 +146,7 @@
 	></div>
 	<div class="main">
 		<TopBar path={$activePath} />
+		<TabBar activePath={$activePath} onActivate={openNote} />
 		{#if $activePath}
 			<CodeEditor bind:this={editorRef} value={currentContent} {onChange} notePath={$activePath} />
 		{:else}
