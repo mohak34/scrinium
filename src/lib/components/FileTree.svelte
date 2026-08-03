@@ -131,6 +131,13 @@
 		renameCommitted = true;
 		onCancelRename();
 	}
+
+	// Open an attachment in a new tab - the image is served by the auth-gated
+	// asset API, which the browser authenticates with the session cookie.
+	function openAsset(path: string) {
+		const url = '/api/assets/' + path.split('/').map(encodeURIComponent).join('/');
+		window.open(url, '_blank', 'noopener,noreferrer');
+	}
 </script>
 
 <ul style="--depth: {depth}">
@@ -232,12 +239,26 @@
 					{entry.name.replace(/\.md$/, '')}
 				</button>
 			{:else}
+				{@const viewable = /\.(png|jpe?g|gif|webp)$/i.test(entry.name)}
 				<div
 					class="file asset"
+					class:viewable={viewable}
 					class:dragging={$dragPath === entry.path}
 					draggable="true"
 					title={entry.name}
-					role="listitem"
+					role="button"
+					tabindex={viewable ? 0 : -1}
+					onclick={viewable ? () => openAsset(entry.path) : undefined}
+					onkeydown={
+						viewable
+							? (e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										openAsset(entry.path);
+									}
+								}
+							: undefined
+					}
 					oncontextmenu={(e) => {
 						e.preventDefault();
 						e.stopPropagation();
@@ -338,6 +359,13 @@
 		cursor: default;
 		color: #8b8e99;
 		font-size: 0.8rem;
+	}
+	.file.asset.viewable {
+		cursor: pointer;
+		color: #c9cbd6;
+	}
+	.file.asset.viewable:hover {
+		background: #22242e;
 	}
 	.file.asset:hover {
 		background: none;
