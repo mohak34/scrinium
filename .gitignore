@@ -13,3 +13,5 @@ vault/notes/*
 !vault/notes/Welcome.md
 .DS_Store
 *.log
+DESIGN.md
+DESIGN_CODE.md
