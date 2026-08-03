@@ -22,15 +22,8 @@
  */
 
 import { syntaxTree } from '@codemirror/language';
-import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
-import {
-	Decoration,
-	EditorView,
-	ViewPlugin,
-	WidgetType,
-	type DecorationSet,
-	type ViewUpdate
-} from '@codemirror/view';
+import { RangeSetBuilder, StateEffect, StateField, type EditorState } from '@codemirror/state';
+import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
@@ -186,20 +179,20 @@ const CALLOUTS: Record<string, string> = {
 const CALLOUT_RE = /^\s*>+\s*\[!\s*([a-z]+)\s*\]\s*(.*)$/i;
 
 function parseCallout(
-	view: EditorView,
+	state: EditorState,
 	node: SyntaxNode
 ): { type: string; title: string; content: string } | null {
-	const firstLine = view.state.doc.lineAt(node.from);
+	const firstLine = state.doc.lineAt(node.from);
 	const match = firstLine.text.match(CALLOUT_RE);
 	if (!match) return null;
 	const type = match[1].toLowerCase();
 	if (!CALLOUTS[type]) return null;
 	const title = match[2].trim() || type.charAt(0).toUpperCase() + type.slice(1);
 	const start = firstLine.number;
-	const end = view.state.doc.lineAt(node.to).number;
+	const end = state.doc.lineAt(node.to).number;
 	const lines: string[] = [];
 	for (let n = start + 1; n <= end; n++) {
-		lines.push(view.state.doc.line(n).text.replace(/^\s*>+\s?/, ''));
+		lines.push(state.doc.line(n).text.replace(/^\s*>+\s?/, ''));
 	}
 	return { type, title, content: lines.join('\n') };
 }
@@ -267,24 +260,23 @@ interface PendingDecoration {
 	deco: Decoration;
 }
 
-function isLineActive(view: EditorView, from: number, to: number): boolean {
+function isLineActive(state: EditorState, from: number, to: number): boolean {
 	if (previewOn) return false;
-	const cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
-	const startLine = view.state.doc.lineAt(from).number;
-	const endLine = view.state.doc.lineAt(to).number;
+	const cursorLine = state.doc.lineAt(state.selection.main.head).number;
+	const startLine = state.doc.lineAt(from).number;
+	const endLine = state.doc.lineAt(to).number;
 	return cursorLine >= startLine && cursorLine <= endLine;
 }
 
-function buildDecorations(view: EditorView): DecorationSet {
+function buildDecorations(state: EditorState): DecorationSet {
 	const pending: PendingDecoration[] = [];
-	const tree = syntaxTree(view.state);
+	const tree = syntaxTree(state);
 
-	for (const { from, to } of view.visibleRanges) {
-		tree.iterate({
-			from,
-			to,
-			enter: (node) => {
-				const active = isLineActive(view, node.from, node.to);
+	tree.iterate({
+		from: 0,
+		to: state.doc.length,
+		enter: (node) => {
+				const active = isLineActive(state, node.from, node.to);
 
 				const headingClass = HEADING_CLASS[node.name];
 				if (headingClass) {
@@ -319,7 +311,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				// Turn a bare bullet marker ("-", "*", "+") into a "•" dot while
 				// the cursor is elsewhere. Ordered-list markers ("1.") are left
 				// alone, hence the single-char check.
-				if (node.name === 'ListMark' && !active && /^[-*+]$/.test(view.state.doc.sliceString(node.from, node.to))) {
+				if (node.name === 'ListMark' && !active && /^[-*+]$/.test(state.doc.sliceString(node.from, node.to))) {
 					pending.push({
 						from: node.from,
 						to: node.to,
@@ -328,7 +320,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				}
 
 				if (node.name === 'TaskMarker') {
-					const text = view.state.doc.sliceString(node.from, node.to);
+					const text = state.doc.sliceString(node.from, node.to);
 					const checked = /\[[xX]\]/.test(text);
 					pending.push({
 						from: node.from,
@@ -348,16 +340,16 @@ function buildDecorations(view: EditorView): DecorationSet {
 						const secondMark = firstMark?.nextSibling;
 						const alt =
 							firstMark && secondMark
-								? view.state.sliceDoc(firstMark.to, secondMark.from)
+								? state.sliceDoc(firstMark.to, secondMark.from)
 								: '';
 						pending.push({
 							from: node.from,
 							to: node.to,
 							deco: Decoration.replace({
 								widget: new ImageWidget(
-									view.state.sliceDoc(urlNode.from, urlNode.to),
+									state.sliceDoc(urlNode.from, urlNode.to),
 									alt,
-									view.state.field(noteDirField, false) ?? null
+									state.field(noteDirField, false) ?? null
 								)
 							})
 						});
@@ -366,13 +358,14 @@ function buildDecorations(view: EditorView): DecorationSet {
 				}
 
 				if (node.name === 'Blockquote') {
-					const callout = parseCallout(view, node.node);
+					const callout = parseCallout(state, node.node);
 					if (callout && !active) {
 						pending.push({
 							from: node.from,
 							to: node.to,
 							deco: Decoration.replace({
-								widget: new CalloutWidget(callout.type, callout.title, callout.content)
+								widget: new CalloutWidget(callout.type, callout.title, callout.content),
+								block: true
 							})
 						});
 						return false;
@@ -380,7 +373,6 @@ function buildDecorations(view: EditorView): DecorationSet {
 				}
 			}
 		});
-	}
 
 	// Sort by start position and startSide - required by RangeSetBuilder, and
 	// simplest to just do once at the end rather than fight tree-walk ordering.
@@ -393,28 +385,23 @@ function buildDecorations(view: EditorView): DecorationSet {
 	return builder.finish();
 }
 
-export const livePreview = ViewPlugin.fromClass(
-	class {
-		decorations: DecorationSet;
-		constructor(view: EditorView) {
-			this.decorations = buildDecorations(view);
-		}
-		update(update: ViewUpdate) {
-			if (
-				update.docChanged ||
-				update.selectionSet ||
-				update.viewportChanged ||
-				update.transactions.some(
-					(tr) =>
-						tr.effects.some((e) => e.is(previewModeEffect)) ||
-						tr.effects.some((e) => e.is(noteDirEffect))
-				)
-			) {
-				this.decorations = buildDecorations(update.view);
-			}
-		}
+// The decoration set is provided through a StateField (not a ViewPlugin):
+// CodeMirror only allows block-level decorations (like the multi-line callout
+// box) from a state field, never from a dynamic plugin-provided set.
+export const livePreview = StateField.define<DecorationSet>({
+	create(state) {
+		return buildDecorations(state);
 	},
-	{
-		decorations: (v) => v.decorations
-	}
-);
+	update(value, tr) {
+		if (
+			tr.docChanged ||
+			!tr.startState.selection.eq(tr.state.selection) ||
+			tr.effects.some((e) => e.is(previewModeEffect)) ||
+			tr.effects.some((e) => e.is(noteDirEffect))
+		) {
+			return buildDecorations(tr.state);
+		}
+		return value;
+	},
+	provide: (f) => EditorView.decorations.from(f)
+});
