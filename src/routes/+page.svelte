@@ -19,6 +19,11 @@
 	let dividerHover = $state(false);
 	let paletteOpen = $state(false);
 	let imagePreview = $state<string | null>(null);
+	let zoom = $state(100);
+
+	const MIN_ZOOM = 25;
+	const MAX_ZOOM = 300;
+	const ZOOM_STEP = 25;
 
 	onMount(() => {
 		const saved = Number(localStorage.getItem('scrinium:sidebarWidth'));
@@ -95,7 +100,13 @@
 		class:resizing={resizing}
 		style="width: {collapsed ? 0 : sidebarWidth}px"
 	>
-		<Sidebar onSelect={openNote} onOpenAsset={(path) => (imagePreview = path)} />
+		<Sidebar
+			onSelect={openNote}
+			onOpenAsset={(path) => {
+				imagePreview = path;
+				zoom = 100;
+			}}
+		/>
 	</div>
 	<div
 		class="divider"
@@ -136,7 +147,33 @@
 		title="Click outside or press Esc to close"
 		onmousedown={(e) => e.target === e.currentTarget && (imagePreview = null)}
 	>
-		<img class="img-preview" src={assetUrl(imagePreview)} alt={imagePreview} />
+		<div class="zoom-controls">
+			<button
+				class="zoom-btn"
+				title="Zoom out"
+				onclick={() => (zoom = Math.max(MIN_ZOOM, zoom - ZOOM_STEP))}
+			>
+				−
+			</button>
+			<button class="zoom-pct" title="Reset zoom" onclick={() => (zoom = 100)}>
+				{zoom}%
+			</button>
+			<button
+				class="zoom-btn"
+				title="Zoom in"
+				onclick={() => (zoom = Math.min(MAX_ZOOM, zoom + ZOOM_STEP))}
+			>
+				+
+			</button>
+		</div>
+		<div class="img-stage">
+			<img
+				class="img-preview"
+				style="transform: scale({zoom / 100})"
+				src={assetUrl(imagePreview)}
+				alt={imagePreview}
+			/>
+		</div>
 	</div>
 {/if}
 
@@ -197,7 +234,15 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: 2rem;
+	}
+	.img-stage {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		max-width: 100%;
+		max-height: 100%;
+		overflow: auto;
+		padding: 3.5rem 1.5rem 1.5rem;
 	}
 	.img-preview {
 		max-width: 100%;
@@ -205,5 +250,48 @@
 		object-fit: contain;
 		border-radius: 6px;
 		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+	}
+	.zoom-controls {
+		position: absolute;
+		top: 1rem;
+		right: 1rem;
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		background: rgba(20, 21, 26, 0.85);
+		border: 1px solid #2a2d38;
+		border-radius: 8px;
+		padding: 0.3rem;
+		z-index: 1;
+	}
+	.zoom-btn {
+		width: 28px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: none;
+		border: none;
+		border-radius: 6px;
+		color: #c9cbd6;
+		font-size: 1rem;
+		cursor: pointer;
+	}
+	.zoom-btn:hover {
+		background: #2e313d;
+	}
+	.zoom-pct {
+		min-width: 52px;
+		background: none;
+		border: none;
+		color: #e6e6e6;
+		font-size: 0.8rem;
+		text-align: center;
+		cursor: pointer;
+		padding: 0.15rem 0.25rem;
+		border-radius: 6px;
+	}
+	.zoom-pct:hover {
+		background: #2e313d;
 	}
 </style>
