@@ -82,6 +82,10 @@
 		results = [];
 		pending = true;
 		loading = false;
+		if (q.length < 2) {
+			pending = false;
+			return;
+		}
 		const slowTimer = setTimeout(() => {
 			loading = true;
 		}, 250);

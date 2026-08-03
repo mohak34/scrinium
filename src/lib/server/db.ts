@@ -99,20 +99,38 @@ export interface SearchResult {
 
 export function searchNotes(q: string): SearchResult[] {
 	// Quote each whitespace-separated token so arbitrary user input can't break
-	// the FTS5 MATCH syntax, and split on ~ to keep it a proper phrase per token.
-	const match = q
+	// the FTS5 MATCH syntax. A trailing * turns a term into a prefix query, so
+	// partial words ("lis") still match whole tokens ("list"). Run both an exact
+	// query (preserves porter stemming of whole words) and a prefix query, then
+	// merge, keeping exact matches first.
+	const tokens = q
 		.split(/\s+/)
-		.filter(Boolean)
-		.map((t) => `"${t.replace(/"/g, '""')}"`)
-		.join(' ');
-	if (!match) return [];
+		.map((t) => t.replace(/^\*+|\*+$|\s+/g, '').replace(/"/g, '""'))
+		.filter(Boolean);
+	if (!tokens.length) return [];
+	const exact = tokens.map((t) => `"${t}"`).join(' ');
+	const prefixed = tokens.map((t) => `"${t}"*`).join(' ');
+
 	const rows = db
 		.prepare(
 			`SELECT path, title, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
 			 FROM note_fts WHERE note_fts MATCH ? ORDER BY rank LIMIT 30`
 		)
-		.all(match) as { path: string; title: string; snip: string | null }[];
-	return rows.map((r) => ({
+		.all(exact) as { path: string; title: string; snip: string | null }[];
+	const extra = db
+		.prepare(
+			`SELECT path, title, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
+			 FROM note_fts WHERE note_fts MATCH ? ORDER BY rank LIMIT 30`
+		)
+		.all(prefixed) as { path: string; title: string; snip: string | null }[];
+
+	const seen = new Set(rows.map((r) => r.path));
+	for (const r of extra) {
+		if (seen.has(r.path)) continue;
+		rows.push(r);
+		seen.add(r.path);
+	}
+	return rows.slice(0, 30).map((r) => ({
 		path: r.path,
 		title: r.title,
 		snippet: r.snip ?? ''
