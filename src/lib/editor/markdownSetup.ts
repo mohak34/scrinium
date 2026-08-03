@@ -67,8 +67,10 @@ export const baseTheme = EditorView.theme(
 			borderLeft: '3px solid #4f7cff',
 			background: 'rgba(79, 124, 255, 0.08)',
 			borderRadius: '6px',
-			padding: '0.45em 0.9em',
-			margin: '0.5em 0'
+			// No vertical margin: CodeMirror measures block widgets without
+			// margins, so any margin here makes line positions (and mouse
+			// clicks) drift further from the real layout on every callout.
+			padding: '0.55em 0.9em'
 		},
 		'& .cm-callout-title': {
 			display: 'flex',
