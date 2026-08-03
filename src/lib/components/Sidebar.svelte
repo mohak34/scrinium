@@ -44,7 +44,7 @@
 		return unsub;
 	});
 
-	function sanitizeName(raw: string, kind: 'note' | 'folder'): string | null {
+	function sanitizeName(raw: string, kind: 'note' | 'folder' | 'file'): string | null {
 		let name = raw.trim().replace(/[\\/:*?"<>|]/g, '');
 		if (!name || name === '.' || name === '..' || name.startsWith('.')) return null;
 		if (kind === 'note' && !name.endsWith('.md')) name += '.md';
@@ -74,7 +74,7 @@
 
 	async function commitRename(path: string, rawName: string) {
 		const entry = renameTarget?.entry;
-		const kind = entry?.type === 'directory' ? 'folder' : 'note';
+		const kind = entry?.type === 'directory' ? 'folder' : 'file';
 		const name = sanitizeName(rawName, kind);
 		if (name) {
 			const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;

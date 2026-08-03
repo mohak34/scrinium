@@ -111,7 +111,7 @@ export async function listTree(relDir: string = ''): Promise<VaultEntry[]> {
 				type: 'directory',
 				children: await listTree(childRelPath)
 			});
-		} else if (dirent.name.endsWith('.md')) {
+		} else {
 			entries.push({ name: dirent.name, path: childRelPath, type: 'file' });
 		}
 	}

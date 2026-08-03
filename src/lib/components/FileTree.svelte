@@ -194,45 +194,69 @@
 						{onCancelRename}
 					/>
 				{/if}
+			{:else if renameTarget?.entry.path === entry.path}
+				<input
+					class="rename-input"
+					bind:this={renameInput}
+					bind:value={renameName}
+					onkeydown={(e) => {
+						if (e.key === 'Enter') commitRename(entry);
+						if (e.key === 'Escape') cancelRename();
+					}}
+					onblur={() => commitRename(entry)}
+				/>
+			{:else if entry.name.endsWith('.md')}
+				<button
+					class="file"
+					class:active={$activePath === entry.path}
+					class:dragging={$dragPath === entry.path}
+					draggable="true"
+					onclick={() => onSelect(entry.path)}
+					oncontextmenu={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						onContextMenu(entry, e.clientX, e.clientY);
+					}}
+					ondragstart={(e) => startDrag(e, entry)}
+					ondragend={endDrag}
+					ondragover={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+					}}
+					ondrop={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+					}}
+				>
+					{entry.name.replace(/\.md$/, '')}
+				</button>
 			{:else}
-				{#if renameTarget?.entry.path === entry.path}
-					<input
-						class="rename-input"
-						bind:this={renameInput}
-						bind:value={renameName}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') commitRename(entry);
-							if (e.key === 'Escape') cancelRename();
-						}}
-						onblur={() => commitRename(entry)}
-					/>
-				{:else}
-					<button
-						class="file"
-						class:active={$activePath === entry.path}
-						class:dragging={$dragPath === entry.path}
-						draggable="true"
-						onclick={() => onSelect(entry.path)}
-						oncontextmenu={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							onContextMenu(entry, e.clientX, e.clientY);
-						}}
-						ondragstart={(e) => startDrag(e, entry)}
-						ondragend={endDrag}
-						ondragover={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
-						}}
-						ondrop={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-						}}
-					>
-						{entry.name.replace(/\.md$/, '')}
-					</button>
-				{/if}
+				<div
+					class="file asset"
+					class:dragging={$dragPath === entry.path}
+					draggable="true"
+					title={entry.name}
+					role="listitem"
+					oncontextmenu={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						onContextMenu(entry, e.clientX, e.clientY);
+					}}
+					ondragstart={(e) => startDrag(e, entry)}
+					ondragend={endDrag}
+					ondragover={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+					}}
+					ondrop={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+					}}
+				>
+					{entry.name}
+				</div>
 			{/if}
 		</li>
 	{/each}
@@ -309,6 +333,14 @@
 	}
 	.file:hover {
 		background: #22242e;
+	}
+	.file.asset {
+		cursor: default;
+		color: #8b8e99;
+		font-size: 0.8rem;
+	}
+	.file.asset:hover {
+		background: none;
 	}
 	.file.active {
 		background: #2a3350;
