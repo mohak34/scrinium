@@ -63,63 +63,6 @@ export const baseTheme = EditorView.theme(
 			borderRadius: '6px',
 			objectFit: 'contain'
 		},
-		'& .cm-callout': {
-			borderLeft: '3px solid #4f7cff',
-			background: 'rgba(79, 124, 255, 0.08)',
-			borderRadius: '6px',
-			padding: '0.45em 0.9em',
-			margin: '0.5em 0'
-		},
-		'& .cm-callout-title': {
-			display: 'flex',
-			alignItems: 'center',
-			gap: '0.45em',
-			fontWeight: '600',
-			color: '#7aa2ff',
-			marginBottom: '0.1em'
-		},
-		'& .cm-callout-icon': {
-			display: 'inline-flex',
-			alignItems: 'center',
-			justifyContent: 'center',
-			width: '1.25em',
-			height: '1.25em',
-			borderRadius: '50%',
-			background: '#4f7cff',
-			color: '#14151a',
-			fontSize: '0.72em',
-			fontWeight: '700',
-			flexShrink: 0
-		},
-		'& .cm-callout-content': {
-			color: '#c9cbd6',
-			fontSize: '0.92em',
-			whiteSpace: 'pre-wrap'
-		},
-		'& .cm-callout-tip': {
-			borderLeftColor: '#57ab5a',
-			background: 'rgba(87, 171, 90, 0.10)'
-		},
-		'& .cm-callout-tip .cm-callout-title': { color: '#57ab5a' },
-		'& .cm-callout-tip .cm-callout-icon': { background: '#57ab5a' },
-		'& .cm-callout-important': {
-			borderLeftColor: '#b07dff',
-			background: 'rgba(176, 125, 255, 0.10)'
-		},
-		'& .cm-callout-important .cm-callout-title': { color: '#b07dff' },
-		'& .cm-callout-important .cm-callout-icon': { background: '#b07dff' },
-		'& .cm-callout-warning': {
-			borderLeftColor: '#e5a63b',
-			background: 'rgba(229, 166, 59, 0.10)'
-		},
-		'& .cm-callout-warning .cm-callout-title': { color: '#e5a63b' },
-		'& .cm-callout-warning .cm-callout-icon': { background: '#e5a63b' },
-		'& .cm-callout-caution': {
-			borderLeftColor: '#ff6b6b',
-			background: 'rgba(255, 107, 107, 0.10)'
-		},
-		'& .cm-callout-caution .cm-callout-title': { color: '#ff6b6b' },
-		'& .cm-callout-caution .cm-callout-icon': { background: '#ff6b6b' },
 		'.cm-task-checkbox': {
 			marginRight: '0.4em',
 			verticalAlign: 'middle',
