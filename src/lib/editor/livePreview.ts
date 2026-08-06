@@ -256,7 +256,12 @@ function buildDecorations(view: EditorView): DecorationSet {
 					});
 				}
 
-				if (node.name === 'TaskMarker') {
+				// Render the task bracket as a clickable checkbox while the cursor
+				// is elsewhere (and always in full preview). When the cursor is on
+				// the task line, leave the raw "[ ]" text so it's editable and the
+				// cursor can pass either side of it - mirroring how the bullet and
+				// heading markers already behave.
+				if (node.name === 'TaskMarker' && !active) {
 					const text = view.state.doc.sliceString(node.from, node.to);
 					const checked = /\[[xX]\]/.test(text);
 					pending.push({
