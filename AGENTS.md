@@ -58,6 +58,7 @@ instruction overrides anything here.
 - **preview mode** means the full-preview state where every line renders with
   its marks hidden regardless of the cursor. Entered with Escape, exited by
   clicking in the editor.
+- **the VPS** means the production box running the app (see Deployment).
 
 ## Ways to hurt yourself
 
@@ -83,7 +84,7 @@ Scrinium is small, but there are a few footguns specific to it.
 
 ## Commands
 
-Use `bun` (never npm/yarn). The lockfile is `bun.lock`.
+Use `bun` (never npm/yarn) for dev tooling. The lockfile is `bun.lock`.
 
 - `bun run dev` — dev server on `http://localhost:5173`. Bounces to `/login`.
 - `bun run check` — the gate: `svelte-kit sync && svelte-check`. Must be
@@ -115,7 +116,6 @@ must be `!active`-gated too — when the cursor is on a task line the raw
 markdown.
 
 State channels you will touch:
-
 - `previewModeEffect` / `previewOn` (Enter preview = Escape; click to exit)
 - `noteDirEffect` / `noteDirField` — the note's folder for resolving relative
   image URLs so the decoration set rebuilds when the note changes.
@@ -150,28 +150,67 @@ State channels you will touch:
   dev server (port 9222): drive the editor, then assert the mark flips back to
   raw text on the active line.
 
-## Taste
-
-- Small on purpose. If a change adds a whole abstraction when an `if` would
-  do, it is not "architecturally interesting" — it is noise.
-- Plain files first. If a feature can run off the filesystem, prefer that over
-  a database query.
-- Keep the live preview curated. Fewer cases, kept clean, beats a complete
-  list nobody can maintain.
-
 ## Deployment / production facts
 
 - Live at `https://scrinium.mohak.dev` on the VPS reachable at
-  `ubuntu@tunnel.mohak.dev`
+  `ubuntu@tunnel.mohak.dev` (92.5.11.107).
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
 - The `design/revamp` theme was merged into `main` (`d7bcb00`): added
   `src/lib/design/theme.css`, `@fontsource-variable/inter`,
   `@material-symbols/font-400`. `DESIGN.md` / `DESIGN_CODE.md` are gitignored
   reference docs for that theme.
-- Deploy: `bun run build` → tar (exclude `node_modules`, `.git`,
-  `.svelte-kit`, `data`, `.env`) → scp → unpack → `npm install --omit=dev
---legacy-peer-deps` (peer-dep bypass for the better-sqlite3 vs better-auth
-  mismatch) → `sudo systemctl restart scrinium` → curl verify.
-- Full background (VPS, Oracle Cloud firewall gotchas, Caddy, systemd backups)
+- The vault and `data/` live OUTSIDE `app/` on the box and are never shipped
+  or touched by deploys.
+- Full background (VPS, Oracle Cloud firewall gotchas, Caddy, systemd, backups)
   in `DEPLOY.md`.
+
+## Shipping a change & deploying to the VPS
+
+Source lives in git; the VPS is a consumer, not a deploy from. There is no CI —
+you ship a tarball by hand. The flow, in order:
+
+1. **Make and verify the change locally.** Edit, run `bun run check`
+   (0 errors / 0 warnings), and for editor work confirm the behavior in the
+   dev server.
+2. **Keep the docs honest.** If the change touches the editor, auth, or
+   deployment, update this file (`Where code lives`, marks, gotchas) and the
+   README if it is user-facing, and `DEPLOY.md` if it changed ops. Docs ship
+   in the same commit as the code — commit messages are short `fix:` / `feat:`.
+3. **Commit + push to git** (main) to the GitHub remote (`origin`). The repo is
+   the single source of truth; push before you touch the box.
+4. **Build the release** locally — the tarball must carry the compiled output:
+   ```bash
+   bun run build
+   tar -czf /tmp/scrinium-src.tgz \
+     --exclude node_modules --exclude .git --exclude .svelte-kit \
+     --exclude data --exclude .env --exclude .opencode .
+   scp /tmp/scrinium-src.tgz ubuntu@tunnel.mohak.dev:/tmp/
+   ```
+5. **Install on the VPS** (SSH in; most steps need `sudo` because `/opt` is
+   root-owned). Unpack over the current app, re-install deps (run this every
+   time — cheap, and it is what recompiles native `better-sqlite3`; the
+   `--legacy-peer-deps` sidesteps the better-auth/better-sqlite3 peer
+   mismatch), fix ownership, and restart:
+   ```bash
+   sudo bash -c \
+     'cd /opt/scrinium/app && tar -xzf /tmp/scrinium-src.tgz && \
+      npm install --omit=dev --legacy-peer-deps && chown -R scrinium:scrinium /opt/scrinium'
+   sudo systemctl restart scrinium
+   sleep 2
+   systemctl status scrinium --no-pager   # expect active (running)
+   ```
+6. **Verify.** `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/`
+   (expect 302 → /login), then load `https://scrinium.mohak.dev` and hard
+   refresh so the browser drops the old cached build.
+
+**Schema (auth/DB) changes:** the sqlite DB already exists on the VPS. If you
+changed better-auth config or added tables, run the migrate once more
+(idempotent) before restarting:
+```bash
+sudo bash -c 'cd /opt/scrinium/app && set -a && . ./.env && set +a && npx @better-auth/cli migrate'
+```
+
+**Never** `rm -rf`, `chown`, or otherwise touch `vault/` and `data/` on the VPS
+during a deploy — those hold the notes and are not in the tarball. Only
+`/opt/scrinium/app` is overwritten.
