@@ -7,9 +7,6 @@ data/
 *.db-journal
 *.db-wal
 *.db-shm
-vault/*
-!vault/notes/
-vault/notes/*
-!vault/notes/Welcome.md
+vault/
 .DS_Store
 *.log
