@@ -1,131 +1,177 @@
-# AGENTS.md — Scrinium
+# Scrinium
 
-Scrinium is a lightweight, self-hosted, Obsidian-style notes app. SvelteKit 5
-+ CodeMirror 6 live-preview editor, plain markdown files on disk, sqlite
-metadata cache, Google-OAuth-gated login. This file is the project memory:
-read the relevant section before changing code.
+Scrinium is a self-hosted, Obsidian-style notes app. SvelteKit 5 + CodeMirror 6
+live-preview editor, notes stored as plain markdown files on disk, a sqlite
+metadata cache, and a Google-OAuth-gated login. It is a lightweight, single-user
+(allowlist multi-user) app that you deploy on your own box.
+
+You can think of Scrinium as "notes that stay plain files." No lock-in, no
+database as the source of truth, no service you can't reach into with a text
+editor.
+
+## What makes Scrinium special?
+
+It is a small app on purpose. The entire live-preview engine lives in one file.
+We guard the things that make it pleasant.
+
+**1. Plain files are the source of truth.** Every note is a `.md` file in
+`VAULT_DIR`. If you can read the filesystem you can read the notes. Backups,
+search, and migration are all just file operations. Never build a feature on
+the sqlite metadata cache as if it were authoritative.
+
+**2. Live preview without the lock-in.** The editor is always plain markdown
+under the hood. We render decorations on top of it — bigger headings, hidden
+`**` marks, clickable checkboxes — and hide/reveal marks based on where the
+cursor is. Move onto a line and the raw markdown reappears so you can edit it;
+move away and it hides again. That is the whole trick, and it is the single
+most important rule in this codebase (see "Ways to hurt yourself").
+
+**3. Thin by default, expandable by design.** No graph view, no backlinks, no
+plugin marketplace, no real-time collaboration. The architecture (plain files,
+thin REST API, session auth) is set up to support future clients — desktop,
+mobile, integrations — without a rewrite. It just does not ship them yet.
+
+## A note from the maintainer
+
+Build the smallest thing that makes the behavior unsurprising. Do not add
+machinery because it looks architecturally impressive. `yagni` is a feature.
+If a rule in this file fights the change you are making, say so loudly and get
+a human sign-off before breaking it.
+
+The rest of this file is meant to help you navigate the code and make changes
+effectively. Treat it as good defaults, not hard laws — a human's explicit
+instruction overrides anything here.
+
+## A small glossary
+
+- **you** means the agent reading this file.
+- **we / the maintainer** means the person who runs Scrinium.
+- **note** means one markdown document in the vault.
+- **vault** means the root directory that holds all notes and attachments
+  (`VAULT_DIR`; every server read/write resolves inside it).
+- **live preview** means the editor showing decorations that style or hide raw
+  markdown instead of a separate rendered pane.
+- **mark** means a piece of markdown that renders to something prettier
+  (a `#`, `**`, `[x]`, a bullet) and can be hidden.
+- **decoration** means a CodeMirror `Decoration` (mark, replace, or widget)
+  produced by `livePreview.ts`.
+- **preview mode** means the full-preview state where every line renders with
+  its marks hidden regardless of the cursor. Entered with Escape, exited by
+  clicking in the editor.
+
+## Ways to hurt yourself
+
+Scrinium is small, but there are a few footguns specific to it.
+
+1. **Dropping the `!active` guard.** Hideable marks (and the task checkbox
+   widget) are gated with `!active` — only hidden when the cursor is off the
+   line. Remove that guard and the caret can no longer travel across the raw
+   mark (seen once, the task-checkbox bug, commit `dd206ec`). Every new
+   hideable element keeps the guard, or it is a regression.
+2. **Treating the SQLite table as authoritative.** It is a metadata cache.
+   If it drifts, delete `data/scrinium.db` and re-run the migrate — the vault
+   `.md` files are untouched. Never let a feature depend on the cache being
+   present or correct.
+3. **Committing secrets.** `.env` is gitignored for a reason. `ALLOWED_EMAILS`
+   plus `BETTER_AUTH_SECRET` gate the whole deployment. Never log or commit
+   them.
+4. **Scope growth on the editor node walk.** The live-preview list is
+   deliberately a curated subset (headings, bold/italic, inline code, links,
+   checklists). Tables, nested lists, block quotes intentionally render as
+   plain text. Do not sneak new cases into `livePreview.ts` without keeping
+   the file small on purpose.
 
 ## Commands
 
-Use `bun` (never npm/yarn — see global rules). The lockfile is `bun.lock`.
+Use `bun` (never npm/yarn). The lockfile is `bun.lock`.
 
-- `bun run dev` — start the dev server on `http://localhost:5173`. Compiles
-  (`dev` = `vite dev`). Bounces you to `/login` (auth gate).
-- `bun run check` — the verification gate: `svelte-kit sync && svelte-check`.
-  MUST be clean before committing: 0 errors, 0 warnings.
-- `bun run build` / `bun run preview` — production build / serve build.
-- `bun install` — install/update dependencies.
+- `bun run dev` — dev server on `http://localhost:5173`. Bounces to `/login`.
+- `bun run check` — the gate: `svelte-kit sync && svelte-check`. Must be
+  0 errors / 0 warnings before committing.
+- `bun run build` — production build via `@sveltejs/adapter-node` → `build/`,
+  run with `node build/index.js`.
+- `bun run preview` — preview the production build locally.
+- `bun install` — install / sync dependencies.
 
-## Stack
+## The live-preview editor — how it works
 
-- SvelteKit 2 + Svelte 5 (runes), Vite 6, TypeScript
-- CodeMirror 6 (`@codemirror/*` + `@lezer/*`) for the editor
-- better-auth (Google OAuth + email allowlist) — server-side
-- better-sqlite3 — sessions + note-metadata cache (NOT a source of truth)
-- Media/preview overlays are hand-rolled (no heavy image libs)
+`src/lib/editor/livePreview.ts` is the heart of the project. The document is
+always plain markdown. On every edit or cursor move it re-walks the Lezer
+syntax tree and, node by node, decides whether to:
 
-## Directory map
+- **style in place** (`Decoration.mark`) — e.g. bigger heading text,
+- **hide it** (`Decoration.replace`) — e.g. the `**` around bold,
+- **swap for a widget** (`Decoration.widget`) — e.g. a clickable checkbox.
 
-```
-src/
-  hooks.server.ts          -> auth gate (redirects to /login)
-  lib/
-    server/
-      auth.ts              -> Better Auth + Google OAuth + ALLOWED_EMAILS check
-      db.ts                -> sqlite (sessions + note metadata cache)
-      vault.ts             -> filesystem read/write, path-traversal-safe
-      indexer.ts           -> note metadata indexer
-    editor/
-      livePreview.ts       -> the live-preview decoration engine (READ THIS ONE)
-      markdownSetup.ts     -> CM6 markdown language + theme
-      formatting.ts        -> formatting helpers
-      CodeEditor.svelte    -> Svelte wrapper around the CM6 EditorView
-    components/
-      CommandPalette.svelte, ContextMenu.svelte, FileTree.svelte,
-      SearchBox.svelte, Sidebar.svelte, TabBar.svelte, TopBar.svelte
-    stores/
-      vault.ts             -> notes state + debounced autosave + tab state
-      filetree.ts          -> sidebar file tree
-      actions.ts           -> tippable actions
-    auth-client.ts
-  routes/
-    +page.svelte           -> main app shell
-    login/+page.svelte
-    api/
-      auth/[...all]/       -> Better Auth handler
-      notes/[...path]/     -> note CRUD
-      tree/                -> vault listing for the sidebar
-      search/              -> note search
-      assets/[...path]/    -> static asset serving
-      attachments/         -> attachment handling
-vault/                      -> default local vault (markdown files live here)
-data/scrinium.db            -> sqlite file (gitignored, safe to delete+rebuild)
-deploy/                     -> Caddyfile, systemd unit, backup.sh (see DEPLOY.md)
-```
+Core rule (Obsidian's): a mark is only hidden "unless the cursor is on that
+line". Marks use an `active` / `isLineActive` check; hidden elements are gated
+with `!active`. Preview mode (`previewOn`, entered with Escape) renders all
+lines with marks hidden regardless of the cursor.
 
-## The live-preview editor (high-traffic area)
+Task checkboxes: `TaskMarker` → `CheckboxWidget`. The checkbox replacement
+must be `!active`-gated too — when the cursor is on a task line the raw
+`[ ]` / `[x]` stays editable so the caret can cross the bracket (commit
+`dd206ec`). Extend `HIDEABLE_MARKS` / add Lezer node-name cases to cover more
+markdown.
 
-`src/lib/editor/livePreview.ts` is the heart. The document is always plain
-markdown. On every edit/cursor move it re-walks the Lezer syntax tree and,
-node by node, decides whether to:
+State channels you will touch:
 
-- style in place (`Decoration.mark`) — e.g. bigger heading text
-- hide it entirely (`Decoration.replace`) — e.g. the `**` around bold text
-- swap for a real widget (`Decoration.widget`) — e.g. a clickable checkbox
-
-Core rule (Obsidian's pattern): a mark is only hidden "unless the cursor is
-on that line". Marks use an `active`/`isLineActive` check: hidden widgets get
-gated with `!active` so that moving the cursor onto the line re-exposes the
-raw markdown for editing, and away hides it again. This holds in `previewOn`
-(full-preview) mode too.
-
-Task checkboxes: `TaskMarker` -> `CheckboxWidget`. The checkbox replacement
-MUST be `!active`-gated too: when the cursor is on a task line the raw `[ ]` /
-`[x]` must remain editable text so the caret can cross the bracket. See commit
-`dd206ec`. When adding any new hideable element, keep the `!active` guard or
-you'll reintroduce the blocked-caret bug.
-
-Keys to know:
 - `previewModeEffect` / `previewOn` (Enter preview = Escape; click to exit)
 - `noteDirEffect` / `noteDirField` — the note's folder for resolving relative
-  images-urls
-- Extend `HIDEABLE_MARKS` / add Lezer node-name cases to cover more markdown.
-  Tables, nested lists, block quotes still render as plain text (MVP).
+  image URLs so the decoration set rebuilds when the note changes.
 
-## Auth & login
+## Where code lives
+
+- `src/lib/editor/` — live preview (`livePreview.ts`, read this first),
+  markdownSetup.ts (CM6 language + theme), CodeEditor.svelte (editor view),
+  formatting.ts.
+- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe), db.ts
+  (sqlite cache), auth.ts (better-auth, Google, allowlist), indexer.ts.
+- `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
+  tabs), filetree.ts, actions.ts.
+- `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
+  Sidebar, TabBar, TopBar. TabBar was added in `2d69952` (open notes in tabs).
+- `src/routes/` — +page.svelte (shell), login, api/{auth,notes,tree,search,
+  assets,attachments}.
+
+## Auth & access
 
 - `ALLOWED_EMAILS` in `.env` is the actual allowlist. Google's consent screen
-  only proves who signed in; `databaseHooks.user.create` in
-  `src/lib/server/auth.ts` rejects everyone not in the list. Do NOT remove it.
-- `.env` is gitignored; `.env.example` documents the keys.
+  only proves who is who; `databaseHooks.user.create` in
+  `src/lib/server/auth.ts` rejects everyone not listed. Do not remove it.
+- Auth gates a shared vault: today all allowlisted users see the same files.
+  Per-user vaults are a feature to build, not a config switch.
 
-## Branches / current work
+## Verification
 
-- `main` is the live line. The `design/revamp` theme overhaul was merged in
-  (`d7bcb00 Merge branch 'design/revamp'`): `src/lib/design/theme.css`,
-  `@fontsource-variable/inter`, `@material-symbols/font-400`.
-- `DESIGN.md` (color/token spec) and `DESIGN_CODE.md` (HTML/Tailwind mock) are
-  gitignored reference docs for the theme, uncommitted on purpose.
-- Deprecated branches are removed after merging.
+- The gate is `bun run check` — keep it at 0 errors / 0 warnings before and
+  after a change.
+- Live-preview behavior can be exercised headless via CDP against a running
+  dev server (port 9222): drive the editor, then assert the mark flips back to
+  raw text on the active line.
 
-## Conventions (project + global rules)
+## Taste
 
-- NEVER commit secrets or `.env`. `.env`, `data/`, `node_modules/`, `.svelte-kit/`
-  are gitignored.
-- Commit style: short `fix:` or `feat:`, message. Each logical change is its
-  own isolated commit (so it can be reverted individually). Commit only when
-  the user asks. Do not stage unrelated untracked files (e.g. DESIGN*.md).
-- No code comments unless asked. No emojis. Clean, self-documenting code.
-- Run `bun run check` after changes and keep it at 0 errors / 0 warnings.
-- Headless-Chrome test harness uses CDP on port 9222; the dev server must be
-  running to verify editor behavior.
+- Small on purpose. If a change adds a whole abstraction when an `if` would
+  do, it is not "architecturally interesting" — it is noise.
+- Plain files first. If a feature can run off the filesystem, prefer that over
+  a database query.
+- Keep the live preview curated. Fewer cases, kept clean, beats a complete
+  list nobody can maintain.
 
-## Known rough edges
+## Deployment / production facts
 
-- The note-metadata sqlite table is a cache, not source of truth. If it
-  drifts, delete `data/scrinium.db` and re-run `bunx @better-auth/cli migrate` —
-  vault `.md` files are unaffected.
-- No image/attachment upload endpoint yet; drop files in `vault/attachments/`
-  and reference with relative markdown links.
-- Full deployment notes in `DEPLOY.md` (VPS, Oracle Cloud firewall gotchas,
-  Caddy/systemd/backup).
+- Live at `https://scrinium.mohak.dev` on the VPS reachable at
+  `ubuntu@tunnel.mohak.dev`
+- systemd unit `scrinium.service` runs `node build/index.js` on
+  `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
+- The `design/revamp` theme was merged into `main` (`d7bcb00`): added
+  `src/lib/design/theme.css`, `@fontsource-variable/inter`,
+  `@material-symbols/font-400`. `DESIGN.md` / `DESIGN_CODE.md` are gitignored
+  reference docs for that theme.
+- Deploy: `bun run build` → tar (exclude `node_modules`, `.git`,
+  `.svelte-kit`, `data`, `.env`) → scp → unpack → `npm install --omit=dev
+--legacy-peer-deps` (peer-dep bypass for the better-sqlite3 vs better-auth
+  mismatch) → `sudo systemctl restart scrinium` → curl verify.
+- Full background (VPS, Oracle Cloud firewall gotchas, Caddy, systemd backups)
+  in `DEPLOY.md`.
