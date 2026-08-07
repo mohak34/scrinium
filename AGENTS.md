@@ -101,16 +101,12 @@ Keys to know:
 
 ## Branches / current work
 
-- `main` — the stable line. HEAD had: tabs (`2d69952`), task-checkbox
-  caret fix (`dd206ec`). Uses `vault/` for local dev.
-- `design/revamp` — divergent UI/theme rework (theme.css, TopBar, FileTree,
-  CommandPalette, etc.).
-- Root has untracked `DESIGN.md` (color/token spec) and `DESIGN_CODE.md`
-  (HTML/Tailwind mock) describing the revamp visual direction — reference
-  them when touching UI, but they are not committed.
-
-Known fact: `src/lib/editor/livePreview.ts` is identical across both branches,
-so editor fixes usually apply to both.
+- `main` is the live line. The `design/revamp` theme overhaul was merged in
+  (`d7bcb00 Merge branch 'design/revamp'`): `src/lib/design/theme.css`,
+  `@fontsource-variable/inter`, `@material-symbols/font-400`.
+- `DESIGN.md` (color/token spec) and `DESIGN_CODE.md` (HTML/Tailwind mock) are
+  gitignored reference docs for the theme, uncommitted on purpose.
+- Deprecated branches are removed after merging.
 
 ## Conventions (project + global rules)
 
