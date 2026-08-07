@@ -10,3 +10,5 @@ data/
 vault/
 .DS_Store
 *.log
+DESIGN.md
+DESIGN_CODE.md

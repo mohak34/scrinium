@@ -180,8 +180,11 @@
 						ondragleave={() => folderDragLeave(entry)}
 						ondrop={(e) => folderDrop(e, entry)}
 					>
-						<span class="chevron">{$collapsedDirs.has(entry.path) ? '▸' : '▾'}</span>
-						{entry.name}
+						<span
+							class="material-symbols-outlined file-chevron"
+							>{$collapsedDirs.has(entry.path) ? 'folder' : 'folder_open'}</span
+						>
+						<span class="file-label">{entry.name}</span>
 					</div>
 				{/if}
 				{#if !$collapsedDirs.has(entry.path)}
@@ -236,7 +239,8 @@
 						e.stopPropagation();
 					}}
 				>
-					{entry.name.replace(/\.md$/, '')}
+					<span class="material-symbols-outlined file-icon">description</span>
+					<span class="file-label">{entry.name.replace(/\.md$/, '')}</span>
 				</button>
 			{:else}
 				{@const viewable = /\.(png|jpe?g|gif|webp)$/i.test(entry.name)}
@@ -276,7 +280,8 @@
 						e.stopPropagation();
 					}}
 				>
-					{entry.name}
+					<span class="material-symbols-outlined file-icon">{viewable ? 'image' : 'draft'}</span>
+					<span class="file-label">{entry.name}</span>
 				</div>
 			{/if}
 		</li>
@@ -303,86 +308,124 @@
 	ul {
 		list-style: none;
 		margin: 0;
-		padding-left: calc(var(--depth, 0) * 0.85rem);
+		padding-left: calc(var(--depth, 0) * 12px);
 	}
 	.dir {
 		display: flex;
 		align-items: center;
-		gap: 0.35rem;
-		font-size: 0.75rem;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		color: #6b6e7a;
-		padding: 0.5rem 0.5rem 0.2rem;
-		border-radius: 6px;
+		gap: var(--stack-gap);
+		height: 28px;
+		padding: 0 var(--stack-gap);
+		border-radius: var(--radius);
+		color: var(--on-surface-variant);
+		font-size: var(--font-ui-small);
 		cursor: pointer;
 		user-select: none;
 	}
 	.dir:hover {
-		color: #c9cbd6;
+		background: #1d1f28;
+		color: var(--on-surface);
 	}
 	.dir.drop-target {
-		background: #2a3350;
-		box-shadow: inset 0 0 0 1px #4f7cff;
-		border-radius: 6px;
-		color: #c9cbd6;
+		background: #242840;
+		box-shadow: inset 0 0 0 1px var(--primary);
+		color: var(--on-surface);
 	}
 	.dir.dragging,
 	.file.dragging {
 		opacity: 0.4;
 	}
-	.chevron {
-		font-size: 0.7rem;
-		width: 0.9rem;
-		text-align: center;
+	.file-chevron,
+	.file-icon {
 		flex-shrink: 0;
+		font-size: 16px;
+		transition: opacity 0.12s ease;
+	}
+	.dir .file-chevron {
+		color: var(--on-surface-variant);
+		opacity: 0.4;
+	}
+	.dir:hover .file-chevron {
+		opacity: 1;
 	}
 	.file {
-		display: block;
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: var(--stack-gap);
 		width: 100%;
+		height: 28px;
 		text-align: left;
 		background: none;
 		border: none;
-		color: #c9cbd6;
-		padding: 0.35rem 0.5rem;
-		border-radius: 6px;
-		font-size: 0.88rem;
+		color: var(--on-surface-variant);
+		padding: 0 var(--stack-gap);
+		border-radius: var(--radius);
+		font-size: var(--font-ui-small);
+		font-family: var(--font-ui);
 		cursor: pointer;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+	.file .file-icon {
+		color: var(--on-surface-variant);
+		opacity: 0.6;
+	}
 	.file:hover {
-		background: #22242e;
+		background: #1d1f28;
+		color: var(--on-surface);
+	}
+	.file.active {
+		background: #242840;
+		color: var(--on-surface);
+		font-size: var(--font-ui-medium);
+	}
+	.file.active::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		background: var(--primary);
+	}
+	.file.active .file-icon {
+		color: var(--primary);
+		opacity: 1;
+	}
+	.file-label {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.file.asset {
 		cursor: default;
-		color: #8b8e99;
-		font-size: 0.8rem;
-	}
-	.file.asset.viewable {
-		cursor: pointer;
-		color: #c9cbd6;
-	}
-	.file.asset.viewable:hover {
-		background: #22242e;
+		color: var(--outline);
+		font-size: var(--font-ui-micro);
 	}
 	.file.asset:hover {
 		background: none;
 	}
-	.file.active {
-		background: #2a3350;
-		color: #fff;
+	.file.asset .file-icon {
+		opacity: 0.4;
+	}
+	.file.asset.viewable {
+		cursor: pointer;
+		color: var(--on-surface-variant);
+	}
+	.file.asset.viewable:hover {
+		background: #1d1f28;
 	}
 	.rename-input {
-		margin-left: 0.5rem;
-		width: calc(100% - 0.5rem);
-		background: #14151a;
-		border: 1px solid #4f7cff;
-		border-radius: 5px;
-		color: #e6e6e6;
-		padding: 0.3rem 0.5rem;
-		font-size: 0.85rem;
+		margin-left: var(--stack-gap);
+		width: calc(100% - var(--stack-gap));
+		background: var(--background);
+		border: 1px solid var(--primary);
+		border-radius: var(--radius);
+		color: var(--on-surface);
+		padding: 4px var(--stack-gap);
+		font-size: var(--font-ui-small);
 		outline: none;
 	}
 </style>

@@ -188,7 +188,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 900;
-		background: rgba(0, 0, 0, 0.5);
+		background: var(--overlay);
 		display: flex;
 		align-items: flex-start;
 		justify-content: center;
@@ -196,57 +196,66 @@
 	}
 	.palette {
 		width: min(520px, 90vw);
-		background: #1c1e26;
-		border: 1px solid #2a2d38;
-		border-radius: 10px;
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+		background: var(--surface-container);
+		border: 1px solid var(--border-raised);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-pop);
 		overflow: hidden;
 	}
 	.palette-input {
 		width: 100%;
 		background: none;
 		border: none;
-		border-bottom: 1px solid #2a2d38;
-		color: #e6e6e6;
-		padding: 0.9rem 1rem;
-		font-size: 1rem;
+		border-bottom: 1px solid var(--border-default);
+		color: var(--on-surface);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-medium);
+		padding: 12px var(--panel-padding);
 		outline: none;
+	}
+	.palette-input::placeholder {
+		color: var(--on-surface-variant);
 	}
 	.list {
 		max-height: 320px;
 		overflow-y: auto;
-		padding: 0.25rem;
+		padding: 4px;
 	}
 	.item {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 1rem;
+		gap: var(--stack-gap);
 		width: 100%;
 		text-align: left;
 		background: none;
 		border: none;
-		color: #c9cbd6;
-		padding: 0.55rem 0.7rem;
-		border-radius: 6px;
+		color: var(--on-surface-variant);
+		font-family: var(--font-ui);
+		padding: 8px 12px;
+		border-radius: var(--radius);
 		cursor: pointer;
 	}
 	.item.selected {
-		background: #2a3350;
+		background: var(--surface-container-high);
+	}
+	.item.selected .label {
+		color: var(--on-surface);
 	}
 	.item.muted {
 		cursor: default;
-		color: #6b6e7a;
+		color: var(--outline);
 	}
 	.label {
-		font-size: 0.9rem;
+		font-size: var(--font-ui-medium);
+		color: var(--on-surface);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.hint {
-		font-size: 0.72rem;
-		color: #6b6e7a;
+		font-size: var(--font-ui-micro);
+		color: var(--outline);
 		flex-shrink: 0;
 	}
 </style>

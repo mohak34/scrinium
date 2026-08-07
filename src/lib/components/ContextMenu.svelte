@@ -67,11 +67,11 @@
 		position: fixed;
 		z-index: 1000;
 		min-width: 160px;
-		background: #1c1e26;
-		border: 1px solid #2a2d38;
-		border-radius: 8px;
-		padding: 0.25rem;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+		background: var(--surface-container);
+		border: 1px solid var(--border-raised);
+		border-radius: var(--radius-lg);
+		padding: 4px;
+		box-shadow: var(--shadow-pop);
 		display: flex;
 		flex-direction: column;
 	}
@@ -81,19 +81,21 @@
 		text-align: left;
 		background: none;
 		border: none;
-		color: #c9cbd6;
-		padding: 0.4rem 0.6rem;
-		border-radius: 5px;
-		font-size: 0.85rem;
+		color: var(--on-surface-variant);
+		padding: 6px 8px;
+		border-radius: var(--radius);
+		font-size: var(--font-ui-small);
+		font-family: var(--font-ui);
 		cursor: pointer;
 	}
 	.ctx-item:hover {
-		background: #2e313d;
+		background: var(--surface-container-high);
+		color: var(--on-surface);
 	}
 	.ctx-item.danger {
-		color: #ff6b6b;
+		color: var(--error);
 	}
 	.ctx-item.danger:hover {
-		background: #3a2226;
+		background: var(--error-container);
 	}
 </style>
