@@ -27,6 +27,8 @@ jobs:
 
       - name: Build
         run: bun run build
+        env:
+          BETTER_AUTH_SECRET: build-time-only-placeholder
 
       - name: Ship to VPS
         env:
