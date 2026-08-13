@@ -1,11 +1,20 @@
 import type { Handle } from '@sveltejs/kit';
 import { redirect } from '@sveltejs/kit';
 import { auth } from '$lib/server/auth';
+import { env } from '$env/dynamic/private';
 
 const PUBLIC_PATHS = ['/login', '/api/auth'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const isPublic = PUBLIC_PATHS.some((p) => event.url.pathname.startsWith(p));
+
+	const isHub =
+		event.request.method === 'GET' &&
+		!!env.HUB_SECRET &&
+		event.request.headers.get('x-hub-secret') === env.HUB_SECRET &&
+		event.url.pathname === '/api/search';
+
+	if (isHub) return resolve(event);
 
 	const session = await auth.api.getSession({ headers: event.request.headers });
 	event.locals.session = session;
