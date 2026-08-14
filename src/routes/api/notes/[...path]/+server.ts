@@ -28,7 +28,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	upsertNoteMeta(params.path, title, Date.now());
 	indexNote(params.path, title, content);
 
-	return json({ ok: true });
+	return new Response(null, { status: 204 });
 };
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -46,7 +46,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	await renamePath(params.path, body.newPath);
 	renameNoteMeta(params.path, body.newPath);
 	renameNoteIndex(params.path, body.newPath);
-	return json({ ok: true });
+	return new Response(null, { status: 204 });
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
@@ -54,5 +54,5 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	await moveToTrash(params.path);
 	deleteNoteMetaByPrefix(params.path);
 	deleteNoteIndexByPrefix(params.path);
-	return json({ ok: true });
+	return new Response(null, { status: 204 });
 };
