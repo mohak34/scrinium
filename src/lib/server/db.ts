@@ -91,6 +91,45 @@ export function renameNoteIndex(oldPath: string, newPath: string) {
 	}
 }
 
+// Long-lived API tokens for the mobile client. Only the SHA-256 hash is
+// stored - the raw token is returned once at issue time and never persisted
+// anywhere the server can read back.
+db.exec(`
+	CREATE TABLE IF NOT EXISTS api_tokens (
+		token_hash TEXT PRIMARY KEY,
+		user_email TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		last_used_at INTEGER
+	);
+`);
+
+export interface ApiTokenRow {
+	token_hash: string;
+	user_email: string;
+	created_at: number;
+	last_used_at: number | null;
+}
+
+export function insertApiToken(tokenHash: string, userEmail: string) {
+	db.prepare(
+		`INSERT INTO api_tokens (token_hash, user_email, created_at) VALUES (?, ?, ?)`
+	).run(tokenHash, userEmail.toLowerCase(), Date.now());
+}
+
+export function findApiToken(tokenHash: string): ApiTokenRow | undefined {
+	return db
+		.prepare(`SELECT * FROM api_tokens WHERE token_hash = ?`)
+		.get(tokenHash) as ApiTokenRow | undefined;
+}
+
+export function touchApiToken(tokenHash: string) {
+	db.prepare(`UPDATE api_tokens SET last_used_at = ? WHERE token_hash = ?`).run(Date.now(), tokenHash);
+}
+
+export function revokeApiToken(tokenHash: string) {
+	db.prepare(`DELETE FROM api_tokens WHERE token_hash = ?`).run(tokenHash);
+}
+
 export interface SearchResult {
 	path: string;
 	title: string;

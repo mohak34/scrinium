@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { redirect } from '@sveltejs/kit';
 import { auth } from '$lib/server/auth';
+import { emailForBearerToken } from '$lib/server/mobileAuth';
 import { env } from '$env/dynamic/private';
 
 const PUBLIC_PATHS = ['/login', '/api/auth'];
@@ -21,6 +22,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	if (!session && !isPublic) {
 		if (event.url.pathname.startsWith('/api')) {
+			// Mobile client fallback: long-lived API token issued by
+			// /api/auth/mobile, sent as `Authorization: Bearer <token>`.
+			const authz = event.request.headers.get('authorization');
+			const bearer = authz?.match(/^Bearer (.+)$/i)?.[1];
+			if (bearer && emailForBearerToken(bearer)) {
+				return resolve(event);
+			}
 			return new Response('Unauthorized', { status: 401 });
 		}
 		throw redirect(302, '/login');

@@ -126,19 +126,32 @@ State channels you will touch:
   markdownSetup.ts (CM6 language + theme), CodeEditor.svelte (editor view),
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe), db.ts
-  (sqlite cache), auth.ts (better-auth, Google, allowlist), indexer.ts.
+  (sqlite cache + api_tokens table), auth.ts (better-auth, Google,
+  allowlist), indexer.ts, mobileAuth.ts (Google ID-token verification +
+  API-token issue/verify).
 - `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
   tabs), filetree.ts, actions.ts.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, TopBar. TabBar was added in `2d69952` (open notes in tabs).
 - `src/routes/` — +page.svelte (shell), login, api/{auth,notes,tree,search,
-  assets,attachments}.
+  assets,attachments}. Mobile-only endpoints: `POST /api/auth/mobile`
+  (Google ID token → long-lived API token) and `GET /api/notes/manifest`
+  (metadata-only delta sync listing).
 
 ## Auth & access
 
 - `ALLOWED_EMAILS` in `.env` is the actual allowlist. Google's consent screen
-  only proves who is who; `databaseHooks.user.create` in
-  `src/lib/server/auth.ts` rejects everyone not listed. Do not remove it.
+  only proves who is who; `isAllowedEmail` in `src/lib/server/auth.ts`
+  (used by both `databaseHooks.user.create` and `/api/auth/mobile`) rejects
+  everyone not listed. Do not remove it.
+- **Mobile API tokens**: `POST /api/auth/mobile` verifies a Google ID token
+  (audience = `GOOGLE_CLIENT_ID`; the Android app requests its token with
+  that ID as `serverClientId`, so no separate Android credential exists) and
+  issues a random 256-bit token. Only its SHA-256 hash is stored in the
+  `api_tokens` table. API requests send `Authorization: Bearer <token>`;
+  `hooks.server.ts` falls back to the token lookup when no cookie session
+  exists. Tokens never expire server-side — revoke by deleting the row
+  (or keep `revokeBearerToken` for an endpoint later).
 - Auth gates a shared vault: today all allowlisted users see the same files.
   Per-user vaults are a feature to build, not a config switch.
 

@@ -89,6 +89,48 @@ export async function moveToTrash(relPath: string): Promise<void> {
 	await fs.rename(fullPath, dest);
 }
 
+export interface NoteManifestEntry {
+	path: string;
+	updatedAt: number;
+	contentHash: string;
+}
+
+// Metadata-only listing for cheap delta sync (mobile client). Walks the vault
+// with stat() only - no file content is read. contentHash is a fingerprint of
+// size+mtime; a changed file yields a different hash without hashing bytes.
+export async function manifestNotes(): Promise<NoteManifestEntry[]> {
+	const entries: NoteManifestEntry[] = [];
+
+	async function walk(relDir: string = '') {
+		const fullPath = safeResolve(relDir);
+		let dirents;
+		try {
+			dirents = await fs.readdir(fullPath, { withFileTypes: true });
+		} catch (e: unknown) {
+			if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
+			throw e;
+		}
+		for (const dirent of dirents) {
+			if (dirent.name.startsWith('.')) continue;
+			const childRelPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
+			if (dirent.isDirectory()) {
+				await walk(childRelPath);
+			} else if (dirent.name.endsWith('.md')) {
+				const st = await fs.stat(path.join(fullPath, dirent.name));
+				entries.push({
+					path: childRelPath,
+					updatedAt: st.mtimeMs,
+					contentHash: `${st.size}:${st.mtimeMs}`
+				});
+			}
+		}
+	}
+
+	await walk();
+	entries.sort((a, b) => a.path.localeCompare(b.path));
+	return entries;
+}
+
 export async function listTree(relDir: string = ''): Promise<VaultEntry[]> {
 	const fullPath = safeResolve(relDir);
 	let dirents;

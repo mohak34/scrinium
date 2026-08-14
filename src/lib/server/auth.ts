@@ -13,6 +13,12 @@ if (allowedEmails.length === 0) {
 	);
 }
 
+// The actual access-control gate, shared by the web OAuth flow (via
+// databaseHooks below) and the mobile token endpoint (/api/auth/mobile).
+export function isAllowedEmail(email: string): boolean {
+	return allowedEmails.includes(email.toLowerCase());
+}
+
 export const auth = betterAuth({
 	database: db, // better-auth talks to the same sqlite file directly (better-sqlite3 instance)
 	secret: env.BETTER_AUTH_SECRET,
@@ -41,7 +47,7 @@ export const auth = betterAuth({
 			create: {
 				before: async (user) => {
 					const email = user.email?.toLowerCase();
-					if (!email || !allowedEmails.includes(email)) {
+					if (!email || !isAllowedEmail(email)) {
 						throw new Error('This account is not authorized to use this app.');
 					}
 					return { data: user };
