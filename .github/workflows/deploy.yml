@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up bun
         uses: oven-sh/setup-bun@v2
@@ -50,6 +50,24 @@ jobs:
             "$VPS_USER@$VPS_HOST" \
             'cd /opt/scrinium/app && \
              npm install --omit=dev --legacy-peer-deps && \
+             npx --yes @better-auth/cli migrate && \
              sudo systemctl restart scrinium.service && \
              sleep 2 && \
              systemctl is-active scrinium.service'
+
+      - name: Smoke test
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "SITE_URL secret not set - skipping smoke test"
+            exit 0
+          fi
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' -d '{}' \
+            "$SITE_URL/api/auth/mobile")
+          if [ "$status" = "404" ]; then
+            echo "::error::auth/mobile endpoint missing on $SITE_URL (404)"
+            exit 1
+          fi
+          echo "Smoke test passed (auth/mobile -> $status)"
