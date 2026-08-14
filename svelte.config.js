@@ -7,7 +7,12 @@ const config = {
 	kit: {
 		// adapter-node (not adapter-static!) on purpose - `deno desktop` needs
 		// a real server entry point to detect and wrap later. See README.
-		adapter: adapter()
+		adapter: adapter(),
+		csrf: {
+			// Native mobile client sends no Origin header; the API is otherwise
+			// gated by Bearer token / SameSite=Lax sessions in hooks.server.ts.
+			checkOrigin: false
+		}
 	}
 };
 
