@@ -15,13 +15,14 @@
 	import {
 		expandDir,
 		renameDir,
+		parentDirOf,
 		dragPath,
 		dragKind,
 		dropRoot,
 		canDrop,
 		clearDragState
 	} from '$lib/stores/filetree';
-	import { createRequest } from '$lib/stores/actions';
+	import { createRequest, renameRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
 
 	interface Props {
@@ -32,18 +33,33 @@
 
 	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
-	let renameTarget = $state<{ entry: VaultEntry } | null>(null);
+	let renameTarget = $state<{ path: string } | null>(null);
 
 	// The command palette signals "create a note/folder here" through the shared
 	// createRequest store; hand it over to the inline create inputs.
 	onMount(() => {
-		const unsub = createRequest.subscribe((req) => {
+		const unsubCreate = createRequest.subscribe((req) => {
 			if (req) {
 				createTarget = req;
 				createRequest.set(null);
 			}
 		});
-		return unsub;
+		// The top bar requests an inline rename; expand its ancestors so the
+		// rename input is visible, then hand it to the tree.
+		const unsubRename = renameRequest.subscribe((req) => {
+			if (!req) return;
+			renameRequest.set(null);
+			let parent = parentDirOf(req.path);
+			while (parent) {
+				expandDir(parent);
+				parent = parentDirOf(parent);
+			}
+			renameTarget = { path: req.path };
+		});
+		return () => {
+			unsubCreate();
+			unsubRename();
+		};
 	});
 
 	function sanitizeName(raw: string, kind: 'note' | 'folder' | 'file'): string | null {
@@ -75,15 +91,16 @@
 	}
 
 	async function commitRename(path: string, rawName: string) {
-		const entry = renameTarget?.entry;
-		const kind = entry?.type === 'directory' ? 'folder' : 'file';
+		// A markdown note keeps its `Path.md` extension even if the user types a
+		// bare name; folders and assets keep whatever they were given.
+		const kind = path.endsWith('.md') ? 'note' : 'file';
 		const name = sanitizeName(rawName, kind);
 		if (name) {
 			const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
 			const newPath = joinPath(parent, name);
 			if (newPath !== path) {
 				const ok = await renamePath(path, newPath);
-				if (ok && entry?.type === 'directory') renameDir(path, newPath);
+				if (ok) renameDir(path, newPath);
 			}
 		}
 		renameTarget = null;
@@ -125,7 +142,7 @@
 		}
 		if (entry.type === 'file') {
 			return [
-				{ label: 'Rename', action: () => (renameTarget = { entry }) },
+				{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) },
 				{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
 			];
 		}
@@ -141,7 +158,7 @@
 					createTarget = { parent: entry.path, kind: 'folder' };
 				}
 			},
-			{ label: 'Rename', action: () => (renameTarget = { entry }) },
+			{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) },
 			{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
 		];
 	});
