@@ -48,7 +48,21 @@
 		loadTree();
 
 		const key = (e: KeyboardEvent) => {
-			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+			// App-wide find: CodeMirror only sees keys while its editor has
+			// focus, so a bare Mod+F anywhere else would hit the browser's
+			// native find. Route it to the editor's search panel instead when
+			// a note is open; with no note open the browser find is the only
+			// option, so leave the default alone.
+			if (
+				(e.metaKey || e.ctrlKey) &&
+				!e.shiftKey &&
+				!e.altKey &&
+				e.key.toLowerCase() === 'f' &&
+				get(activePath)
+			) {
+				e.preventDefault();
+				editorRef?.runCommand('find');
+			} else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
 				e.preventDefault();
 				paletteOpen = !paletteOpen;
 			} else if (e.key === 'Escape' && paletteOpen) {
