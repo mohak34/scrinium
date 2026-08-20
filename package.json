@@ -22,7 +22,7 @@
     "@lezer/markdown": "^1.3.0",
     "@material-symbols/font-400": "^0.45.10",
     "better-auth": "^1.2.0",
-    "better-sqlite3": "^11.9.0",
+    "better-sqlite3": "^12.0.0",
     "google-auth-library": "^11.0.2"
   },
   "devDependencies": {
