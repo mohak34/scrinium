@@ -130,6 +130,12 @@ export function revokeApiToken(tokenHash: string) {
 	db.prepare(`DELETE FROM api_tokens WHERE token_hash = ?`).run(tokenHash);
 }
 
+export function listApiTokensForEmail(email: string): ApiTokenRow[] {
+	return db
+		.prepare(`SELECT * FROM api_tokens WHERE user_email = ? ORDER BY created_at DESC`)
+		.all(email.toLowerCase()) as ApiTokenRow[];
+}
+
 export interface SearchResult {
 	path: string;
 	title: string;

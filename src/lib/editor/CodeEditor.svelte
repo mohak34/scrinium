@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { EditorState } from '@codemirror/state';
+	import { get } from 'svelte/store';
+	import { EditorState, Compartment } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+	import { settings } from '$lib/stores/settings';
 	import {
 	openSearchPanel,
 	replaceNext,
@@ -24,6 +26,18 @@
 	let container: HTMLDivElement;
 	let view: EditorView | undefined;
 	let suppressChange = false;
+
+	// Compartments so settings (font size, gutters, wrapping) can be reconfigured
+	// without recreating the whole editor.
+	const lineNumbersCompartment = new Compartment();
+	const wrapCompartment = new Compartment();
+	const fontSizeCompartment = new Compartment();
+
+	function themeForFontSize(size: number) {
+		return EditorView.theme({
+			'&': { fontSize: `${size}px` }
+		});
+	}
 
 	// Named editor commands, callable from outside the component (the command
 	// palette) once the view exists. Mirrors the keymap wiring below.
@@ -96,6 +110,7 @@
 	}
 
 	onMount(() => {
+		const initialSettings = get(settings);
 		view = new EditorView({
 			doc: value,
 			parent: container,
@@ -123,8 +138,9 @@
 				noteDirField,
 				livePreview,
 				baseTheme,
-				lineNumbers(),
-				EditorView.lineWrapping,
+				fontSizeCompartment.of(themeForFontSize(initialSettings.editor.fontSize)),
+				lineNumbersCompartment.of(initialSettings.editor.showLineNumbers ? lineNumbers() : []),
+				wrapCompartment.of(initialSettings.editor.wordWrap ? EditorView.lineWrapping : []),
 				EditorView.domEventHandlers({
 					keydown: (e, view) => {
 						if (e.key === 'Escape') {
@@ -179,6 +195,19 @@
 				})
 			]
 		});
+
+		const unsubscribe = settings.subscribe((s) => {
+			if (!view) return;
+			view.dispatch({
+				effects: [
+					fontSizeCompartment.reconfigure(themeForFontSize(s.editor.fontSize)),
+					lineNumbersCompartment.reconfigure(s.editor.showLineNumbers ? lineNumbers() : []),
+					wrapCompartment.reconfigure(s.editor.wordWrap ? EditorView.lineWrapping : [])
+				]
+			});
+		});
+
+		return () => unsubscribe();
 	});
 
 	// If the parent swaps to a different note, reset the doc without treating

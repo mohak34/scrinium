@@ -23,6 +23,7 @@
 		clearDragState
 	} from '$lib/stores/filetree';
 	import { createRequest, renameRequest } from '$lib/stores/actions';
+	import { goto } from '$app/navigation';
 	import { signOut } from '$lib/auth-client';
 
 	interface Props {
@@ -204,6 +205,10 @@
 		/>
 	</div>
 	<div class="footer">
+		<button class="footer-item" onclick={() => goto('/settings')}>
+			<span class="material-symbols-outlined">settings</span>
+			<span>Settings</span>
+		</button>
 		<button class="footer-item" onclick={signOut}>
 			<span class="material-symbols-outlined">logout</span>
 			<span>Sign out</span>

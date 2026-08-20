@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { searchNotes, type SearchResult } from '$lib/stores/vault';
 	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
@@ -40,6 +41,11 @@
 			label: 'Toggle sidebar',
 			hint: 'Collapse or expand the sidebar',
 			run: () => onToggleSidebar()
+		},
+		{
+			label: 'Open settings',
+			hint: 'Configure editor and account',
+			run: () => goto('/settings')
 		},
 		{ label: 'Sign out', hint: 'End this session', run: () => signOut() },
 		{
