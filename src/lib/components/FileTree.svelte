@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { VaultEntry } from '$lib/stores/vault';
-	import { activePath } from '$lib/stores/vault';
+	import { activePath, pinnedPaths, sortPinnedFirst } from '$lib/stores/vault';
 	import {
 		collapsedDirs,
 		toggleDir,
@@ -22,7 +22,7 @@
 		dirPath?: string | null;
 		depth?: number;
 		createTarget?: { parent: string | null; kind: 'note' | 'folder' } | null;
-		renameTarget?: { entry: VaultEntry } | null;
+		renameTarget?: { path: string } | null;
 		onCreate: (parent: string | null, kind: 'note' | 'folder', name: string) => void;
 		onRename: (path: string, newName: string) => void;
 		onCancelCreate: () => void;
@@ -101,7 +101,7 @@
 
 	$effect(() => {
 		if (renameTarget) {
-			renameName = renameTarget.entry.name.replace(/\.md$/, '');
+			renameName = renameTarget.path.split('/').pop()!.replace(/\.md$/, '');
 			renameCommitted = false;
 		}
 	});
@@ -137,13 +137,14 @@
 		renameCommitted = true;
 		onCancelRename();
 	}
+const display = $derived(sortPinnedFirst(entries));
 </script>
 
 <ul style="--depth: {depth}">
-	{#each entries as entry (entry.path)}
+	{#each display as entry (entry.path)}
 		<li>
 			{#if entry.type === 'directory'}
-				{#if renameTarget?.entry.path === entry.path}
+				{#if renameTarget?.path === entry.path}
 					<input
 						class="rename-input"
 						bind:this={renameInput}
@@ -204,7 +205,7 @@
 						{onCancelRename}
 					/>
 				{/if}
-			{:else if renameTarget?.entry.path === entry.path}
+			{:else if renameTarget?.path === entry.path}
 				<input
 					class="rename-input"
 					bind:this={renameInput}
@@ -219,6 +220,7 @@
 				<button
 					class="file"
 					class:active={$activePath === entry.path}
+					class:pinned={$pinnedPaths.includes(entry.path)}
 					class:dragging={$dragPath === entry.path}
 					draggable="true"
 					onclick={() => onSelect(entry.path)}
@@ -239,7 +241,9 @@
 						e.stopPropagation();
 					}}
 				>
-					<span class="material-symbols-outlined file-icon">description</span>
+					<span class="material-symbols-outlined file-icon">
+						{$pinnedPaths.includes(entry.path) ? 'push_pin' : 'description'}
+					</span>
 					<span class="file-label">{entry.name.replace(/\.md$/, '')}</span>
 				</button>
 			{:else}
@@ -393,6 +397,10 @@
 	.file.active .file-icon {
 		color: var(--primary);
 		opacity: 1;
+	}
+	.file.pinned .file-icon {
+		color: var(--primary);
+		opacity: 0.9;
 	}
 	.file-label {
 		white-space: nowrap;

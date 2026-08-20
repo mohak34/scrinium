@@ -11,6 +11,46 @@ export const tree = writable<VaultEntry[]>([]);
 export const activePath = writable<string | null>(null);
 export const saveStatus = writable<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+// Pinned notes, kept client-side (a display preference, not vault state).
+// Pinned entries sort first in the tree at every level.
+const PIN_STORAGE = 'scrinium:pinned';
+function loadPinned(): string[] {
+	try {
+		const raw = localStorage.getItem(PIN_STORAGE);
+		if (!raw) return [];
+		const parsed = JSON.parse(raw);
+		return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : [];
+	} catch {
+		return [];
+	}
+}
+export const pinnedPaths = writable<string[]>(loadPinned());
+pinnedPaths.subscribe((paths) => {
+	try {
+		localStorage.setItem(PIN_STORAGE, JSON.stringify(paths));
+	} catch {
+		// storage full/blocked - pinning still works for this session
+	}
+});
+
+export function togglePin(path: string) {
+	pinnedPaths.update((paths) =>
+		paths.includes(path) ? paths.filter((p) => p !== path) : [...paths, path]
+	);
+}
+
+// Sort a level of the tree so pinned entries come first, preserving the
+// existing alphabetical/type order within each group.
+export function sortPinnedFirst(entries: VaultEntry[]): VaultEntry[] {
+	let pinned: VaultEntry[] = [];
+	let rest: VaultEntry[] = [];
+	for (const e of entries) {
+		if (get(pinnedPaths).includes(e.path)) pinned.push(e);
+		else rest.push(e);
+	}
+	return [...pinned, ...rest];
+}
+
 // Open tabs, oldest first. The active note is the last one opened (or the
 // neighbour chosen by closeTab) - activePath stays the single source of truth.
 export const openTabs = writable<string[]>([]);
