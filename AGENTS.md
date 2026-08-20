@@ -203,8 +203,8 @@ you ship a tarball by hand. The flow, in order:
 5. **Install on the VPS** (SSH in; most steps need `sudo` because `/opt` is
    root-owned). Unpack over the current app, re-install deps (run this every
    time — cheap, and it is what recompiles native `better-sqlite3`; the
-   `--legacy-peer-deps` sidesteps the better-auth/better-sqlite3 peer
-   mismatch), fix ownership, and restart:
+   `--legacy-peer-deps` is kept as insurance against future transitive peer
+   mismatches), fix ownership, and restart:
    ```bash
    sudo bash -c \
      'cd /opt/scrinium/app && tar -xzf /tmp/scrinium-src.tgz && \
