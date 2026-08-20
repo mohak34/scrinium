@@ -3,7 +3,13 @@
 	import { EditorState } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-	import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+	import {
+	openSearchPanel,
+	replaceNext,
+	search,
+	searchKeymap,
+	highlightSelectionMatches
+} from '@codemirror/search';
 	import { markdownLanguage, baseTheme } from './markdownSetup';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask } from './formatting';
@@ -18,6 +24,36 @@
 	let container: HTMLDivElement;
 	let view: EditorView | undefined;
 	let suppressChange = false;
+
+	// Named editor commands, callable from outside the component (the command
+	// palette) once the view exists. Mirrors the keymap wiring below.
+	const COMMANDS: Record<string, (view: EditorView) => void> = {
+		bold: toggleWrap('**'),
+		italic: toggleWrap('*'),
+		strike: toggleWrap('~~'),
+		code: toggleWrap('`'),
+		h1: setHeading(1),
+		h2: setHeading(2),
+		h3: setHeading(3),
+		h4: setHeading(4),
+		h5: setHeading(5),
+		h6: setHeading(6),
+		bullet: toggleBullet,
+		task: toggleTask,
+		removeTask,
+		find: openSearchPanel,
+		replace: replaceNext
+	};
+
+	export function runCommand(name: string) {
+		if (!view) return;
+		if (name === 'preview') {
+			setPreviewMode(view, true);
+			view.contentDOM.blur();
+			return;
+		}
+		COMMANDS[name]?.(view);
+	}
 
 	// Resolve relative image URLs against the folder of the open note.
 	$effect(() => {

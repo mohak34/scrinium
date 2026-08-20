@@ -126,6 +126,7 @@
 		onSelect={openNote}
 		onClose={() => (paletteOpen = false)}
 		onToggleSidebar={toggleCollapse}
+		onCommand={(cmd) => editorRef?.runCommand(cmd)}
 	/>
 {/if}
 
