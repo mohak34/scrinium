@@ -7,8 +7,9 @@
 		onSelect: (path: string) => void;
 		onClose: () => void;
 		onToggleSidebar: () => void;
+		onCommand: (cmd: string) => void;
 	}
-	let { onSelect, onClose, onToggleSidebar }: Props = $props();
+	let { onSelect, onClose, onToggleSidebar, onCommand }: Props = $props();
 
 	const mod =
 		typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
@@ -41,22 +42,50 @@
 			run: () => onToggleSidebar()
 		},
 		{ label: 'Sign out', hint: 'End this session', run: () => signOut() },
-		{ label: 'Bold', hint: `${mod}B` },
-		{ label: 'Italic', hint: `${mod}I` },
-		{ label: 'Strikethrough', hint: `${mod}Shift+X` },
-		{ label: 'Inline code', hint: `${mod}\`` },
-		{ label: 'Heading 1', hint: `${mod}1` },
-		{ label: 'Heading 2', hint: `${mod}2` },
-		{ label: 'Heading 3', hint: `${mod}3` },
-		{ label: 'Heading 4', hint: `${mod}4` },
-		{ label: 'Heading 5', hint: `${mod}5` },
-		{ label: 'Heading 6', hint: `${mod}6` },
-		{ label: 'Toggle bullet list', hint: `${mod}Shift+B` },
-		{ label: 'Toggle task checkbox', hint: `${mod}L` },
-		{ label: 'Remove task checkbox', hint: `${mod}Shift+L` },
-		{ label: 'Find in note', hint: `${mod}F` },
-		{ label: 'Find & replace', hint: `${mod}H` },
-		{ label: 'Full preview', hint: 'Esc' },
+		{
+			label: 'Bold',
+			hint: `${mod}B`,
+			run: () => onCommand('bold')
+		},
+		{
+			label: 'Italic',
+			hint: `${mod}I`,
+			run: () => onCommand('italic')
+		},
+		{
+			label: 'Strikethrough',
+			hint: `${mod}Shift+X`,
+			run: () => onCommand('strike')
+		},
+		{
+			label: 'Inline code',
+			hint: `${mod}\``,
+			run: () => onCommand('code')
+		},
+		{ label: 'Heading 1', hint: `${mod}1`, run: () => onCommand('h1') },
+		{ label: 'Heading 2', hint: `${mod}2`, run: () => onCommand('h2') },
+		{ label: 'Heading 3', hint: `${mod}3`, run: () => onCommand('h3') },
+		{ label: 'Heading 4', hint: `${mod}4`, run: () => onCommand('h4') },
+		{ label: 'Heading 5', hint: `${mod}5`, run: () => onCommand('h5') },
+		{ label: 'Heading 6', hint: `${mod}6`, run: () => onCommand('h6') },
+		{
+			label: 'Toggle bullet list',
+			hint: `${mod}Shift+B`,
+			run: () => onCommand('bullet')
+		},
+		{
+			label: 'Toggle task checkbox',
+			hint: `${mod}L`,
+			run: () => onCommand('task')
+		},
+		{
+			label: 'Remove task checkbox',
+			hint: `${mod}Shift+L`,
+			run: () => onCommand('removeTask')
+		},
+		{ label: 'Find in note', hint: `${mod}F`, run: () => onCommand('find') },
+		{ label: 'Find & replace', hint: `${mod}H`, run: () => onCommand('replace') },
+		{ label: 'Full preview', hint: 'Esc', run: () => onCommand('preview') },
 		{ label: 'Open command palette', hint: `${mod}K` }
 	];
 
