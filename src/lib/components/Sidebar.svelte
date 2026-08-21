@@ -234,6 +234,10 @@
 			<span class="material-symbols-outlined">delete</span>
 			<span>Trash</span>
 		</button>
+		<button class="footer-item" onclick={() => goto('/settings')}>
+			<span class="material-symbols-outlined">settings</span>
+			<span>Settings</span>
+		</button>
 		<button class="footer-item" onclick={signOut}>
 			<span class="material-symbols-outlined">logout</span>
 			<span>Sign out</span>
