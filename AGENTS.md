@@ -81,6 +81,16 @@ Scrinium is small, but there are a few footguns specific to it.
    checklists). Tables, nested lists, block quotes intentionally render as
    plain text. Do not sneak new cases into `livePreview.ts` without keeping
    the file small on purpose.
+5. **Breaking the title ↔ filename sync loop.** For `.md` notes the first `# `
+   heading and the filename are kept identical (see `scheduleTitleSync` /
+   `syncFilenameToTitle` in `src/lib/stores/vault.ts`). Both directions guard
+   against loops by comparing sanitized values before acting; a rename also
+   flushes pending saves first. Don't add a second path that renames notes
+   without going through `renameNote`, or tabs/pins/activePath drift.
+6. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
+   and record the original path in `.trash/index.json`. If you touch trash
+   internals, keep that file in sync or restore falls back to guessing from
+   the timestamp-prefixed name.
 
 ## Commands
 
@@ -123,20 +133,23 @@ State channels you will touch:
 ## Where code lives
 
 - `src/lib/editor/` — live preview (`livePreview.ts`, read this first),
-  markdownSetup.ts (CM6 language + theme), CodeEditor.svelte (editor view),
+  markdownSetup.ts (CM6 language + theme), CodeEditor.svelte (editor view;
+  editor settings are reconfigurable via CodeMirror `Compartment`s),
   formatting.ts.
-- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe), db.ts
-  (sqlite cache + api_tokens table), auth.ts (better-auth, Google,
-  allowlist), indexer.ts, mobileAuth.ts (Google ID-token verification +
-  API-token issue/verify).
+- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
+  move/list/restore/purge backed by `.trash/index.json`), db.ts (sqlite cache
+  + api_tokens table), auth.ts (better-auth, Google, allowlist), indexer.ts,
+  mobileAuth.ts (Google ID-token verification + API-token issue/verify).
 - `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
-  tabs), filetree.ts, actions.ts.
+  tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,
+  settings.ts (editor prefs persisted to localStorage).
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
-  Sidebar, TabBar, TopBar. TabBar was added in `2d69952` (open notes in tabs).
-- `src/routes/` — +page.svelte (shell), login, api/{auth,notes,tree,search,
-  assets,attachments}. Mobile-only endpoints: `POST /api/auth/mobile`
-  (Google ID token → long-lived API token) and `GET /api/notes/manifest`
-  (metadata-only delta sync listing).
+  Sidebar, TabBar, TopBar.
+- `src/routes/` — `/` (+page.svelte shell), `/login`, `/settings` (account +
+  mobile tokens + editor prefs), `/trash` (grouped restore/purge page),
+  api/{auth,notes,tree,search,assets,attachments,tokens,trash}. Mobile-only
+  endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
+  and `GET /api/notes/manifest` (metadata-only delta sync listing).
 
 ## Auth & access
 
@@ -150,8 +163,8 @@ State channels you will touch:
   issues a random 256-bit token. Only its SHA-256 hash is stored in the
   `api_tokens` table. API requests send `Authorization: Bearer <token>`;
   `hooks.server.ts` falls back to the token lookup when no cookie session
-  exists. Tokens never expire server-side — revoke by deleting the row
-  (or keep `revokeBearerToken` for an endpoint later).
+  exists. Tokens never expire server-side — list and revoke them from the
+  settings page via `GET/DELETE /api/tokens`.
 - Auth gates a shared vault: today all allowlisted users see the same files.
   Per-user vaults are a feature to build, not a config switch.
 
@@ -167,63 +180,58 @@ State channels you will touch:
 
 - Live at `https://scrinium.mohak.dev` on the VPS reachable at
   `$VPS_USER@$VPS_HOST` (VPS_IP).
+- Deploys run through GitHub Actions (`.github/workflows/deploy.yml`): every
+  push to `main` typechecks, builds, rsyncs to `/opt/scrinium/app`, runs
+  `npm install --omit=dev --legacy-peer-deps` (recompiles native
+  `better-sqlite3`), runs the idempotent better-auth migrate, restarts
+  `scrinium.service`, and smoke-tests the site. Secrets used:
+  `DEPLOY_KEY`, `VPS_HOST`, `VPS_USER`, `SITE_URL`.
+- The rsync excludes `node_modules .git .svelte-kit data vault .opencode
+  .env*` — notes and secrets are never shipped.
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
 - The `design/revamp` theme was merged into `main` (`d7bcb00`): added
   `src/lib/design/theme.css`, `@fontsource-variable/inter`,
   `@material-symbols/font-400`. `DESIGN.md` / `DESIGN_CODE.md` are gitignored
   reference docs for that theme.
-- The vault and `data/` live OUTSIDE `app/` on the box and are never shipped
-  or touched by deploys.
-- Full background (VPS, Oracle Cloud firewall gotchas, Caddy, systemd, backups)
-  in `DEPLOY.md`.
+- The vault and `data/` live OUTSIDE `app/` on the box and are never touched
+  by deploys.
+- Full background (VPS, Oracle Cloud firewall gotchas, Caddy, systemd,
+  backups) in `DEPLOY.md`.
 
-## Shipping a change & deploying to the VPS
+## Shipping a change
 
-Source lives in git; the VPS is a consumer, not a deploy from. There is no CI —
-you ship a tarball by hand. The flow, in order:
-
-1. **Make and verify the change locally.** Edit, run `bun run check`
-   (0 errors / 0 warnings), and for editor work confirm the behavior in the
-   dev server.
+1. **Make and verify the change locally.** Edit and run `bun run check`
+   (0 errors / 0 warnings); for editor work confirm the behavior in the dev
+   server.
 2. **Keep the docs honest.** If the change touches the editor, auth, or
-   deployment, update this file (`Where code lives`, marks, gotchas) and the
-   README if it is user-facing, and `DEPLOY.md` if it changed ops. Docs ship
-   in the same commit as the code — commit messages are short `fix:` / `feat:`.
-3. **Commit + push to git** (main) to the GitHub remote (`origin`). The repo is
-   the single source of truth; push before you touch the box.
-4. **Build the release** locally — the tarball must carry the compiled output:
-   ```bash
-   bun run build
-   tar -czf /tmp/scrinium-src.tgz \
-     --exclude node_modules --exclude .git --exclude .svelte-kit \
-     --exclude data --exclude .env --exclude .opencode .
-   scp /tmp/scrinium-src.tgz $VPS_USER@$VPS_HOST:/tmp/
-   ```
-5. **Install on the VPS** (SSH in; most steps need `sudo` because `/opt` is
-   root-owned). Unpack over the current app, re-install deps (run this every
-   time — cheap, and it is what recompiles native `better-sqlite3`; the
-   `--legacy-peer-deps` is kept as insurance against future transitive peer
-   mismatches), fix ownership, and restart:
-   ```bash
-   sudo bash -c \
-     'cd /opt/scrinium/app && tar -xzf /tmp/scrinium-src.tgz && \
-      npm install --omit=dev --legacy-peer-deps && chown -R scrinium:scrinium /opt/scrinium'
-   sudo systemctl restart scrinium
-   sleep 2
-   systemctl status scrinium --no-pager   # expect active (running)
-   ```
-6. **Verify.** `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/`
-   (expect 302 → /login), then load `https://scrinium.mohak.dev` and hard
-   refresh so the browser drops the old cached build.
+   deployment, update this file (`Where code lives`, gotchas) and the README
+   if it is user-facing, and `DEPLOY.md` if it changed ops. Docs ship in the
+   same commit as the code — commit messages are short `fix:` / `feat:`.
+3. **Commit + push to `main`.** That push IS the deploy — watch the Actions
+   run, then hard-refresh `https://scrinium.mohak.dev` so the browser drops
+   the old cached build.
 
-**Schema (auth/DB) changes:** the sqlite DB already exists on the VPS. If you
-changed better-auth config or added tables, run the migrate once more
-(idempotent) before restarting:
+**Manual fallback** (only if Actions is broken). From the repo root:
+
+```bash
+bun run build
+tar -czf /tmp/scrinium-src.tgz \
+  --exclude node_modules --exclude .git --exclude .svelte-kit \
+  --exclude data --exclude vault --exclude .env --exclude .opencode .
+scp /tmp/scrinium-src.tgz $VPS_USER@$VPS_HOST:/tmp/
+ssh $VPS_USER@$VPS_HOST \
+  'sudo bash -c "cd /opt/scrinium/app && tar -xzf /tmp/scrinium-src.tgz && \
+   npm install --omit=dev --legacy-peer-deps && \
+   chown -R scrinium:scrinium /opt/scrinium && systemctl restart scrinium"'
+```
+
+**Schema (auth/DB) changes:** CI runs the migrate on every deploy
+(idempotent), so no extra step. To run it by hand:
 ```bash
 sudo bash -c 'cd /opt/scrinium/app && set -a && . ./.env && set +a && npx @better-auth/cli migrate'
 ```
 
-**Never** `rm -rf`, `chown`, or otherwise touch `vault/` and `data/` on the VPS
-during a deploy — those hold the notes and are not in the tarball. Only
-`/opt/scrinium/app` is overwritten.
+**Never** `rm -rf`, `chown`, or otherwise touch `vault/` and `data/` on the
+VPS during a deploy — those hold the notes. Only `/opt/scrinium/app` is
+overwritten.
