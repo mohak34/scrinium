@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { settings, DEFAULT_SETTINGS } from '$lib/stores/settings';
+	import { settings } from '$lib/stores/settings';
 	import { signOut } from '$lib/auth-client';
 
 	let sessionEmail = $state<string | null>(null);
 	let sessionLoading = $state(true);
-	let sessionError = $state<string | null>(null);
 
 	let tokens = $state<Array<{ token_hash: string; created_at: number; last_used_at: number | null }>>(
 		[]
@@ -15,8 +14,6 @@
 	let revokeBusy = $state<string | null>(null);
 	let noteCount = $state<number | null>(null);
 	let folderCount = $state<number | null>(null);
-
-	// For display: copy feedback
 	let copiedHash = $state<string | null>(null);
 
 	onMount(() => {
@@ -33,26 +30,12 @@
 
 	async function loadSession() {
 		sessionLoading = true;
-		sessionError = null;
 		try {
-			// better-auth exposes get-session at /api/auth/get-session (via toSvelteKitHandler)
 			const res = await fetch('/api/auth/get-session', { credentials: 'include' });
-			if (!res.ok) {
-				// fallback: try /api/auth/getSession naming variant
-				const alt = await fetch('/api/auth/getSession', { credentials: 'include' });
-				if (alt.ok) {
-					const data = await alt.json();
-					sessionEmail = data?.user?.email ?? data?.email ?? null;
-					sessionLoading = false;
-					return;
-				}
-				throw new Error(`${res.status}`);
+			if (res.ok) {
+				const data = await res.json();
+				sessionEmail = data?.user?.email ?? data?.email ?? null;
 			}
-			const data = await res.json();
-			// better-auth returns { user, session } or { user } depending on version
-			sessionEmail = data?.user?.email ?? data?.email ?? data?.session?.user?.email ?? null;
-		} catch {
-			sessionError = 'Could not load session.';
 		} finally {
 			sessionLoading = false;
 		}
@@ -64,7 +47,7 @@
 			const res = await fetch('/api/tokens', { credentials: 'include' });
 			if (res.ok) tokens = await res.json();
 		} catch {
-			// ignore
+			// leave the list empty
 		} finally {
 			tokensLoading = false;
 		}
@@ -97,7 +80,9 @@
 				for (const e of entries) {
 					if (e.type === 'directory') {
 						folders++;
-						if (Array.isArray(e.children)) walk(e.children as Array<{ type: string; children?: unknown[] }>);
+						if (Array.isArray(e.children)) {
+							walk(e.children as Array<{ type: string; children?: unknown[] }>);
+						}
 					} else {
 						notes++;
 					}
@@ -107,15 +92,8 @@
 			noteCount = notes;
 			folderCount = folders;
 		} catch {
-			// ignore
+			// stats are best-effort
 		}
-	}
-
-	function updateFontSize(delta: number) {
-		settings.update((s) => {
-			const next = Math.min(24, Math.max(10, s.editor.fontSize + delta));
-			return { ...s, editor: { ...s.editor, fontSize: next } };
-		});
 	}
 
 	function setFontSize(v: number) {
@@ -123,7 +101,10 @@
 	}
 
 	function toggleLineNumbers() {
-		settings.update((s) => ({ ...s, editor: { ...s.editor, showLineNumbers: !s.editor.showLineNumbers } }));
+		settings.update((s) => ({
+			...s,
+			editor: { ...s.editor, showLineNumbers: !s.editor.showLineNumbers }
+		}));
 	}
 
 	function toggleWrap() {
@@ -131,7 +112,7 @@
 	}
 
 	function resetSettings() {
-		if (!confirm('Reset all settings to defaults?')) return;
+		if (!confirm('Reset editor settings to defaults?')) return;
 		settings.reset();
 	}
 
@@ -154,372 +135,348 @@
 	const editorSettings = $derived($settings.editor);
 </script>
 
-<div class="settings-page">
-	<header class="settings-header">
-		<button class="back" onclick={() => goto('/')}>
-			<span class="material-symbols-outlined">arrow_back</span>
-			Back to vault
-		</button>
-		<h1>Settings</h1>
-		<p class="subtitle">Basic preferences. More will be added as needed — kept deliberately minimal.</p>
+<div class="page">
+	<header class="topbar">
+		<div class="left">
+			<button class="icon-btn" onclick={() => goto('/')} title="Back to vault (Esc)">
+				<span class="material-symbols-outlined">arrow_back</span>
+			</button>
+			<span class="title">Settings</span>
+		</div>
 	</header>
 
-	<div class="content">
-		<!-- Account -->
-		<section class="card">
-			<div class="card-head">
-				<h2>Account</h2>
-				<span class="badge">server-backed</span>
-			</div>
-			{#if sessionLoading}
-				<p class="muted">Loading session…</p>
-			{:else if sessionError}
-				<p class="muted">{sessionError}</p>
-			{:else if sessionEmail}
-				<div class="row">
-					<div>
-						<div class="label">Signed in as</div>
-						<div class="value">{sessionEmail}</div>
-						<div class="hint">Allowlist is set via ALLOWED_EMAILS on the server. Only listed addresses can sign in.</div>
-					</div>
-					<button class="btn secondary" onclick={signOut}>Sign out</button>
-				</div>
-			{:else}
-				<p class="muted">No active session.</p>
-				<a class="btn" href="/login">Go to login</a>
-			{/if}
-
-			<div class="divider"></div>
-
-			<h3>Mobile access tokens</h3>
-			<p class="hint">Long-lived tokens for the mobile client (POST /api/auth/mobile). Revoke any you no longer use — the device will need to re-authenticate with Google.</p>
-
-			{#if tokensLoading}
-				<p class="muted">Loading tokens…</p>
-			{:else if tokens.length === 0}
-				<p class="muted">No active mobile tokens.</p>
-			{:else}
-				<div class="token-list">
-					{#each tokens as t (t.token_hash)}
-						<div class="token">
-							<div class="token-meta">
-								<code class="hash" title={t.token_hash}>{t.token_hash.slice(0, 12)}…{t.token_hash.slice(-4)}</code>
-								<span class="muted small">created {formatDate(t.created_at)}</span>
-								{#if t.last_used_at}
-									<span class="muted small">last used {formatDate(t.last_used_at)}</span>
-								{:else}
-									<span class="muted small">never used</span>
-								{/if}
-							</div>
-							<div class="token-actions">
-								<button
-									class="btn ghost small"
-									disabled={copiedHash === t.token_hash}
-									onclick={() => copyHash(t.token_hash)}
-									title="Copy full hash"
-								>
-									{copiedHash === t.token_hash ? 'Copied' : 'Copy hash'}
-								</button>
-								<button
-									class="btn danger small"
-									disabled={revokeBusy === t.token_hash}
-									onclick={() => revokeToken(t.token_hash)}
-								>
-									{revokeBusy === t.token_hash ? 'Revoking…' : 'Revoke'}
-								</button>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</section>
-
-		<!-- Editor -->
-		<section class="card">
-			<div class="card-head">
+	<div class="scroll">
+		<div class="content">
+			<section>
 				<h2>Editor</h2>
-				<span class="badge">local</span>
-			</div>
-			<p class="hint">Stored in <code>localStorage</code> per browser. Plain files stay the source of truth.</p>
-
-			<div class="field">
-				<div class="field-head">
-					<span class="label">Font size</span>
-					<span class="value">{editorSettings.fontSize}px</span>
+				<p class="section-hint">Stored per browser. Plain files stay the source of truth.</p>
+				<div class="rows">
+					<div class="row">
+						<div class="row-text">
+							<span class="label">Font size</span>
+							<span class="hint">Applies to the note editor.</span>
+						</div>
+						<div class="stepper">
+							<button
+								class="icon-btn"
+								title="Smaller"
+								disabled={editorSettings.fontSize <= 10}
+								onclick={() => setFontSize(editorSettings.fontSize - 1)}
+							>
+								<span class="material-symbols-outlined">remove</span>
+							</button>
+							<input
+								type="range"
+								min="10"
+								max="24"
+								step="1"
+								value={editorSettings.fontSize}
+								oninput={(e) => setFontSize(Number((e.target as HTMLInputElement).value))}
+							/>
+							<button
+								class="icon-btn"
+								title="Larger"
+								disabled={editorSettings.fontSize >= 24}
+								onclick={() => setFontSize(editorSettings.fontSize + 1)}
+							>
+								<span class="material-symbols-outlined">add</span>
+							</button>
+							<span class="value mono">{editorSettings.fontSize}px</span>
+						</div>
+					</div>
+					<label class="row toggle-row">
+						<div class="row-text">
+							<span class="label">Show line numbers</span>
+							<span class="hint">Gutter on the left of the editor.</span>
+						</div>
+						<input
+							type="checkbox"
+							checked={editorSettings.showLineNumbers}
+							onchange={toggleLineNumbers}
+						/>
+						<span class="switch"></span>
+					</label>
+					<label class="row toggle-row">
+						<div class="row-text">
+							<span class="label">Word wrap</span>
+							<span class="hint">Wrap long lines instead of scrolling sideways.</span>
+						</div>
+						<input type="checkbox" checked={editorSettings.wordWrap} onchange={toggleWrap} />
+						<span class="switch"></span>
+					</label>
+					<div class="row">
+						<div class="row-text">
+							<span class="label">Reset</span>
+							<span class="hint">Restore editor settings to defaults.</span>
+						</div>
+						<button class="btn" onclick={resetSettings}>Reset</button>
+					</div>
 				</div>
-				<div class="slider-row">
-					<button class="btn ghost small" onclick={() => updateFontSize(-1)} disabled={editorSettings.fontSize <= 10}>−</button>
-					<input
-						type="range"
-						min="10"
-						max="24"
-						step="1"
-						value={editorSettings.fontSize}
-						oninput={(e) => setFontSize(Number((e.target as HTMLInputElement).value))}
-					/>
-					<button class="btn ghost small" onclick={() => updateFontSize(1)} disabled={editorSettings.fontSize >= 24}>+</button>
+			</section>
+
+			<section>
+				<h2>Account</h2>
+				<div class="rows">
+					<div class="row">
+						<div class="row-text">
+							<span class="label">Signed in as</span>
+							<span class="hint">
+								{#if sessionLoading}
+									Loading…
+								{:else if sessionEmail}
+									{sessionEmail} · allowlist is set via ALLOWED_EMAILS on the server
+								{:else}
+									No active session
+								{/if}
+							</span>
+						</div>
+						{#if sessionEmail}
+							<button class="btn" onclick={signOut}>Sign out</button>
+						{/if}
+					</div>
 				</div>
-				<div class="hint">Applies to the CodeMirror editor only. Default 15px. Preview renders inline code with the same scale.</div>
-			</div>
 
-			<label class="toggle">
-				<input type="checkbox" checked={editorSettings.showLineNumbers} onchange={toggleLineNumbers} />
-				<span class="toggle-ui"></span>
-				<span class="toggle-label">
-					<span class="label">Show line numbers</span>
-					<span class="hint">Gutter on the left of the editor. Turn off for a cleaner reading view.</span>
-				</span>
-			</label>
-
-			<label class="toggle">
-				<input type="checkbox" checked={editorSettings.wordWrap} onchange={toggleWrap} />
-				<span class="toggle-ui"></span>
-				<span class="toggle-label">
-					<span class="label">Word wrap</span>
-					<span class="hint">Wrap long lines instead of horizontal scrolling.</span>
-				</span>
-			</label>
-		</section>
-
-		<!-- Appearance -->
-		<section class="card">
-			<div class="card-head">
-				<h2>Appearance</h2>
-				<span class="badge">fixed</span>
-			</div>
-			<div class="row">
-				<div>
-					<div class="label">Theme</div>
-					<div class="value">Dark — true black (#000) · Inter Variable</div>
-					<div class="hint">Scrinium ships a single, information-dense dark theme. It is the intended look — no light theme yet to keep the surface small.</div>
+				<h3>Mobile access tokens</h3>
+				<p class="section-hint">
+					Long-lived tokens issued to the mobile client. Revoke any you no longer use; that device
+					will need to sign in again.
+				</p>
+				<div class="rows">
+					{#if tokensLoading}
+						<div class="row"><span class="hint">Loading…</span></div>
+					{:else if tokens.length === 0}
+						<div class="row"><span class="hint">No active mobile tokens.</span></div>
+					{:else}
+						{#each tokens as t (t.token_hash)}
+							<div class="row">
+								<div class="row-text">
+									<code class="hash">{t.token_hash.slice(0, 12)}…{t.token_hash.slice(-4)}</code>
+									<span class="hint">
+										created {formatDate(t.created_at)} ·
+										{t.last_used_at ? `last used ${formatDate(t.last_used_at)}` : 'never used'}
+									</span>
+								</div>
+								<div class="btn-group">
+									<button
+										class="btn"
+										disabled={copiedHash === t.token_hash}
+										onclick={() => copyHash(t.token_hash)}
+										title="Copy full hash"
+									>
+										{copiedHash === t.token_hash ? 'Copied' : 'Copy'}
+									</button>
+									<button class="btn danger" disabled={revokeBusy === t.token_hash} onclick={() => revokeToken(t.token_hash)}>
+										{revokeBusy === t.token_hash ? 'Revoking…' : 'Revoke'}
+									</button>
+								</div>
+							</div>
+						{/each}
+					{/if}
 				</div>
-				<span class="material-symbols-outlined muted" style="font-size: 28px; opacity: 0.6">dark_mode</span>
-			</div>
-		</section>
+			</section>
 
-		<!-- Vault -->
-		<section class="card">
-			<div class="card-head">
+			<section>
 				<h2>Vault</h2>
-				<span class="badge">read-only</span>
-			</div>
-			<div class="stats">
-				<div class="stat">
-					<span class="stat-value">{noteCount ?? '—'}</span>
-					<span class="stat-label">files</span>
+				<div class="rows">
+					<div class="row">
+						<div class="stat">
+							<span class="stat-value">{noteCount ?? '—'}</span>
+							<span class="stat-label">notes</span>
+						</div>
+						<div class="stat">
+							<span class="stat-value">{folderCount ?? '—'}</span>
+							<span class="stat-label">folders</span>
+						</div>
+						<div class="row-text grow">
+							<span class="label">Plain markdown on disk</span>
+							<span class="hint">
+								Every note is a .md file under VAULT_DIR. The sqlite cache can be deleted and
+								rebuilt at any time.
+							</span>
+						</div>
+					</div>
 				</div>
-				<div class="stat">
-					<span class="stat-value">{folderCount ?? '—'}</span>
-					<span class="stat-label">folders</span>
-				</div>
-				<div class="stat">
-					<span class="stat-value">.md</span>
-					<span class="stat-label">plain markdown on disk</span>
-				</div>
-			</div>
-			<p class="hint">Every note is a <code>.md</code> file under <code>VAULT_DIR</code> on the server. The sqlite file at <code>DATABASE_PATH</code> is only a metadata/search cache — delete it to rebuild.</p>
-		</section>
+			</section>
 
-		<!-- About -->
-		<section class="card">
-			<div class="card-head">
+			<section>
 				<h2>About</h2>
-			</div>
-			<div class="hint">
-				Scrinium — notes that stay plain files. SvelteKit 5 + CodeMirror 6 live-preview, sqlite FTS search, Google OAuth allowlist.
-				<br />
-				Shortcuts: <code>Ctrl/Cmd+K</code> palette · <code>Ctrl/Cmd+F</code> find · <code>Esc</code> full preview · <code>Ctrl/Cmd+B</code> bold.
-			</div>
-			<div class="hint" style="margin-top: 10px">
-				Docs: <code>AGENTS.md</code> (live-preview rules) · <code>DEPLOY.md</code> (VPS/Caddy/systemd).
-			</div>
-		</section>
-
-		<!-- Danger -->
-		<section class="card danger-zone">
-			<h2>Danger zone</h2>
-			<p class="hint">Local-only — does not touch vault files on disk.</p>
-			<div class="row">
-				<div>
-					<div class="label">Reset settings</div>
-					<div class="hint">Restore editor preferences to defaults and clear local pins/collapsed state if you confirm.</div>
+				<div class="rows">
+					<div class="row">
+						<div class="row-text">
+							<span class="label">Scrinium</span>
+							<span class="hint">Notes that stay plain files. SvelteKit 5 + CodeMirror 6 live preview.</span>
+						</div>
+					</div>
+					<div class="row">
+						<div class="row-text">
+							<span class="label">Shortcuts</span>
+							<span class="hint">
+								<kbd>Ctrl/Cmd K</kbd> palette · <kbd>Ctrl/Cmd F</kbd> find · <kbd>Esc</kbd> full
+								preview · <kbd>Ctrl/Cmd B</kbd> bold
+							</span>
+						</div>
+					</div>
 				</div>
-				<button class="btn danger" onclick={resetSettings}>Reset to defaults</button>
-			</div>
-		</section>
-
-		<footer class="settings-footer">
-			<span class="muted small">Keep it minimal. A setting earns its place when it prevents surprise.</span>
-		</footer>
+			</section>
+		</div>
 	</div>
 </div>
 
 <style>
-	.settings-page {
-		min-height: 100vh;
+	/* The app layout sets html/body overflow:hidden, so this page owns its own
+	   scroll region: fixed 48px bar on top, content scrolls below it. */
+	.page {
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
 		background: var(--background);
 		color: var(--on-surface);
 		font-family: var(--font-ui);
-		overflow-y: auto;
 	}
-	.settings-header {
-		max-width: 720px;
-		margin: 0 auto;
-		padding: 28px var(--gutter) 16px;
-	}
-	.back {
-		display: inline-flex;
+	.topbar {
+		height: 48px;
+		display: flex;
 		align-items: center;
-		gap: 6px;
-		background: none;
-		border: none;
-		color: var(--on-surface-variant);
-		font: inherit;
-		font-size: var(--font-ui-small);
-		cursor: pointer;
-		padding: 0;
-		margin-bottom: 16px;
+		justify-content: space-between;
+		gap: var(--stack-gap);
+		padding: 0 var(--gutter);
+		border-bottom: 1px solid var(--border-default);
+		flex-shrink: 0;
+		background: var(--background);
 	}
-	.back:hover {
-		color: var(--on-surface);
+	.left {
+		display: flex;
+		align-items: center;
+		gap: var(--stack-gap);
+		min-width: 0;
 	}
-	.settings-header h1 {
-		margin: 0;
+	.title {
 		font-size: var(--font-editor-title-size);
 		line-height: var(--font-editor-title-lh);
 		font-weight: var(--font-editor-title-weight);
 		letter-spacing: var(--font-editor-title-tracking);
+		color: var(--on-surface);
 	}
-	.subtitle {
-		margin: 6px 0 0;
+	.icon-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		border: none;
+		border-radius: var(--radius);
+		background: none;
 		color: var(--on-surface-variant);
-		font-size: var(--font-ui-small);
+		cursor: pointer;
+		line-height: 1;
+		flex-shrink: 0;
+	}
+	.icon-btn:hover:not(:disabled) {
+		background: var(--surface-container-low);
+		color: var(--on-surface);
+	}
+	.icon-btn:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+	.scroll {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
 	}
 	.content {
-		max-width: 720px;
+		max-width: var(--editor-max-width);
 		margin: 0 auto;
-		padding: 0 var(--gutter) 48px;
+		padding: 20px var(--gutter) 48px;
+	}
+	section {
+		margin-bottom: 28px;
+	}
+	h2 {
+		margin: 0 0 2px;
+		font-size: var(--font-label-caps);
+		line-height: var(--font-label-caps-lh);
+		font-weight: var(--font-label-caps-weight);
+		letter-spacing: var(--label-caps-spacing);
+		text-transform: uppercase;
+		color: var(--outline);
+	}
+	h3 {
+		margin: 18px 0 2px;
+		font-size: var(--font-ui-small);
+		font-weight: var(--font-ui-medium-weight);
+		color: var(--on-surface);
+	}
+	.section-hint {
+		margin: 0 0 6px;
+		font-size: var(--font-ui-micro);
+		color: var(--outline);
+	}
+	.rows {
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
 	}
-	.card {
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		padding: 16px;
-	}
-	.card-head {
+	.row {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 8px;
-		margin-bottom: 12px;
+		gap: 16px;
+		padding: 12px 0;
+		border-top: 1px solid var(--border-default);
 	}
-	.card h2 {
-		margin: 0;
-		font-size: 14px;
-		font-weight: 600;
-		letter-spacing: -0.01em;
-		color: var(--on-surface);
+	.row.toggle-row {
+		cursor: pointer;
+		user-select: none;
 	}
-	.card h3 {
-		margin: 16px 0 6px;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--on-surface);
+	.row-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
 	}
-	.badge {
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-full);
-		padding: 2px 8px;
-		text-transform: uppercase;
-		letter-spacing: var(--label-caps-spacing);
+	.row-text.grow {
+		flex: 1;
 	}
 	.label {
 		font-size: var(--font-ui-medium);
-		font-weight: 500;
+		font-weight: var(--font-ui-medium-weight);
 		color: var(--on-surface);
 	}
 	.value {
 		font-size: var(--font-ui-small);
 		color: var(--on-surface-variant);
-		margin-top: 2px;
+	}
+	.mono {
+		font-family: var(--font-mono);
 	}
 	.hint {
 		font-size: var(--font-ui-small);
 		color: var(--outline);
 		line-height: 1.5;
-		margin: 4px 0 0;
 	}
-	.muted {
-		color: var(--outline);
-	}
-	.small {
-		font-size: var(--font-ui-micro);
-	}
-	.row {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 16px;
-	}
-	.divider {
-		height: 1px;
-		background: var(--border-default);
-		margin: 16px 0;
-	}
-	.field {
-		padding: 12px;
-		background: var(--surface-container-low);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		margin-bottom: 12px;
-	}
-	.field-head {
+	.stepper {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		gap: 6px;
+		flex-shrink: 0;
 	}
-	.slider-row {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		margin-top: 10px;
-	}
-	.slider-row input[type='range'] {
-		flex: 1;
+	.stepper input[type='range'] {
+		width: 140px;
 		accent-color: var(--primary);
 	}
-	.toggle {
-		display: flex;
-		align-items: flex-start;
-		gap: 12px;
-		padding: 12px;
-		background: var(--surface-container-low);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		margin-bottom: 8px;
-		cursor: pointer;
-		user-select: none;
-	}
-	.toggle input {
+	input[type='checkbox'] {
 		display: none;
 	}
-	.toggle-ui {
-		width: 36px;
-		height: 20px;
-		border-radius: 999px;
+	.switch {
+		width: 32px;
+		height: 18px;
+		border-radius: var(--radius-full);
 		background: var(--surface-container-highest);
-		border: 1px solid var(--border-default);
 		position: relative;
 		flex-shrink: 0;
-		margin-top: 2px;
-		transition: background 0.15s ease, border-color 0.15s ease;
+		transition: background 0.15s ease;
 	}
-	.toggle-ui::after {
+	.switch::after {
 		content: '';
 		position: absolute;
 		top: 2px;
@@ -530,145 +487,83 @@
 		background: var(--on-surface-variant);
 		transition: transform 0.15s ease, background 0.15s ease;
 	}
-	.toggle input:checked + .toggle-ui {
+	input:checked + .switch {
 		background: var(--primary);
-		border-color: var(--primary);
 	}
-	.toggle input:checked + .toggle-ui::after {
-		transform: translateX(16px);
+	input:checked + .switch::after {
+		transform: translateX(14px);
 		background: var(--on-primary);
 	}
-	.toggle-label {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	.stats {
-		display: flex;
-		gap: 16px;
-		margin: 8px 0 12px;
-	}
-	.stat {
-		flex: 1;
-		background: var(--surface-container-low);
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		height: 28px;
+		padding: 0 10px;
+		background: none;
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius);
-		padding: 12px;
-		text-align: center;
+		color: var(--on-surface-variant);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-small);
+		cursor: pointer;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+	.btn:hover:not(:disabled) {
+		background: var(--surface-container-low);
+		color: var(--on-surface);
+	}
+	.btn:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.btn.danger {
+		color: var(--error);
+		border-color: var(--border-default);
+	}
+	.btn.danger:hover:not(:disabled) {
+		background: var(--error-container);
+		color: var(--on-error-container);
+	}
+	.btn-group {
+		display: flex;
+		gap: 6px;
+		flex-shrink: 0;
+	}
+	code.hash {
+		font-family: var(--font-mono);
+		font-size: var(--font-ui-micro);
+		color: var(--on-surface);
+		background: var(--surface-container-high);
+		padding: 2px 6px;
+		border-radius: 4px;
+		align-self: flex-start;
+	}
+	.stat {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		min-width: 56px;
 	}
 	.stat-value {
-		display: block;
 		font-size: 20px;
 		font-weight: 600;
 		color: var(--on-surface);
 		line-height: 1;
 	}
 	.stat-label {
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-		text-transform: uppercase;
+		font-size: var(--font-label-caps);
+		font-weight: var(--font-label-caps-weight);
 		letter-spacing: var(--label-caps-spacing);
+		text-transform: uppercase;
+		color: var(--outline);
 	}
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		height: 32px;
-		padding: 0 12px;
-		border-radius: var(--radius);
-		border: 1px solid transparent;
-		font: inherit;
-		font-size: var(--font-ui-small);
-		font-weight: 500;
-		cursor: pointer;
-		white-space: nowrap;
-		background: var(--primary);
-		color: var(--on-primary);
-		text-decoration: none;
-	}
-	.btn:hover {
-		filter: brightness(1.05);
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.btn.secondary {
-		background: var(--surface-container-high);
-		color: var(--on-surface);
-		border-color: var(--border-default);
-	}
-	.btn.ghost {
-		background: transparent;
-		color: var(--on-surface-variant);
-		border-color: var(--border-default);
-	}
-	.btn.danger {
-		background: var(--error-container);
-		color: var(--on-error-container);
-		border-color: transparent;
-	}
-	.btn.danger:hover {
-		filter: brightness(1.1);
-	}
-	.btn.small {
-		height: 26px;
-		padding: 0 8px;
-		font-size: 11px;
-	}
-	.token-list {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		margin-top: 10px;
-	}
-	.token {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 10px 12px;
-		background: var(--surface-container-low);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-	}
-	.token-meta {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-	}
-	.hash {
+	kbd {
 		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--on-surface);
+		font-size: var(--font-ui-micro);
 		background: var(--surface-container-high);
-		padding: 2px 6px;
 		border-radius: 4px;
-		word-break: break-all;
-	}
-	.token-actions {
-		display: flex;
-		gap: 6px;
-		flex-shrink: 0;
-	}
-	.danger-zone {
-		border-color: #3a2323;
-		background: #1c1518;
-	}
-	.danger-zone h2 {
-		color: var(--error);
-	}
-	.settings-footer {
-		padding: 4px 2px;
-		text-align: center;
-	}
-	code {
-		font-family: var(--font-mono);
-		background: var(--surface-container-high);
-		padding: 0.1em 0.3em;
-		border-radius: 4px;
-		font-size: 0.92em;
+		padding: 1px 5px;
 	}
 </style>
