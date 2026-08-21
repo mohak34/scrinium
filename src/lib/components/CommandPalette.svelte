@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { searchNotes, type SearchResult } from '$lib/stores/vault';
-	import { createRequest, focusSearchRequest, openTrashRequest } from '$lib/stores/actions';
+	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
 
 	interface Props {
@@ -44,7 +45,7 @@
 		{
 			label: 'Open trash',
 			hint: 'View and restore deleted notes',
-			run: () => openTrashRequest.update((n) => n + 1)
+			run: () => goto('/trash')
 		},
 		{ label: 'Sign out', hint: 'End this session', run: () => signOut() },
 		{

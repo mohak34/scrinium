@@ -15,6 +15,3 @@ export const focusSearchRequest = writable(0);
 // owns the inline rename input. The sidebar consumes it and resets it to null.
 export const renameRequest = writable<{ path: string } | null>(null);
 
-// Bumped to ask the sidebar's trash view to open (command palette action).
-export const openTrashRequest = writable(0);
-
