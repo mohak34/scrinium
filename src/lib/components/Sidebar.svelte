@@ -23,9 +23,9 @@
 		canDrop,
 		clearDragState
 	} from '$lib/stores/filetree';
-	import { createRequest, renameRequest, openTrashRequest } from '$lib/stores/actions';
+	import { goto } from '$app/navigation';
+	import { createRequest, renameRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
-	import TrashView from './TrashView.svelte';
 
 	interface Props {
 		onSelect: (path: string) => void;
@@ -36,7 +36,6 @@
 	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ path: string } | null>(null);
-	let trashOpen = $state(false);
 
 	// The command palette signals "create a note/folder here" through the shared
 	// createRequest store; hand it over to the inline create inputs.
@@ -59,13 +58,9 @@
 			}
 			renameTarget = { path: req.path };
 		});
-		const unsubTrash = openTrashRequest.subscribe((v) => {
-			if (v) trashOpen = true;
-		});
 		return () => {
 			unsubCreate();
 			unsubRename();
-			unsubTrash();
 		};
 	});
 
@@ -235,7 +230,7 @@
 		/>
 	</div>
 	<div class="footer">
-		<button class="footer-item" onclick={() => (trashOpen = true)}>
+		<button class="footer-item" onclick={() => goto('/trash')}>
 			<span class="material-symbols-outlined">delete</span>
 			<span>Trash</span>
 		</button>
@@ -246,9 +241,6 @@
 	</div>
 	{#if menu}
 		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
-	{/if}
-	{#if trashOpen}
-		<TrashView onClose={() => (trashOpen = false)} onRestore={(p) => onSelect(p)} />
 	{/if}
 </aside>
 

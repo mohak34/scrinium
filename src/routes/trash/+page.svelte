@@ -1,19 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { trashEntries, loadTrash, restoreTrash, purgeTrash, emptyTrash } from '$lib/stores/vault';
-
-	interface Props {
-		onClose: () => void;
-		onRestore?: (path: string) => void;
-	}
-	let { onClose, onRestore }: Props = $props();
 
 	let busy = $state<string | null>(null);
 
 	onMount(() => {
 		loadTrash();
 		const key = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') onClose();
+			if (e.key === 'Escape') goto('/');
 		};
 		window.addEventListener('keydown', key);
 		return () => window.removeEventListener('keydown', key);
@@ -32,7 +27,7 @@
 		busy = entry.trashName;
 		try {
 			const restored = await restoreTrash(entry.trashName);
-			if (restored && onRestore) onRestore(restored);
+			if (restored) goto('/');
 		} finally {
 			busy = null;
 		}
@@ -59,101 +54,94 @@
 	}
 </script>
 
-<div class="overlay" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onClose()}>
-	<div class="panel" role="dialog" aria-label="Trash">
-		<div class="head">
-			<div class="title">
-				<span class="material-symbols-outlined">delete</span>
-				<span>Trash</span>
-				<span class="count">{$trashEntries.length}</span>
-			</div>
-			<div class="head-actions">
-				<button class="btn" disabled={!$trashEntries.length || busy === '__empty'} onclick={handleEmpty}>
-					{busy === '__empty' ? 'Emptying…' : 'Empty trash'}
-				</button>
-				<button class="icon-btn" title="Close (Esc)" onclick={onClose}>
-					<span class="material-symbols-outlined">close</span>
-				</button>
-			</div>
+<div class="page">
+	<header class="topbar">
+		<div class="left">
+			<button class="icon-btn" onclick={() => goto('/')} title="Back to vault (Esc)">
+				<span class="material-symbols-outlined">arrow_back</span>
+			</button>
+			<span class="title">Trash</span>
+			<span class="count">{$trashEntries.length}</span>
 		</div>
+		<div class="right">
+			<button class="btn" disabled={!$trashEntries.length || busy === '__empty'} onclick={handleEmpty}>
+				{busy === '__empty' ? 'Emptying…' : 'Empty trash'}
+			</button>
+		</div>
+	</header>
 
-		<div class="list">
+	<div class="scroll">
+		<div class="content">
 			{#if $trashEntries.length === 0}
-				<div class="empty">Trash is empty.</div>
+				<div class="empty">Trash is empty. Deleted notes and folders will appear here.</div>
 			{:else}
-				{#each $trashEntries as entry (entry.trashName)}
-					<div class="row">
-						<div class="meta">
-							<span class="name" title={entry.originalPath}>
-								<span class="material-symbols-outlined row-icon">{entry.isDir ? 'folder' : 'description'}</span>
-								{entry.originalPath}
-							</span>
-							<span class="hint">
-								deleted {formatDate(entry.deletedAt)}
-								{#if entry.size !== undefined} · {entry.size} bytes{/if}
-							</span>
-							<span class="trash-name mono">{entry.trashName}</span>
+				<div class="hint">Deleted items are kept in <code>.trash</code> until you empty them.</div>
+				<div class="list">
+					{#each $trashEntries as entry (entry.trashName)}
+						<div class="row">
+							<div class="meta">
+								<span class="name" title={entry.originalPath}>
+									<span class="material-symbols-outlined row-icon">{entry.isDir ? 'folder' : 'description'}</span>
+									{entry.originalPath}
+								</span>
+								<span class="hint">
+									deleted {formatDate(entry.deletedAt)}
+									{#if entry.size !== undefined} · {entry.size} bytes{/if}
+								</span>
+								<span class="trash-name mono">{entry.trashName}</span>
+							</div>
+							<div class="actions">
+								<button class="btn" disabled={busy !== null} onclick={() => handleRestore(entry)}>
+									{busy === entry.trashName ? '…' : 'Restore'}
+								</button>
+								<button class="btn danger" disabled={busy !== null} onclick={() => handlePurge(entry)}>
+									Delete
+								</button>
+							</div>
 						</div>
-						<div class="actions">
-							<button
-								class="btn"
-								disabled={busy !== null}
-								onclick={() => handleRestore(entry)}
-							>
-								{busy === entry.trashName ? '…' : 'Restore'}
-							</button>
-							<button
-								class="btn danger"
-								disabled={busy !== null}
-								onclick={() => handlePurge(entry)}
-							>
-								Delete
-							</button>
-						</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			{/if}
 		</div>
 	</div>
 </div>
 
 <style>
-	.overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 920;
-		background: var(--overlay);
-		display: flex;
-		align-items: flex-start;
-		justify-content: center;
-		padding-top: 8vh;
-	}
-	.panel {
-		width: min(640px, 92vw);
-		max-height: 72vh;
+	.page {
+		height: 100vh;
 		display: flex;
 		flex-direction: column;
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-pop);
-		overflow: hidden;
+		background: var(--background);
+		color: var(--on-surface);
+		font-family: var(--font-ui);
 	}
-	.head {
+	.topbar {
+		height: 48px;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--stack-gap);
-		padding: 12px var(--panel-padding);
+		padding: 0 var(--gutter);
 		border-bottom: 1px solid var(--border-default);
 		flex-shrink: 0;
+		background: var(--background);
 	}
-	.title {
+	.left {
 		display: flex;
 		align-items: center;
 		gap: var(--stack-gap);
-		font-size: var(--font-ui-medium);
-		font-weight: var(--font-ui-medium-weight);
+		min-width: 0;
+	}
+	.right {
+		display: flex;
+		align-items: center;
+		gap: var(--stack-gap);
+	}
+	.title {
+		font-size: var(--font-editor-title-size);
+		line-height: var(--font-editor-title-lh);
+		font-weight: var(--font-editor-title-weight);
+		letter-spacing: var(--font-editor-title-tracking);
 		color: var(--on-surface);
 	}
 	.count {
@@ -162,11 +150,6 @@
 		font-size: var(--font-ui-micro);
 		padding: 2px 6px;
 		border-radius: var(--radius-full);
-	}
-	.head-actions {
-		display: flex;
-		align-items: center;
-		gap: var(--stack-gap);
 	}
 	.icon-btn {
 		display: flex;
@@ -211,21 +194,45 @@
 		background: var(--error-container);
 		color: var(--on-error-container);
 	}
-	.list {
+	.scroll {
 		flex: 1;
+		min-height: 0;
 		overflow-y: auto;
-		padding: 4px;
+	}
+	.content {
+		max-width: var(--editor-max-width);
+		margin: 0 auto;
+		width: 100%;
+		padding: 20px var(--gutter) 48px;
+	}
+	.hint {
+		font-size: var(--font-ui-micro);
+		color: var(--outline);
+		margin-bottom: 12px;
+	}
+	.empty {
+		padding: 32px 0;
+		text-align: center;
+		color: var(--outline);
+		font-size: var(--font-ui-small);
+	}
+	.list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
 	}
 	.row {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 12px;
-		padding: 10px 12px;
+		padding: 12px;
+		border: 1px solid var(--border-default);
 		border-radius: var(--radius);
+		background: var(--surface-container);
 	}
 	.row:hover {
-		background: var(--surface-container-low);
+		border-color: var(--border-raised);
 	}
 	.meta {
 		display: flex;
@@ -247,10 +254,6 @@
 		font-size: 16px;
 		color: var(--outline);
 	}
-	.hint {
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-	}
 	.trash-name.mono {
 		font-family: var(--font-mono);
 		font-size: 10px;
@@ -262,10 +265,11 @@
 		gap: 6px;
 		flex-shrink: 0;
 	}
-	.empty {
-		padding: 24px;
-		text-align: center;
-		color: var(--outline);
-		font-size: var(--font-ui-small);
+	code {
+		font-family: var(--font-mono);
+		font-size: 0.92em;
+		background: var(--surface-container-high);
+		padding: 0.1em 0.3em;
+		border-radius: 4px;
 	}
 </style>
