@@ -11,6 +11,10 @@ export const tree = writable<VaultEntry[]>([]);
 export const activePath = writable<string | null>(null);
 export const saveStatus = writable<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+// For external edits (e.g. filename->title sync) to push new content into the editor
+// without the editor thinking it is a user edit.
+export const externalContentUpdate = writable<{ path: string; content: string } | null>(null);
+
 // Pinned notes, kept client-side (a display preference, not vault state).
 // Pinned entries sort first in the tree at every level.
 const PIN_STORAGE = 'scrinium:pinned';
@@ -133,11 +137,113 @@ export async function flushSave() {
 	if (pendingSave) await doSave();
 }
 
+// --- Title <-> filename sync ---
+
+export function extractTitle(content: string): string | null {
+	const first = content.split('\n')[0] ?? '';
+	const m = first.match(/^#\s+(.+?)\s*$/);
+	if (!m) return null;
+	const title = m[1].trim();
+	return title || null;
+}
+
+export function sanitizeTitleForFilename(title: string): string | null {
+	let name = title.trim().replace(/[\\/:*?"<>|]/g, '').replace(/^\.+/, '').trim();
+	if (!name || name === '.' || name === '..' || name.startsWith('.')) return null;
+	// Cap length to keep filesystem happy
+	if (name.length > 100) name = name.slice(0, 100).trim();
+	return name;
+}
+
+let pendingTitleSync: { path: string; title: string } | null = null;
+let titleSyncTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function scheduleTitleSync(path: string, content: string) {
+	if (!path.endsWith('.md')) return;
+	const title = extractTitle(content);
+	if (!title) return;
+	// Avoid scheduling if title already matches filename (sanitized)
+	const base = path.split('/').pop()!.replace(/\.md$/, '');
+	const sanitized = sanitizeTitleForFilename(title);
+	if (!sanitized || sanitized === base) return;
+	pendingTitleSync = { path, title };
+	clearTimeout(titleSyncTimer);
+	titleSyncTimer = setTimeout(() => {
+		void executeTitleSync();
+	}, 900);
+}
+
+async function executeTitleSync() {
+	const pending = pendingTitleSync;
+	pendingTitleSync = null;
+	clearTimeout(titleSyncTimer);
+	if (!pending) return;
+	await flushSave();
+	const sanitized = sanitizeTitleForFilename(pending.title);
+	if (!sanitized) return;
+	const dir = pending.path.includes('/') ? pending.path.slice(0, pending.path.lastIndexOf('/')) : null;
+	const newPath = dir ? `${dir}/${sanitized}.md` : `${sanitized}.md`;
+	if (newPath === pending.path) return;
+	const ok = await renameNote(pending.path, newPath);
+	if (!ok) saveStatus.set('error');
+}
+
+export function cancelTitleSync() {
+	clearTimeout(titleSyncTimer);
+	pendingTitleSync = null;
+}
+
+export async function syncFilenameToTitle(oldPath: string, newPath: string) {
+	if (!newPath.endsWith('.md')) return;
+	const newBase = newPath.split('/').pop()!.replace(/\.md$/, '');
+	try {
+		const res = await fetch(`/api/notes/${encPath(newPath)}`);
+		if (!res.ok) return;
+		let content = await res.text();
+		const lines = content.split('\n');
+		if (!lines[0]?.match(/^#\s+/)) return;
+		const curTitle = lines[0].replace(/^#\s+/, '').trim();
+		if (curTitle === newBase) return;
+		lines[0] = `# ${newBase}`;
+		const newContent = lines.join('\n');
+		const putRes = await fetch(`/api/notes/${encPath(newPath)}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'text/plain' },
+			body: newContent
+		});
+		if (putRes.ok) {
+			await loadTree();
+			// Push to editor if this is the active note
+			if (get(activePath) === newPath) {
+				externalContentUpdate.set({ path: newPath, content: newContent });
+				// also clear any pending title sync that would try to rename back
+				cancelTitleSync();
+			}
+		}
+	} catch {}
+}
+
+// --- New note defaults ---
+
+function getNewNoteTemplate(title: string): string {
+	// Minimal default: H1 + blank line. Kept in localStorage so it can be
+	// extended via a future settings UI without changing the vault contract.
+	try {
+		const raw = localStorage.getItem('scrinium:newNoteTemplate');
+		if (raw && typeof raw === 'string' && raw.includes('{{title}}')) {
+			return raw.replaceAll('{{title}}', title);
+		}
+	} catch {}
+	return `# ${title}\n\n`;
+}
+
 export async function createNote(path: string) {
+	const base = path.replace(/\.md$/, '').split('/').pop() ?? 'Untitled';
+	const body = getNewNoteTemplate(base);
 	await fetch(`/api/notes/${encPath(path)}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'text/plain' },
-		body: `# ${path.replace(/\.md$/, '').split('/').pop()}\n\n`
+		body
 	});
 	await loadTree();
 }
@@ -151,14 +257,42 @@ export async function createFolder(path: string) {
 	await loadTree();
 }
 
-export async function renamePath(oldPath: string, newPath: string): Promise<boolean> {
+// Centralized rename that keeps tabs/activePath/pinned in sync.
+// Callers still handle filetree collapsed state via renameDir.
+export async function renameNote(oldPath: string, newPath: string): Promise<boolean> {
+	if (oldPath === newPath) return true;
 	const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ newPath })
 	});
 	await loadTree();
+	if (res.ok) {
+		const current = get(activePath);
+		if (current && (current === oldPath || current.startsWith(oldPath + '/'))) {
+			activePath.set(newPath + current.slice(oldPath.length));
+		}
+		openTabs.update((tabs) =>
+			tabs.map((t) => {
+				if (t === oldPath) return newPath;
+				if (t.startsWith(oldPath + '/')) return newPath + t.slice(oldPath.length);
+				return t;
+			})
+		);
+		pinnedPaths.update((pinned) =>
+			pinned.map((p) => {
+				if (p === oldPath) return newPath;
+				if (p.startsWith(oldPath + '/')) return newPath + p.slice(oldPath.length);
+				return p;
+			})
+		);
+	}
 	return res.ok;
+}
+
+// Legacy alias kept for callers not yet migrated to renameNote.
+export async function renamePath(oldPath: string, newPath: string): Promise<boolean> {
+	return renameNote(oldPath, newPath);
 }
 
 export async function deletePath(path: string) {
@@ -196,4 +330,46 @@ export async function movePath(from: string, toDir: string | null): Promise<bool
 		})
 	);
 	return res.ok;
+}
+
+// --- Trash ---
+
+export interface TrashEntry {
+	trashName: string;
+	originalPath: string;
+	deletedAt: number;
+	isDir: boolean;
+	size?: number;
+}
+
+export const trashEntries = writable<TrashEntry[]>([]);
+
+export async function loadTrash() {
+	const res = await fetch('/api/trash');
+	if (res.ok) trashEntries.set(await res.json());
+}
+
+export async function restoreTrash(trashName: string): Promise<string | null> {
+	const res = await fetch('/api/trash/restore', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ trashName })
+	});
+	if (!res.ok) return null;
+	const data = await res.json().catch(() => null);
+	const restoredPath = typeof data?.path === 'string' ? data.path : null;
+	await loadTree();
+	await loadTrash();
+	if (restoredPath) openTab(restoredPath);
+	return restoredPath;
+}
+
+export async function purgeTrash(trashName: string) {
+	await fetch(`/api/trash?trashName=${encodeURIComponent(trashName)}`, { method: 'DELETE' });
+	await loadTrash();
+}
+
+export async function emptyTrash() {
+	await fetch('/api/trash?all=1', { method: 'DELETE' });
+	await loadTrash();
 }

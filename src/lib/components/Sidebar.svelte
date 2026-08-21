@@ -7,7 +7,8 @@
 		tree,
 		createNote,
 		createFolder,
-		renamePath,
+		renameNote,
+		syncFilenameToTitle,
 		deletePath,
 		movePath,
 		type VaultEntry
@@ -22,8 +23,9 @@
 		canDrop,
 		clearDragState
 	} from '$lib/stores/filetree';
-	import { createRequest, renameRequest } from '$lib/stores/actions';
+	import { createRequest, renameRequest, openTrashRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
+	import TrashView from './TrashView.svelte';
 
 	interface Props {
 		onSelect: (path: string) => void;
@@ -34,6 +36,7 @@
 	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ path: string } | null>(null);
+	let trashOpen = $state(false);
 
 	// The command palette signals "create a note/folder here" through the shared
 	// createRequest store; hand it over to the inline create inputs.
@@ -56,9 +59,13 @@
 			}
 			renameTarget = { path: req.path };
 		});
+		const unsubTrash = openTrashRequest.subscribe((v) => {
+			if (v) trashOpen = true;
+		});
 		return () => {
 			unsubCreate();
 			unsubRename();
+			unsubTrash();
 		};
 	});
 
@@ -73,13 +80,34 @@
 		return parent ? `${parent}/${name}` : name;
 	}
 
+	function pathExists(target: string, entries: typeof $tree): boolean {
+		for (const e of entries) {
+			if (e.path === target) return true;
+			if (e.children && pathExists(target, e.children)) return true;
+		}
+		return false;
+	}
+
+	function uniquePath(parent: string | null, name: string): string {
+		let candidate = joinPath(parent, name);
+		if (!pathExists(candidate, $tree)) return candidate;
+		const ext = name.endsWith('.md') ? '.md' : '';
+		const base = ext ? name.slice(0, -3) : name;
+		for (let i = 1; i < 100; i++) {
+			const nextName = `${base} (${i})${ext}`;
+			candidate = joinPath(parent, nextName);
+			if (!pathExists(candidate, $tree)) return candidate;
+		}
+		return candidate;
+	}
+
 	async function commitCreate(parent: string | null, kind: 'note' | 'folder', rawName: string) {
 		const name = sanitizeName(rawName, kind);
 		if (!name) {
 			createTarget = null;
 			return;
 		}
-		const path = joinPath(parent, name);
+		const path = uniquePath(parent, name);
 		if (kind === 'folder') {
 			if (parent) expandDir(parent);
 			await createFolder(path);
@@ -99,8 +127,11 @@
 			const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
 			const newPath = joinPath(parent, name);
 			if (newPath !== path) {
-				const ok = await renamePath(path, newPath);
-				if (ok) renameDir(path, newPath);
+				const ok = await renameNote(path, newPath);
+				if (ok) {
+					renameDir(path, newPath);
+					await syncFilenameToTitle(path, newPath);
+				}
 			}
 		}
 		renameTarget = null;
@@ -204,6 +235,10 @@
 		/>
 	</div>
 	<div class="footer">
+		<button class="footer-item" onclick={() => (trashOpen = true)}>
+			<span class="material-symbols-outlined">delete</span>
+			<span>Trash</span>
+		</button>
 		<button class="footer-item" onclick={signOut}>
 			<span class="material-symbols-outlined">logout</span>
 			<span>Sign out</span>
@@ -211,6 +246,9 @@
 	</div>
 	{#if menu}
 		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
+	{/if}
+	{#if trashOpen}
+		<TrashView onClose={() => (trashOpen = false)} onRestore={(p) => onSelect(p)} />
 	{/if}
 </aside>
 
