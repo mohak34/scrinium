@@ -18,7 +18,9 @@ export const externalContentUpdate = writable<{ path: string; content: string } 
 // Pinned notes, kept client-side (a display preference, not vault state).
 // Pinned entries sort first in the tree at every level.
 const PIN_STORAGE = 'scrinium:pinned';
+// Guarded on window so SSR never touches Node's experimental localStorage.
 function loadPinned(): string[] {
+	if (typeof window === 'undefined') return [];
 	try {
 		const raw = localStorage.getItem(PIN_STORAGE);
 		if (!raw) return [];
@@ -30,6 +32,7 @@ function loadPinned(): string[] {
 }
 export const pinnedPaths = writable<string[]>(loadPinned());
 pinnedPaths.subscribe((paths) => {
+	if (typeof window === 'undefined') return;
 	try {
 		localStorage.setItem(PIN_STORAGE, JSON.stringify(paths));
 	} catch {
@@ -228,6 +231,7 @@ export async function syncFilenameToTitle(oldPath: string, newPath: string) {
 function getNewNoteTemplate(title: string): string {
 	// Minimal default: H1 + blank line. Kept in localStorage so it can be
 	// extended via a future settings UI without changing the vault contract.
+	if (typeof window === 'undefined') return `# ${title}\n\n`;
 	try {
 		const raw = localStorage.getItem('scrinium:newNoteTemplate');
 		if (raw && typeof raw === 'string' && raw.includes('{{title}}')) {

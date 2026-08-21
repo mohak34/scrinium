@@ -21,7 +21,8 @@ export const DEFAULT_SETTINGS: Settings = {
 const STORAGE_KEY = 'scrinium:settings';
 
 function loadSettings(): Settings {
-	if (typeof localStorage === 'undefined') return DEFAULT_SETTINGS;
+	// window check (not localStorage) so SSR never even touches the global.
+	if (typeof window === 'undefined') return DEFAULT_SETTINGS;
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (!raw) return DEFAULT_SETTINGS;
