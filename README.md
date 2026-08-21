@@ -23,11 +23,16 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
 - **Plain markdown on disk** — every note is a `.md` file in `VAULT_DIR`.
 - **Live-preview editor** — the whole engine is one file
   (`src/lib/editor/livePreview.ts`): hide marks, reveal them on the active line.
+- **Title = filename** — the first `# ` heading and the note's filename stay
+  in sync; edit one and the other follows.
+- **Trash** — deletes go to `.trash/` on disk with their original path
+  recorded; restore or purge from the `/trash` page.
 - **Google OAuth sign-in** — backed by an explicit `ALLOWED_EMAILS` allowlist,
   not just "whoever has a Google account".
 - **Task checkboxes** — click to toggle `[ ]` ↔ `[x]`; on the active line the
   raw brackets come back and the caret crosses them freely.
-- **A small editor chrome** — file tree, tabs, search, command palette.
+- **A small editor chrome** — file tree, tabs, search, command palette,
+  settings page (editor prefs stay local; manage mobile API tokens there).
 - **Attachment preview** — view images in an in-app overlay.
 - **Thin by design** — one process, one small sqlite cache, no graph view, no
   backlinks, no plugin marketplace, no bloat. The architecture stays open to a
