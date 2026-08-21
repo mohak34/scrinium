@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import Sidebar from '$lib/components/Sidebar.svelte';
-	import TopBar from '$lib/components/TopBar.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
 	import CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
@@ -142,7 +141,6 @@
 		/>
 	</div>
 	<div class="main">
-		<TopBar path={$activePath} />
 		<TabBar activePath={$activePath} onActivate={openNote} />
 		<div class="editor-scroll">
 			{#if $activePath}
