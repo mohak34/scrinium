@@ -6,7 +6,16 @@
 	import TabBar from '$lib/components/TabBar.svelte';
 	import CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
-	import { activePath, loadTree, loadNote, scheduleSave, flushSave, openTab } from '$lib/stores/vault';
+	import {
+		activePath,
+		loadTree,
+		loadNote,
+		scheduleSave,
+		flushSave,
+		openTab,
+		scheduleTitleSync,
+		externalContentUpdate
+	} from '$lib/stores/vault';
 
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
@@ -32,6 +41,18 @@
 				editorRef?.setDoc(content);
 			}
 		})();
+	});
+
+	// When a file rename syncs its H1 title (filename -> title), push the
+	// new content into the editor without treating it as a user edit.
+	$effect(() => {
+		const upd = $externalContentUpdate;
+		if (!upd) return;
+		if (upd.path === $activePath) {
+			currentContent = upd.content;
+			editorRef?.setDoc(upd.content);
+			externalContentUpdate.set(null);
+		}
 	});
 
 	let collapsed = $state(false);
@@ -97,7 +118,10 @@
 	function onChange(newContent: string) {
 		currentContent = newContent;
 		const path = get(activePath);
-		if (path) scheduleSave(path, newContent);
+		if (path) {
+			scheduleSave(path, newContent);
+			scheduleTitleSync(path, newContent);
+		}
 	}
 
 	// The asset API is auth-gated; the preview <img> authenticates via the

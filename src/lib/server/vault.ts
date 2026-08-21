@@ -85,8 +85,153 @@ export async function moveToTrash(relPath: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
 	if (fullPath === VAULT_DIR || fullPath === TRASH_DIR) throw error(400, 'Invalid path');
 	await fs.mkdir(TRASH_DIR, { recursive: true });
-	const dest = path.join(TRASH_DIR, `${Date.now()}-${path.basename(fullPath)}`);
+	const trashName = `${Date.now()}-${path.basename(fullPath)}`;
+	const dest = path.join(TRASH_DIR, trashName);
 	await fs.rename(fullPath, dest);
+	// Record original location so we can restore. Index is best-effort; a missing
+	// entry just means restore falls back to vault root.
+	try {
+		const idx = await readTrashIndex();
+		let isDir = false;
+		try {
+			const st = await fs.stat(dest);
+			isDir = st.isDirectory();
+		} catch {}
+		idx[trashName] = { originalPath: relPath, deletedAt: Date.now(), isDir };
+		await writeTrashIndex(idx);
+	} catch {}
+}
+
+const TRASH_INDEX = path.join(TRASH_DIR, '.index.json');
+
+export interface TrashEntry {
+	trashName: string;
+	originalPath: string;
+	deletedAt: number;
+	isDir: boolean;
+	size?: number;
+}
+
+type TrashIndex = Record<string, { originalPath: string; deletedAt: number; isDir: boolean }>;
+
+async function readTrashIndex(): Promise<TrashIndex> {
+	try {
+		const raw = await fs.readFile(TRASH_INDEX, 'utf-8');
+		const parsed = JSON.parse(raw) as TrashIndex;
+		return parsed && typeof parsed === 'object' ? parsed : {};
+	} catch {
+		return {};
+	}
+}
+
+async function writeTrashIndex(idx: TrashIndex): Promise<void> {
+	await fs.mkdir(TRASH_DIR, { recursive: true });
+	const tmp = `${TRASH_INDEX}.tmp-${Date.now()}`;
+	await fs.writeFile(tmp, JSON.stringify(idx, null, 2), 'utf-8');
+	await fs.rename(tmp, TRASH_INDEX);
+}
+
+export async function listTrash(): Promise<TrashEntry[]> {
+	await fs.mkdir(TRASH_DIR, { recursive: true });
+	const idx = await readTrashIndex();
+	const dirents = await fs.readdir(TRASH_DIR, { withFileTypes: true }).catch(() => []);
+	const entries: TrashEntry[] = [];
+	for (const d of dirents) {
+		if (d.name === '.index.json' || d.name.startsWith('.index.json.tmp')) continue;
+		if (d.name.startsWith('.')) continue;
+		const meta = idx[d.name];
+		let size: number | undefined;
+		try {
+			const st = await fs.stat(path.join(TRASH_DIR, d.name));
+			size = st.isDirectory() ? undefined : st.size;
+		} catch {}
+		entries.push({
+			trashName: d.name,
+			originalPath: meta?.originalPath ?? d.name.replace(/^\d+-/, ''),
+			deletedAt: meta?.deletedAt ?? 0,
+			isDir: meta?.isDir ?? d.isDirectory(),
+			size
+		});
+	}
+	entries.sort((a, b) => b.deletedAt - a.deletedAt);
+	return entries;
+}
+
+export async function restoreFromTrash(trashName: string): Promise<string> {
+	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
+		throw error(400, 'Invalid trash name');
+	const src = path.join(TRASH_DIR, trashName);
+	try {
+		await fs.access(src);
+	} catch {
+		throw error(404, 'Not in trash');
+	}
+	const idx = await readTrashIndex();
+	const meta = idx[trashName];
+	const originalPath = meta?.originalPath ?? trashName.replace(/^\d+-/, '');
+	let targetRel = originalPath;
+	// If original location now exists, pick a free name instead of overwriting.
+	let targetFull = safeResolve(targetRel);
+	try {
+		await fs.access(targetFull);
+		// Find a free name like "name (1).md"
+		const dir = path.dirname(targetFull);
+		const ext = path.extname(targetFull);
+		const base = path.basename(targetFull, ext);
+		for (let i = 1; i < 100; i++) {
+			const candBase = `${base} (${i})${ext}`;
+			const candRel = targetRel.includes('/')
+				? `${targetRel.slice(0, targetRel.lastIndexOf('/'))}/${candBase}`
+				: candBase;
+			const candFull = safeResolve(candRel);
+			try {
+				await fs.access(candFull);
+				continue;
+			} catch (e: unknown) {
+				if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+					targetRel = candRel;
+					targetFull = candFull;
+					break;
+				}
+				throw e;
+			}
+		}
+	} catch (e: unknown) {
+		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+	}
+	await fs.mkdir(path.dirname(targetFull), { recursive: true });
+	await fs.rename(src, targetFull);
+	delete idx[trashName];
+	try {
+		await writeTrashIndex(idx);
+	} catch {}
+	return targetRel;
+}
+
+export async function purgeFromTrash(trashName: string): Promise<void> {
+	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
+		throw error(400, 'Invalid trash name');
+	const full = path.join(TRASH_DIR, trashName);
+	// Ensure the path stays inside TRASH_DIR
+	const resolved = path.resolve(full);
+	if (resolved !== TRASH_DIR && !resolved.startsWith(TRASH_DIR + path.sep)) throw error(400, 'Invalid path');
+	try {
+		await fs.rm(full, { recursive: true, force: true });
+	} catch {}
+	const idx = await readTrashIndex();
+	if (trashName in idx) {
+		delete idx[trashName];
+		try {
+			await writeTrashIndex(idx);
+		} catch {}
+	}
+}
+
+export async function emptyTrash(): Promise<void> {
+	const entries = await listTrash();
+	for (const e of entries) {
+		await purgeFromTrash(e.trashName);
+	}
 }
 
 export interface NoteManifestEntry {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { searchNotes, type SearchResult } from '$lib/stores/vault';
-	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
+	import { createRequest, focusSearchRequest, openTrashRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
 
 	interface Props {
@@ -40,6 +40,11 @@
 			label: 'Toggle sidebar',
 			hint: 'Collapse or expand the sidebar',
 			run: () => onToggleSidebar()
+		},
+		{
+			label: 'Open trash',
+			hint: 'View and restore deleted notes',
+			run: () => openTrashRequest.update((n) => n + 1)
 		},
 		{ label: 'Sign out', hint: 'End this session', run: () => signOut() },
 		{
