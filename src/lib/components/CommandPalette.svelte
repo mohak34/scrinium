@@ -47,6 +47,11 @@
 			hint: 'View and restore deleted notes',
 			run: () => goto('/trash')
 		},
+		{
+			label: 'Open settings',
+			hint: 'Configure editor and account',
+			run: () => goto('/settings')
+		},
 		{ label: 'Sign out', hint: 'End this session', run: () => signOut() },
 		{
 			label: 'Bold',
