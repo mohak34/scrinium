@@ -1,7 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { trashEntries, loadTrash, restoreTrash, purgeTrash, emptyTrash } from '$lib/stores/vault';
+	import {
+		trashEntries,
+		loadTrash,
+		restoreTrash,
+		purgeTrash,
+		emptyTrash,
+		type TrashEntry
+	} from '$lib/stores/vault';
 
 	let busy = $state<string | null>(null);
 
@@ -14,16 +21,49 @@
 		return () => window.removeEventListener('keydown', key);
 	});
 
-	function formatDate(ms: number) {
-		if (!ms) return '—';
+	type GroupKey = 'today' | 'yesterday' | 'week' | 'older';
+
+	const GROUP_ORDER: { key: GroupKey; label: string }[] = [
+		{ key: 'today', label: 'Today' },
+		{ key: 'yesterday', label: 'Yesterday' },
+		{ key: 'week', label: 'Previous 7 days' },
+		{ key: 'older', label: 'Older' }
+	];
+
+	function groupOf(deletedAt: number): GroupKey {
+		if (!deletedAt) return 'older';
+		const now = new Date();
+		const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+		const day = 24 * 60 * 60 * 1000;
+		if (deletedAt >= startOfToday) return 'today';
+		if (deletedAt >= startOfToday - day) return 'yesterday';
+		if (deletedAt >= startOfToday - 7 * day) return 'week';
+		return 'older';
+	}
+
+	function timeLabel(entry: TrashEntry): string {
+		if (!entry.deletedAt) return '—';
 		try {
-			return new Date(ms).toLocaleString();
+			const d = new Date(entry.deletedAt);
+			const g = groupOf(entry.deletedAt);
+			if (g === 'today' || g === 'yesterday') {
+				return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+			}
+			return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 		} catch {
-			return String(ms);
+			return String(entry.deletedAt);
 		}
 	}
 
-	async function handleRestore(entry: { trashName: string }) {
+	const groups = $derived.by(() => {
+		const sorted = [...$trashEntries].sort((a, b) => b.deletedAt - a.deletedAt);
+		return GROUP_ORDER.map((g) => ({
+			...g,
+			entries: sorted.filter((e) => groupOf(e.deletedAt) === g.key)
+		})).filter((g) => g.entries.length > 0);
+	});
+
+	async function handleRestore(entry: TrashEntry) {
 		busy = entry.trashName;
 		try {
 			const restored = await restoreTrash(entry.trashName);
@@ -33,8 +73,8 @@
 		}
 	}
 
-	async function handlePurge(entry: { trashName: string }) {
-		if (!confirm('Permanently delete this item?')) return;
+	async function handlePurge(entry: TrashEntry) {
+		if (!confirm(`Permanently delete "${entry.originalPath}"?`)) return;
 		busy = entry.trashName;
 		try {
 			await purgeTrash(entry.trashName);
@@ -61,46 +101,57 @@
 				<span class="material-symbols-outlined">arrow_back</span>
 			</button>
 			<span class="title">Trash</span>
-			<span class="count">{$trashEntries.length}</span>
 		</div>
-		<div class="right">
-			<button class="btn" disabled={!$trashEntries.length || busy === '__empty'} onclick={handleEmpty}>
-				{busy === '__empty' ? 'Emptying…' : 'Empty trash'}
-			</button>
-		</div>
+		<button class="btn" disabled={!$trashEntries.length || busy === '__empty'} onclick={handleEmpty}>
+			{busy === '__empty' ? 'Emptying…' : 'Empty trash'}
+		</button>
 	</header>
 
 	<div class="scroll">
 		<div class="content">
 			{#if $trashEntries.length === 0}
-				<div class="empty">Trash is empty. Deleted notes and folders will appear here.</div>
+				<div class="empty">Trash is empty.</div>
 			{:else}
-				<div class="hint">Deleted items are kept in <code>.trash</code> until you empty them.</div>
-				<div class="list">
-					{#each $trashEntries as entry (entry.trashName)}
-						<div class="row">
-							<div class="meta">
-								<span class="name" title={entry.originalPath}>
-									<span class="material-symbols-outlined row-icon">{entry.isDir ? 'folder' : 'description'}</span>
-									{entry.originalPath}
-								</span>
-								<span class="hint">
-									deleted {formatDate(entry.deletedAt)}
-									{#if entry.size !== undefined} · {entry.size} bytes{/if}
-								</span>
-								<span class="trash-name mono">{entry.trashName}</span>
-							</div>
-							<div class="actions">
-								<button class="btn" disabled={busy !== null} onclick={() => handleRestore(entry)}>
-									{busy === entry.trashName ? '…' : 'Restore'}
-								</button>
-								<button class="btn danger" disabled={busy !== null} onclick={() => handlePurge(entry)}>
-									Delete
-								</button>
-							</div>
+				{#each groups as group (group.key)}
+					<section class="group">
+						<div class="ghead">
+							<span class="glabel">{group.label}</span>
+							<span class="gcount">{group.entries.length}</span>
 						</div>
-					{/each}
-				</div>
+						{#each group.entries as entry (entry.trashName)}
+							<div class="row">
+								<span class="material-symbols-outlined row-icon">{entry.isDir ? 'folder' : 'description'}</span>
+								<span class="meta" title={entry.originalPath}>
+									<span class="n">{entry.originalPath.split('/').pop()}</span>
+									<span class="p">
+										{entry.originalPath.includes('/')
+											? entry.originalPath.slice(0, entry.originalPath.lastIndexOf('/'))
+											: '(vault root)'}
+									</span>
+								</span>
+								<span class="when">{timeLabel(entry)}</span>
+								<span class="acts">
+									<button
+										class="abtn"
+										title="Restore"
+										disabled={busy !== null}
+										onclick={() => handleRestore(entry)}
+									>
+										<span class="material-symbols-outlined">undo</span>
+									</button>
+									<button
+										class="abtn del"
+										title="Delete forever"
+										disabled={busy !== null}
+										onclick={() => handlePurge(entry)}
+									>
+										<span class="material-symbols-outlined">delete_forever</span>
+									</button>
+								</span>
+							</div>
+						{/each}
+					</section>
+				{/each}
 			{/if}
 		</div>
 	</div>
@@ -132,24 +183,12 @@
 		gap: var(--stack-gap);
 		min-width: 0;
 	}
-	.right {
-		display: flex;
-		align-items: center;
-		gap: var(--stack-gap);
-	}
 	.title {
 		font-size: var(--font-editor-title-size);
 		line-height: var(--font-editor-title-lh);
 		font-weight: var(--font-editor-title-weight);
 		letter-spacing: var(--font-editor-title-tracking);
 		color: var(--on-surface);
-	}
-	.count {
-		background: var(--surface-container-high);
-		color: var(--on-surface-variant);
-		font-size: var(--font-ui-micro);
-		padding: 2px 6px;
-		border-radius: var(--radius-full);
 	}
 	.icon-btn {
 		display: flex;
@@ -162,6 +201,7 @@
 		background: none;
 		color: var(--on-surface-variant);
 		cursor: pointer;
+		padding: 0;
 	}
 	.icon-btn:hover {
 		background: var(--surface-container-low);
@@ -187,28 +227,16 @@
 		opacity: 0.5;
 		cursor: default;
 	}
-	.btn.danger {
-		color: var(--error);
-	}
-	.btn.danger:hover:not(:disabled) {
-		background: var(--error-container);
-		color: var(--on-error-container);
-	}
 	.scroll {
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
 	}
 	.content {
-		max-width: var(--editor-max-width);
+		max-width: 640px;
 		margin: 0 auto;
 		width: 100%;
 		padding: 20px var(--gutter) 48px;
-	}
-	.hint {
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-		margin-bottom: 12px;
 	}
 	.empty {
 		padding: 32px 0;
@@ -216,60 +244,111 @@
 		color: var(--outline);
 		font-size: var(--font-ui-small);
 	}
-	.list {
+	.group {
+		margin-bottom: 26px;
+	}
+	.ghead {
 		display: flex;
-		flex-direction: column;
-		gap: 4px;
+		align-items: baseline;
+		gap: var(--stack-gap);
+		padding-bottom: 6px;
+		border-bottom: 1px solid var(--border-default);
+	}
+	.glabel {
+		font-size: var(--font-label-caps);
+		line-height: var(--font-label-caps-lh);
+		font-weight: var(--font-label-caps-weight);
+		letter-spacing: var(--label-caps-spacing);
+		text-transform: uppercase;
+		color: var(--outline);
+	}
+	.gcount {
+		font-size: var(--font-label-caps);
+		color: var(--outline-variant);
 	}
 	.row {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 12px;
-		border: 1px solid var(--border-default);
+		gap: 10px;
+		padding: 9px 6px;
 		border-radius: var(--radius);
-		background: var(--surface-container);
+		border-bottom: 1px solid var(--border-default);
+	}
+	.row:last-child {
+		border-bottom: none;
 	}
 	.row:hover {
-		border-color: var(--border-raised);
+		background: var(--surface-container-low);
+	}
+	.row-icon {
+		flex-shrink: 0;
+		font-size: 16px;
+		color: var(--outline);
+		opacity: 0.7;
 	}
 	.meta {
+		min-width: 0;
+		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
+		gap: 1px;
 	}
-	.name {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--font-ui-small);
+	.n {
 		color: var(--on-surface);
+		font-size: var(--font-ui-small);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.row-icon {
-		font-size: 16px;
-		color: var(--outline);
+	.p {
+		color: var(--outline-variant);
+		font-size: var(--font-ui-micro);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
-	.trash-name.mono {
-		font-family: var(--font-mono);
-		font-size: 10px;
-		color: var(--outline);
-		opacity: 0.7;
+	.when {
+		color: var(--dim, var(--outline));
+		font-size: var(--font-ui-micro);
+		flex-shrink: 0;
+		font-variant-numeric: tabular-nums;
 	}
-	.actions {
-		display: flex;
-		gap: 6px;
+	.acts {
+		display: none;
+		gap: 2px;
 		flex-shrink: 0;
 	}
-	code {
-		font-family: var(--font-mono);
-		font-size: 0.92em;
+	.row:hover .acts {
+		display: flex;
+	}
+	.row:hover .when {
+		display: none;
+	}
+	.abtn {
+		width: 24px;
+		height: 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: none;
+		background: none;
+		color: var(--on-surface-variant);
+		border-radius: var(--radius);
+		cursor: pointer;
+		padding: 0;
+	}
+	.abtn .material-symbols-outlined {
+		font-size: 16px;
+	}
+	.abtn:hover:not(:disabled) {
 		background: var(--surface-container-high);
-		padding: 0.1em 0.3em;
-		border-radius: 4px;
+		color: var(--primary);
+	}
+	.abtn.del:hover:not(:disabled) {
+		color: var(--error);
+	}
+	.abtn:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 </style>
