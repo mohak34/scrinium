@@ -5,8 +5,6 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 const config = {
 	preprocess: vitePreprocess(),
 	kit: {
-		// adapter-node (not adapter-static!) on purpose - `deno desktop` needs
-		// a real server entry point to detect and wrap later. See README.
 		adapter: adapter(),
 		csrf: {
 			// Native mobile client sends no Origin header; the API is otherwise

@@ -144,7 +144,7 @@ State channels you will touch:
   tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,
   settings.ts (editor prefs persisted to localStorage).
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
-  Sidebar, TabBar, TopBar.
+  Sidebar, TabBar.
 - `src/routes/` — `/` (+page.svelte shell), `/login`, `/settings` (account +
   mobile tokens + editor prefs), `/trash` (grouped restore/purge page),
   api/{auth,notes,tree,search,assets,attachments,tokens,trash}. Mobile-only
