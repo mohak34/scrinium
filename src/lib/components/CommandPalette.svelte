@@ -110,6 +110,13 @@
 	let inputEl = $state<HTMLInputElement>();
 	let listEl = $state<HTMLDivElement>();
 
+	// Recents turn Cmd+K into a launcher: the server returns recently edited
+	// notes for a blank query, so the palette opens on your notes first.
+	let recents = $state<SearchResult[]>([]);
+	$effect(() => {
+		void searchNotes('').then((r) => (recents = r));
+	});
+
 	$effect(() => {
 		inputEl?.focus();
 	});
@@ -147,10 +154,19 @@
 		);
 	});
 
-	const items = $derived<PaletteItem[]>([
-		...filteredCommands().map((c): PaletteItem => ({ kind: 'command', item: c })),
-		...results.map((r): PaletteItem => ({ kind: 'note', item: r }))
-	]);
+	const queryEmpty = $derived(query.trim().length === 0);
+
+	const items = $derived<PaletteItem[]>(
+		queryEmpty
+			? [
+					...recents.map((r): PaletteItem => ({ kind: 'note', item: r })),
+					...commands.map((c): PaletteItem => ({ kind: 'command', item: c }))
+				]
+			: [
+					...filteredCommands().map((c): PaletteItem => ({ kind: 'command', item: c })),
+					...results.map((r): PaletteItem => ({ kind: 'note', item: r }))
+				]
+	);
 
 	$effect(() => {
 		if (selected >= items.length) selected = 0;
