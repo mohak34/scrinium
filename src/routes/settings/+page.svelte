@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { settings } from '$lib/stores/settings';
+	import { settings, type AttachmentLocation } from '$lib/stores/settings';
 	import { signOut } from '$lib/auth-client';
 
 	let sessionEmail = $state<string | null>(null);
@@ -112,8 +112,19 @@
 	}
 
 	function resetSettings() {
-		if (!confirm('Reset editor settings to defaults?')) return;
+		if (!confirm('Reset all settings to defaults?')) return;
 		settings.reset();
+	}
+
+	function setAttachmentLocation(loc: AttachmentLocation) {
+		settings.update((s) => ({ ...s, attachments: { ...s.attachments, location: loc } }));
+	}
+
+	function setAttachmentFolder(v: string) {
+		settings.update((s) => ({
+			...s,
+			attachments: { ...s.attachments, folder: v.split('/').map((p) => p.trim()).filter(Boolean).join('/') }
+		}));
 	}
 
 	function formatDate(ms: number) {
@@ -133,6 +144,32 @@
 	}
 
 	const editorSettings = $derived($settings.editor);
+	const attachmentSettings = $derived($settings.attachments);
+
+	const ATTACHMENT_OPTIONS: { value: AttachmentLocation; label: string; hint: string }[] = [
+		{
+			value: 'vault',
+			label: 'attachments/ folder',
+			hint: 'Everything lands in a single attachments folder in the vault root.'
+		},
+		{
+			value: 'note',
+			label: 'Same folder as current note',
+			hint: 'Pastes sit next to the note you are editing.'
+		},
+		{
+			value: 'subfolder',
+			label: 'Subfolder under current note',
+			hint: 'An assets folder next to the note, e.g. projects/site/assets/.'
+		},
+		{ value: 'root', label: 'Vault root', hint: 'Files land at the top level of the vault.' },
+		{
+			value: 'custom',
+			label: 'Custom folder in vault root',
+			hint: 'One fixed folder of your choosing.'
+		}
+	];
+
 </script>
 
 <div class="page">
@@ -211,6 +248,47 @@
 						</div>
 						<button class="btn" onclick={resetSettings}>Reset</button>
 					</div>
+				</div>
+			</section>
+
+			<section>
+				<h2>Attachments</h2>
+				<p class="section-hint">Where pasted images are stored. Applies to new pastes only; existing files stay where they are.</p>
+				<div class="rows">
+					{#each ATTACHMENT_OPTIONS as opt (opt.value)}
+						<label class="row radio-row">
+							<input
+								type="radio"
+								name="attachment-location"
+								value={opt.value}
+								checked={attachmentSettings.location === opt.value}
+								onchange={() => setAttachmentLocation(opt.value)}
+							/>
+							<span class="radio-ui"></span>
+							<span class="row-text grow">
+								<span class="label">{opt.label}</span>
+								<span class="hint">{opt.hint}</span>
+							</span>
+						</label>
+						{#if opt.value === 'custom' && attachmentSettings.location === 'custom'}
+							<div class="row">
+								<div class="row-text">
+									<span class="label">Folder</span>
+									<span class="hint">
+										Vault-relative path, e.g.
+										{attachmentSettings.folder ? attachmentSettings.folder : 'images'}
+									</span>
+								</div>
+								<input
+									class="text-input mono"
+									value={attachmentSettings.folder}
+									placeholder="attachments"
+									spellcheck="false"
+									onchange={(e) => setAttachmentFolder((e.target as HTMLInputElement).value)}
+								/>
+							</div>
+						{/if}
+					{/each}
 				</div>
 			</section>
 
@@ -464,7 +542,8 @@
 		width: 140px;
 		accent-color: var(--primary);
 	}
-	input[type='checkbox'] {
+	input[type='checkbox'],
+	input[type='radio'] {
 		display: none;
 	}
 	.switch {
@@ -493,6 +572,53 @@
 	input:checked + .switch::after {
 		transform: translateX(14px);
 		background: var(--on-primary);
+	}
+	.radio-row {
+		cursor: pointer;
+		user-select: none;
+	}
+	.radio-ui {
+		width: 16px;
+		height: 16px;
+		border-radius: var(--radius-full);
+		border: 1.5px solid var(--outline-variant);
+		flex-shrink: 0;
+		position: relative;
+		margin-top: 2px;
+		transition: border-color 0.15s ease;
+	}
+	.radio-ui::after {
+		content: '';
+		position: absolute;
+		inset: 3px;
+		border-radius: 50%;
+		background: var(--primary);
+		transform: scale(0);
+		transition: transform 0.15s ease;
+	}
+	input:checked + .radio-ui {
+		border-color: var(--primary);
+	}
+	input:checked + .radio-ui::after {
+		transform: scale(1);
+	}
+	.row-text.grow {
+		flex: 1;
+	}
+	.text-input {
+		height: 28px;
+		padding: 0 8px;
+		background: var(--background);
+		border: 1px solid var(--border-default);
+		border-radius: var(--radius);
+		color: var(--on-surface);
+		font-size: var(--font-ui-small);
+		outline: none;
+		width: 180px;
+		flex-shrink: 0;
+	}
+	.text-input:focus {
+		border-color: var(--primary);
 	}
 	.btn {
 		display: inline-flex;
