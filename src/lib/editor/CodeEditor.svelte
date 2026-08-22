@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
-	import { EditorState, Compartment } from '@codemirror/state';
+	import { Compartment } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';

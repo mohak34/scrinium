@@ -28,10 +28,6 @@ export function safeResolve(relPath: string): string {
 	return resolved;
 }
 
-export async function ensureVaultExists() {
-	await fs.mkdir(VAULT_DIR, { recursive: true });
-}
-
 export async function readNote(relPath: string): Promise<string> {
 	const fullPath = safeResolve(relPath);
 	try {

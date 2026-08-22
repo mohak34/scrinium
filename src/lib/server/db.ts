@@ -41,10 +41,6 @@ export function upsertNoteMeta(relPath: string, title: string, updatedAt: number
 	).run(relPath, title, updatedAt);
 }
 
-export function deleteNoteMeta(relPath: string) {
-	db.prepare(`DELETE FROM note_meta WHERE path = ?`).run(relPath);
-}
-
 export function deleteNoteMetaByPrefix(relPath: string) {
 	db.prepare(`DELETE FROM note_meta WHERE path = ? OR path LIKE ?`).run(relPath, `${relPath}/%`);
 }
@@ -59,17 +55,9 @@ export function renameNoteMeta(oldPath: string, newPath: string) {
 	}
 }
 
-export function listNoteMeta() {
-	return db.prepare(`SELECT path, title, updated_at FROM note_meta ORDER BY updated_at DESC`).all();
-}
-
 export function indexNote(relPath: string, title: string, body: string) {
 	db.prepare(`DELETE FROM note_fts WHERE path = ?`).run(relPath);
 	db.prepare(`INSERT INTO note_fts (path, title, body) VALUES (?, ?, ?)`).run(relPath, title, body);
-}
-
-export function deleteNoteIndex(relPath: string) {
-	db.prepare(`DELETE FROM note_fts WHERE path = ?`).run(relPath);
 }
 
 export function deleteNoteIndexByPrefix(relPath: string) {

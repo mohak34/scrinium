@@ -77,7 +77,7 @@ bunx @better-auth/cli migrate
 
 Scrinium is a single Node process tucked behind a reverse proxy. The included
 `deploy/` folder has a Caddyfile, a systemd unit, and a backup script; the full
-Oracle-VPS runbook lives in [DEPLOY.md](DEPLOY.md). The short version:
+Oracle-VPS runbook lives in `DEPLOY.md` (kept local, not tracked). The short version:
 
 ```bash
 bun run build                       # adapter-node -> build/
@@ -109,13 +109,12 @@ scrinium.yourdomain.com {
 }
 ```
 
-Caddy issues Let's Encrypt TLS automatically. See
-[DEPLOY.md](DEPLOY.md) for the DNS, firewall, and backup details.
+`DEPLOY.md` (local, gitignored) has the DNS, firewall, and backup details.
 
 ## Reading list
 
 - `AGENTS.md` — how the live-preview engine works and the rules that keep it
   maintainable. Read it before touching the editor.
 - `src/lib/editor/livePreview.ts` — the entire decoration engine, one file.
-- `DESIGN.md` / `DESIGN_CODE.md` — theme spec + a design mock.
-- `DEPLOY.md` — production deployment runbook.
+- `DESIGN.md` / `DESIGN_CODE.md` / `DEPLOY.md` — local-only docs, gitignored
+  (theme spec, design mock, production runbook). Not in the repo.

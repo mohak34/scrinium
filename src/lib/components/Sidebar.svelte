@@ -20,8 +20,7 @@
 		dragPath,
 		dragKind,
 		dropRoot,
-		canDrop,
-		clearDragState
+		canDrop
 	} from '$lib/stores/filetree';
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest } from '$lib/stores/actions';

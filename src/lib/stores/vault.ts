@@ -294,11 +294,6 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 	return res.ok;
 }
 
-// Legacy alias kept for callers not yet migrated to renameNote.
-export async function renamePath(oldPath: string, newPath: string): Promise<boolean> {
-	return renameNote(oldPath, newPath);
-}
-
 export async function deletePath(path: string) {
 	await fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' });
 	await loadTree();

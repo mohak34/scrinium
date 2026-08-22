@@ -15,9 +15,10 @@ User=scrinium
 WorkingDirectory=/opt/scrinium/app
 EnvironmentFile=/opt/scrinium/app/.env
 Environment=PORT=3000
-ExecStart=/usr/bin/node /opt/scrinium/app/build/index.js
-Restart=always
-RestartSec=3
+ExecStart=/usr/bin/node build/index.js
+Restart=on-failure
+RestartSec=5
+MemoryMax=500M
 
 [Install]
 WantedBy=multi-user.target
