@@ -4,7 +4,7 @@
 	import { EditorState, Compartment } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-	import { settings } from '$lib/stores/settings';
+	import { settings, attachmentDirFor } from '$lib/stores/settings';
 	import {
 	openSearchPanel,
 	replaceNext,
@@ -79,6 +79,11 @@
 	async function uploadImage(file: File): Promise<string | null> {
 		const form = new FormData();
 		form.append('file', file);
+		// Resolve where this attachment should land from the user's settings and
+		// the current note's folder; the server re-validates the path.
+		const noteDir = notePath ? notePath.split('/').slice(0, -1).join('/') || null : null;
+		const folder = attachmentDirFor(noteDir, get(settings).attachments);
+		if (folder) form.append('folder', folder);
 		try {
 			const res = await fetch('/api/attachments', { method: 'POST', body: form });
 			if (!res.ok) return null;
