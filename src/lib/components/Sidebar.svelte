@@ -34,6 +34,7 @@
 	let { onSelect, onOpenAsset }: Props = $props();
 
 	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
+	let addMenu = $state<{ x: number; y: number } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ path: string } | null>(null);
 
@@ -200,8 +201,8 @@
 		<span class="brand">Scrinium</span>
 		<button
 			class="icon-btn"
-			onclick={() => (createTarget = { parent: null, kind: 'note' })}
-			title="New note"
+			onclick={(e) => (addMenu = { x: e.clientX, y: e.clientY })}
+			title="New note or folder"
 		>
 			<span class="material-symbols-outlined">add</span>
 		</button>
@@ -245,6 +246,17 @@
 	</div>
 	{#if menu}
 		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
+	{/if}
+	{#if addMenu}
+		<ContextMenu
+			x={addMenu.x}
+			y={addMenu.y}
+			items={[
+				{ label: 'New note', action: () => (createTarget = { parent: null, kind: 'note' }) },
+				{ label: 'New folder', action: () => (createTarget = { parent: null, kind: 'folder' }) }
+			]}
+			onClose={() => (addMenu = null)}
+		/>
 	{/if}
 </aside>
 
