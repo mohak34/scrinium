@@ -76,6 +76,17 @@
 		view.dispatch({ effects: noteDirEffect.of(dir) });
 	});
 
+	// Markdown image links are note-relative (livePreview resolves them against
+	// the note's folder); the upload API returns vault-relative paths. Convert
+	// so nested notes don't get doubled paths.
+	function noteRelative(notePath: string, vaultRel: string): string {
+		const from = notePath.split('/').slice(0, -1).filter(Boolean);
+		const to = vaultRel.split('/').filter(Boolean);
+		let i = 0;
+		while (i < from.length && i < to.length && from[i] === to[i]) i++;
+		return [...from.slice(i).map(() => '..'), ...to.slice(i)].join('/') || vaultRel;
+	}
+
 	async function uploadImage(file: File): Promise<string | null> {
 		const form = new FormData();
 		form.append('file', file);
@@ -99,8 +110,9 @@
 	async function insertImages(view: EditorView, files: File[]) {
 		let insert = '';
 		for (const file of files) {
-			const rel = await uploadImage(file);
-			if (!rel) continue;
+			const vaultRel = await uploadImage(file);
+			if (!vaultRel) continue;
+			const rel = notePath ? noteRelative(notePath, vaultRel) : vaultRel;
 			const name = file.name.replace(/\.[^.]+$/, '') || 'image';
 			insert += `![${name}](${rel})\n`;
 		}
