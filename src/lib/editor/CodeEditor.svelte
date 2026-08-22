@@ -24,7 +24,9 @@
 	let { value, onChange, notePath }: Props = $props();
 
 	let container: HTMLDivElement;
-	let view: EditorView | undefined;
+	// $state so $effect blocks that read view (noteDir dispatch, doc sync)
+	// re-run once onMount assigns it - plain let silently skipped them.
+	let view = $state<EditorView | undefined>(undefined);
 	let suppressChange = false;
 
 	// Compartments so settings (font size, gutters, wrapping) can be reconfigured
