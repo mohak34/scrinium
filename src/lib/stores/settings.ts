@@ -16,6 +16,9 @@ export type AttachmentLocation = 'vault' | 'note' | 'subfolder' | 'root' | 'cust
 
 export interface AttachmentSettings {
 	location: AttachmentLocation;
+	// Folder name used by the 'vault' and 'subfolder' locations.
+	// Default 'attachments'; users can override.
+	name: string;
 	folder: string; // only used when location === 'custom'
 }
 
@@ -32,12 +35,12 @@ export const DEFAULT_SETTINGS: Settings = {
 	},
 	attachments: {
 		location: 'vault',
+		name: 'attachments',
 		folder: ''
 	}
 };
 
 const STORAGE_KEY = 'scrinium:settings';
-export const SUBFOLDER_NAME = 'assets';
 
 function loadAttachmentLocation(v: unknown): AttachmentLocation {
 	return v === 'note' || v === 'subfolder' || v === 'root' || v === 'custom'
@@ -51,6 +54,16 @@ function loadCustomFolder(v: unknown): string {
 	const segs = v.split('/').filter(Boolean);
 	if (!segs.length || segs.some((s) => s.startsWith('.') || /[\\:*?"<>|]/.test(s))) return '';
 	return segs.join('/');
+}
+
+// Single-segment name for the attachments folder; falls back to the default.
+function loadFolderName(v: unknown): string {
+	if (typeof v !== 'string') return DEFAULT_SETTINGS.attachments.name;
+	const name = v.trim();
+	if (!name || name.startsWith('.') || /[\\/:*?"<>|]/.test(name)) {
+		return DEFAULT_SETTINGS.attachments.name;
+	}
+	return name;
 }
 
 function loadSettings(): Settings {
@@ -79,6 +92,7 @@ function loadSettings(): Settings {
 			},
 			attachments: {
 				location: loadAttachmentLocation(parsed.attachments?.location),
+				name: loadFolderName(parsed.attachments?.name),
 				folder: loadCustomFolder(parsed.attachments?.folder)
 			}
 		};
@@ -93,6 +107,7 @@ export function attachmentDirFor(
 	noteDir: string | null,
 	att: AttachmentSettings
 ): string {
+	const name = att.name || DEFAULT_SETTINGS.attachments.name;
 	switch (att.location) {
 		case 'root':
 			return '';
@@ -101,10 +116,10 @@ export function attachmentDirFor(
 		case 'note':
 			return noteDir ?? '';
 		case 'subfolder':
-			return noteDir ? `${noteDir}/${SUBFOLDER_NAME}` : SUBFOLDER_NAME;
+			return noteDir ? `${noteDir}/${name}` : name;
 		case 'vault':
 		default:
-			return 'attachments';
+			return name;
 	}
 }
 
