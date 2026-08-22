@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { settings, type AttachmentLocation } from '$lib/stores/settings';
+	import { settings, DEFAULT_SETTINGS, type AttachmentLocation } from '$lib/stores/settings';
 	import { signOut } from '$lib/auth-client';
 
 	let sessionEmail = $state<string | null>(null);
@@ -127,6 +127,13 @@
 		}));
 	}
 
+	function setAttachmentName(v: string) {
+		settings.update((s) => ({
+			...s,
+			attachments: { ...s.attachments, name: v.trim() || DEFAULT_SETTINGS.attachments.name }
+		}));
+	}
+
 	function formatDate(ms: number) {
 		try {
 			return new Date(ms).toLocaleString();
@@ -149,8 +156,8 @@
 	const ATTACHMENT_OPTIONS: { value: AttachmentLocation; label: string; hint: string }[] = [
 		{
 			value: 'vault',
-			label: 'attachments/ folder',
-			hint: 'Everything lands in a single attachments folder in the vault root.'
+			label: 'Fixed folder in vault root',
+			hint: 'Everything lands in one folder at the top level. Name it below.'
 		},
 		{
 			value: 'note',
@@ -160,13 +167,13 @@
 		{
 			value: 'subfolder',
 			label: 'Subfolder under current note',
-			hint: 'An assets folder next to the note, e.g. projects/site/assets/.'
+			hint: 'A named subfolder next to the note, e.g. projects/site/<name>/.'
 		},
 		{ value: 'root', label: 'Vault root', hint: 'Files land at the top level of the vault.' },
 		{
 			value: 'custom',
-			label: 'Custom folder in vault root',
-			hint: 'One fixed folder of your choosing.'
+			label: 'Custom folder path',
+			hint: 'Any vault-relative path, e.g. media/pasted.'
 		}
 	];
 
@@ -270,19 +277,49 @@
 								<span class="hint">{opt.hint}</span>
 							</span>
 						</label>
+						{#if opt.value === 'vault' && attachmentSettings.location === 'vault'}
+							<div class="row">
+								<div class="row-text">
+									<span class="label">Folder name</span>
+									<span class="hint">Default is "attachments".</span>
+								</div>
+								<input
+									class="text-input mono"
+									value={attachmentSettings.name}
+									placeholder={DEFAULT_SETTINGS.attachments.name}
+									spellcheck="false"
+									onchange={(e) => setAttachmentName((e.target as HTMLInputElement).value)}
+								/>
+							</div>
+						{/if}
+						{#if opt.value === 'subfolder' && attachmentSettings.location === 'subfolder'}
+							<div class="row">
+								<div class="row-text">
+									<span class="label">Subfolder name</span>
+									<span class="hint">Default is "assets".</span>
+								</div>
+								<input
+									class="text-input mono"
+									value={attachmentSettings.name}
+									placeholder={DEFAULT_SETTINGS.attachments.name}
+									spellcheck="false"
+									onchange={(e) => setAttachmentName((e.target as HTMLInputElement).value)}
+								/>
+							</div>
+						{/if}
 						{#if opt.value === 'custom' && attachmentSettings.location === 'custom'}
 							<div class="row">
 								<div class="row-text">
-									<span class="label">Folder</span>
+									<span class="label">Path</span>
 									<span class="hint">
 										Vault-relative path, e.g.
-										{attachmentSettings.folder ? attachmentSettings.folder : 'images'}
+										{attachmentSettings.folder ? attachmentSettings.folder : 'media/pasted'}
 									</span>
 								</div>
 								<input
 									class="text-input mono"
 									value={attachmentSettings.folder}
-									placeholder="attachments"
+									placeholder="media/pasted"
 									spellcheck="false"
 									onchange={(e) => setAttachmentFolder((e.target as HTMLInputElement).value)}
 								/>
