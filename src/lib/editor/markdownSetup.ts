@@ -1,6 +1,41 @@
 import { markdown, markdownLanguage as gfm } from '@codemirror/lang-markdown';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
+import { tags as t } from '@lezer/highlight';
 import { EditorView } from '@codemirror/view';
+
+// Dark-tuned code colors (OneDark-like) for fenced blocks on
+// var(--surface-container) bg. Replaces defaultHighlightStyle which
+// is built for light backgrounds.
+export const codeTheme = HighlightStyle.define([
+	{ tag: t.keyword, color: '#c678dd' },
+	{ tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: '#e06c75' },
+	{ tag: [t.function(t.variableName), t.labelName], color: '#61afef' },
+	{ tag: [t.color, t.constant(t.name), t.standard(t.name)], color: '#d19a66' },
+	{
+		tag: [t.definition(t.name), t.separator],
+		color: '#e3e1e9'
+	},
+	{
+		tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace],
+		color: '#e5c07b'
+	},
+	{
+		tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)],
+		color: '#56b6c2'
+	},
+	{ tag: [t.meta, t.comment], color: '#7f848e', fontStyle: 'italic' },
+	{ tag: t.strong, fontWeight: 'bold' },
+	{ tag: t.emphasis, fontStyle: 'italic' },
+	{ tag: t.strikethrough, textDecoration: 'line-through' },
+	{ tag: t.link, color: '#b5c4ff', textDecoration: 'underline' },
+	{ tag: t.heading, fontWeight: 'bold', color: '#e3e1e9' },
+	{ tag: [t.atom, t.bool, t.special(t.variableName)], color: '#d19a66' },
+	{ tag: [t.processingInstruction, t.string, t.inserted], color: '#98c379' },
+	{ tag: t.invalid, color: '#ffffff' }
+]);
+
+export const codeHighlight = syntaxHighlighting(codeTheme);
 
 // Base visual theme. Kept deliberately plain - no syntax-highlighting
 // rainbow soup, just enough contrast to read comfortably.
