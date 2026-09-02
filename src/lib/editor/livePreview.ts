@@ -31,6 +31,8 @@ import {
 	type DecorationSet,
 	type ViewUpdate
 } from '@codemirror/view';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
 // regardless of where the cursor is. Entered with Escape, exited by clicking
@@ -171,6 +173,40 @@ class ImageWidget extends WidgetType {
 	}
 }
 
+// Inline `$...$` only (single line). Block math lives in mathBlock.ts as a
+// StateField so multi-line replaces do not corrupt the ViewPlugin layout.
+const katexCache = new Map<string, string>();
+function renderInlineMath(content: string): string {
+	const key = content;
+	const hit = katexCache.get(key);
+	if (hit !== undefined) return hit;
+	try {
+		const html = katex.renderToString(content, { throwOnError: false, displayMode: false });
+		katexCache.set(key, html);
+		return html;
+	} catch {
+		return `$${content}$`;
+	}
+}
+
+class InlineMathWidget extends WidgetType {
+	constructor(readonly content: string) {
+		super();
+	}
+	eq(other: InlineMathWidget) {
+		return other.content === this.content;
+	}
+	toDOM() {
+		const span = document.createElement('span');
+		span.className = 'cm-math-inline';
+		span.innerHTML = renderInlineMath(this.content);
+		return span;
+	}
+	ignoreEvent() {
+		return true;
+	}
+}
+
 const HEADING_CLASS: Record<string, string> = {
 	ATXHeading1: 'cm-heading-1',
 	ATXHeading2: 'cm-heading-2',
@@ -203,6 +239,26 @@ function isLineActive(view: EditorView, from: number, to: number): boolean {
 	const startLine = view.state.doc.lineAt(from).number;
 	const endLine = view.state.doc.lineAt(to).number;
 	return cursorLine >= startLine && cursorLine <= endLine;
+}
+
+// True when pos sits inside any code node, so `$` in fences, inline code
+// or info strings never renders as math.
+function isInsideCode(view: EditorView, pos: number): boolean {
+	const inner = syntaxTree(view.state).resolveInner(Math.min(pos, view.state.doc.length), 0);
+	let cur: typeof inner | null = inner;
+	while (cur) {
+		if (
+			cur.name === 'CodeText' ||
+			cur.name === 'CodeMark' ||
+			cur.name === 'CodeInfo' ||
+			cur.name === 'InlineCode' ||
+			cur.name === 'FencedCode' ||
+			cur.name === 'CodeBlock'
+		)
+			return true;
+		cur = cur.parent;
+	}
+	return false;
 }
 
 function buildDecorations(view: EditorView): DecorationSet {
@@ -244,7 +300,12 @@ function buildDecorations(view: EditorView): DecorationSet {
 
 				// Fenced code: hide fences + lang when cursor is off the whole block,
 				// and style the content as a single block via line backgrounds.
+				// ```math blocks are owned by mathBlock.ts, skip them here so
+				// code and math never claim the same range.
 				if (node.name === 'FencedCode') {
+					const infoNode = node.node.getChild('CodeInfo');
+					const lang = infoNode ? view.state.sliceDoc(infoNode.from, infoNode.to).trim() : '';
+					if (lang === 'math') return false;
 					const isActive = isLineActive(view, node.from, node.to);
 					if (!isActive) {
 						const textNode = node.node.getChild('CodeText');
@@ -294,6 +355,12 @@ function buildDecorations(view: EditorView): DecorationSet {
 					if (node.name === 'CodeMark' || node.name === 'CodeInfo') {
 						const parent = node.node.parent?.name;
 						if (parent === 'FencedCode' || parent === 'CodeBlock') {
+							// Math fences belong to mathBlock.ts, never hide here.
+							if (parent === 'FencedCode') {
+								const info = node.node.parent!.getChild('CodeInfo');
+								if (info && view.state.sliceDoc(info.from, info.to).trim() === 'math')
+									return;
+							}
 							shouldHide = !isLineActive(view, node.node.parent!.from, node.node.parent!.to);
 						}
 					}
@@ -357,6 +424,44 @@ function buildDecorations(view: EditorView): DecorationSet {
 				}
 			}
 		});
+	}
+
+	// Inline math: single-line `$...$` only. Block math (```math fences and
+	// own-line $$...$$) lives in mathBlock.ts as a StateField, because
+	// multi-line replaces must not go through this ViewPlugin. Skip anything
+	// inside code; fence lines of $$ blocks naturally match nothing since the
+	// regex needs non-$ content between single dollars.
+	const inlineRegex = /(?<!\$)\$(?!\$)([^$\n]{1,200}?)(?<!\\)\$(?!\$)/g;
+	const docText = view.state.doc.toString();
+	let m: RegExpExecArray | null;
+	inlineRegex.lastIndex = 0;
+	while ((m = inlineRegex.exec(docText)) !== null) {
+		const start = m.index;
+		const end = start + m[0].length;
+		const content = m[1];
+		if (!content.trim() || /^\s|\s$/.test(content)) {
+			inlineRegex.lastIndex = start + 1;
+			continue;
+		}
+		// Skip prices and bare numbers: need at least one letter or backslash.
+		if (!/[A-Za-z\\]/.test(content)) {
+			inlineRegex.lastIndex = start + 1;
+			continue;
+		}
+		if (isInsideCode(view, start) || isInsideCode(view, Math.max(start, end - 1))) {
+			inlineRegex.lastIndex = start + 1;
+			continue;
+		}
+		const active = isLineActive(view, start, Math.max(start, end - 1));
+		if (active) {
+			pending.push({ from: start, to: end, deco: Decoration.mark({ class: 'cm-math-source' }) });
+		} else {
+			pending.push({
+				from: start,
+				to: end,
+				deco: Decoration.replace({ widget: new InlineMathWidget(content) })
+			});
+		}
 	}
 
 	// Sort by start position and startSide - required by RangeSetBuilder, and

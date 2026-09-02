@@ -14,6 +14,7 @@
 } from '@codemirror/search';
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
+	import { mathBlockField } from './mathBlock';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask } from './formatting';
 
 	interface Props {
@@ -158,6 +159,7 @@
 				codeHighlight,
 				noteDirField,
 				livePreview,
+				mathBlockField,
 				baseTheme,
 				fontSizeCompartment.of(themeForFontSize(initialSettings.editor.fontSize)),
 				lineNumbersCompartment.of(initialSettings.editor.showLineNumbers ? lineNumbers() : []),
