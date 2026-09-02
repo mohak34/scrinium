@@ -241,8 +241,64 @@ function buildDecorations(view: EditorView): DecorationSet {
 					pending.push({ from: node.from, to: node.to, deco: Decoration.mark({ class: 'cm-link' }) });
 				}
 
-				if (HIDEABLE_MARKS.has(node.name) && !active) {
-					pending.push({ from: node.from, to: node.to, deco: Decoration.replace({}) });
+				// Fenced code: hide fences + lang when cursor is off the whole block,
+				// and style the content as a single block via line backgrounds.
+				if (node.name === 'FencedCode') {
+					const isActive = isLineActive(view, node.from, node.to);
+					if (!isActive) {
+						const textNode = node.node.getChild('CodeText');
+						if (textNode) {
+							pending.push({
+								from: textNode.from,
+								to: textNode.to,
+								deco: Decoration.mark({ class: 'cm-codeblock-content' })
+							});
+							let pos = textNode.from;
+							const end = textNode.to;
+							while (pos <= end) {
+								const line = view.state.doc.lineAt(pos);
+								pending.push({
+									from: line.from,
+									to: line.from,
+									deco: Decoration.line({ class: 'cm-codeblock-line' })
+								});
+								if (line.to >= end) break;
+								pos = line.to + 1;
+							}
+						}
+					}
+				}
+				if (node.name === 'CodeBlock' && !active) {
+					pending.push({
+						from: node.from,
+						to: node.to,
+						deco: Decoration.mark({ class: 'cm-codeblock-content' })
+					});
+					let pos = node.from;
+					const end = node.to;
+					while (pos <= end) {
+						const line = view.state.doc.lineAt(pos);
+						pending.push({
+							from: line.from,
+							to: line.from,
+							deco: Decoration.line({ class: 'cm-codeblock-line' })
+						});
+						if (line.to >= end) break;
+						pos = line.to + 1;
+					}
+				}
+
+				if (HIDEABLE_MARKS.has(node.name)) {
+					let shouldHide = !active;
+					if (node.name === 'CodeMark' || node.name === 'CodeInfo') {
+						const parent = node.node.parent?.name;
+						if (parent === 'FencedCode' || parent === 'CodeBlock') {
+							shouldHide = !isLineActive(view, node.node.parent!.from, node.node.parent!.to);
+						}
+					}
+					if (shouldHide) {
+						pending.push({ from: node.from, to: node.to, deco: Decoration.replace({}) });
+					}
 				}
 
 				// Turn a bare bullet marker ("-", "*", "+") into a "•" dot while

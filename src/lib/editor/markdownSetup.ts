@@ -99,6 +99,15 @@ export const baseTheme = EditorView.theme(
 			lineHeight: '1',
 			position: 'absolute',
 			inset: '1px auto auto 2px'
+		},
+		'.cm-codeblock-line': {
+			backgroundColor: 'var(--surface-container)',
+			borderLeft: '1px solid var(--border-default)',
+			borderRight: '1px solid var(--border-default)'
+		},
+		'.cm-codeblock-content': {
+			fontFamily: 'var(--font-mono)',
+			fontSize: '0.88em'
 		}
 	},
 	{ dark: true }
