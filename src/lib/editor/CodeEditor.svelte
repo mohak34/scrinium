@@ -12,8 +12,7 @@
 	searchKeymap,
 	highlightSelectionMatches
 } from '@codemirror/search';
-	import { markdownLanguage, baseTheme } from './markdownSetup';
-	import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
+	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask } from './formatting';
 
@@ -155,7 +154,7 @@
 				search({ top: true }),
 				highlightSelectionMatches({ minSelectionLength: 2 }),
 				markdownLanguage(),
-				syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+				codeHighlight,
 				noteDirField,
 				livePreview,
 				baseTheme,
