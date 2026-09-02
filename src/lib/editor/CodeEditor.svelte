@@ -3,7 +3,7 @@
 	import { get } from 'svelte/store';
 	import { Compartment } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
-	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
 	import {
 	openSearchPanel,
@@ -151,6 +151,7 @@
 					{ key: 'Mod-Shift-l', run: removeTask }
 				]),
 				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+				keymap.of([indentWithTab]),
 				search({ top: true }),
 				highlightSelectionMatches({ minSelectionLength: 2 }),
 				markdownLanguage(),
