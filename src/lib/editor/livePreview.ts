@@ -186,6 +186,7 @@ const HIDEABLE_MARKS = new Set([
 	'HeaderMark', // the "#" of a heading
 	'EmphasisMark', // the "*"/"_" around italic or bold text
 	'CodeMark', // the backtick(s) around inline code
+	'CodeInfo', // the language name in ```python
 	'LinkMark', // the "[", "]", "(", ")" of a link
 	'URL' // the URL text itself inside [text](url)
 ]);
