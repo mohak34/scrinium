@@ -143,6 +143,31 @@ export const baseTheme = EditorView.theme(
 		'.cm-codeblock-content': {
 			fontFamily: 'var(--font-mono)',
 			fontSize: '0.88em'
+		},
+		'.cm-math-inline': {
+			display: 'inline-block',
+			padding: '0 0.15em',
+			verticalAlign: 'middle'
+		},
+		'.cm-math-block': {
+			display: 'block',
+			textAlign: 'center',
+			margin: '0.75rem 0',
+			padding: '0.75rem 1rem',
+			backgroundColor: 'var(--surface-container)',
+			border: '1px solid var(--border-default)',
+			borderRadius: '6px',
+			overflowX: 'auto'
+		},
+		'.cm-math-source': {
+			backgroundColor: 'rgba(181, 196, 255, 0.12)',
+			borderRadius: '3px',
+			padding: '0 0.15em'
+		},
+		'.cm-math-source-block': {
+			backgroundColor: 'var(--surface-container)',
+			borderLeft: '1px solid var(--border-default)',
+			borderRight: '1px solid var(--border-default)'
 		}
 	},
 	{ dark: true }
