@@ -40,6 +40,12 @@ class BlockMathWidget extends WidgetType {
 	eq(other: BlockMathWidget) {
 		return other.content === this.content;
 	}
+	// Stable pre-measure height: without it every fresh widget reports
+	// unknown height, and rapid arrow traversal past not-yet-drawn widgets
+	// flaps the viewport so lines get visually skipped.
+	get estimatedHeight(): number {
+		return 40 + this.content.split('\n').length * 26;
+	}
 	toDOM() {
 		const div = document.createElement('div');
 		div.className = 'cm-math-block';
@@ -104,11 +110,19 @@ function buildBlockMathDecorations(state: EditorState): DecorationSet {
 export const mathBlockField = StateField.define<DecorationSet>({
 	create: (state) => buildBlockMathDecorations(state),
 	update(deco, tr) {
-		if (tr.docChanged || tr.reconfigured || tr.selection) {
+		if (tr.docChanged || tr.reconfigured) {
 			return buildBlockMathDecorations(tr.state);
 		}
 		if (tr.effects.some((e) => e.is(previewModeEffect))) {
 			return buildBlockMathDecorations(tr.state);
+		}
+		// Active state is line-based, so same-line selection motion
+		// (Left/Right, direction flips) reuses the set instead of churning
+		// layout on every keypress.
+		if (tr.selection) {
+			const before = tr.startState.doc.lineAt(tr.startState.selection.main.head).number;
+			const after = tr.state.doc.lineAt(tr.state.selection.main.head).number;
+			if (before !== after) return buildBlockMathDecorations(tr.state);
 		}
 		return deco;
 	},
