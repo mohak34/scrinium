@@ -20,6 +20,7 @@ import { EditorState } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { markdownLanguage } from '$lib/editor/markdownSetup';
 import { findMathBlockRanges } from '$lib/editor/mathRanges';
+import { CALLOUT_ICONS, canonicalCalloutType, defaultCalloutTitle } from '$lib/editor/callouts';
 import { resolveAssetUrl } from '$lib/editor/livePreview';
 
 const parser = new MarkdownIt({ html: false, linkify: true, breaks: true });
@@ -46,6 +47,52 @@ function katexInline(source: string): string {
 	} catch {
 		return `<code class="print-inline-code">${esc(`$${source}$`)}</code>`;
 	}
+}
+
+/**
+ * Rewrite markdown-it blockquotes whose first paragraph is a `[!type]`
+ * marker into Obsidian-style callout divs. Runs after token restore so
+ * math/code inside the body keep their rendered HTML for free.
+ *
+ * Two shapes: marker alone in its paragraph (blank line after the header),
+ * or marker sharing one paragraph with the body (`breaks` joins the `>`
+ * lines with <br>). Display `$$` inside the body renders via KaTeX here -
+ * the editor/math finder only sees own-line fences, so `> $$` never
+ * becomes a block range upstream.
+ */
+function renderCalloutBody(body: string): string {
+	return body.replace(/\$\$([\s\S]*?)\$\$/g, (whole, src: string) => {
+		const clean = src.replace(/<br\s*\/?>/gi, '\n').trim();
+		if (!clean) return whole;
+		return katexBlock(clean);
+	});
+}
+
+function renderCallouts(html: string): string {
+	return html.replace(/<blockquote>([\s\S]*?)<\/blockquote>/g, (whole, inner: string) => {
+		const m = /^\s*<p>\[!([\w-]+)\]\s*([-+]?)\s*([\s\S]*?)<\/p>/i.exec(inner);
+		if (!m) return whole;
+		const kind = canonicalCalloutType(m[1]);
+		const fold = m[2];
+		const parts = m[3].split(/<br\s*\/?>/i);
+		const title = parts[0].trim() || esc(defaultCalloutTitle(m[1]));
+		let body = inner.slice(m[0].length);
+		if (parts.length > 1) {
+			const firstBody = parts.slice(1).join(' ').trim();
+			if (firstBody) body = `<p>${firstBody}</p>` + body;
+		}
+		body = renderCalloutBody(body);
+		const chev = fold
+			? `<span class="material-symbols-outlined callout-fold">${fold === '-' ? 'expand_more' : 'expand_less'}</span>`
+			: '';
+		return (
+			`<div class="callout callout-${kind}">` +
+			`<div class="callout-title"><span class="material-symbols-outlined callout-icon">${CALLOUT_ICONS[kind]}</span>` +
+			`<span>${title}</span>${chev}</div>` +
+			(body.trim() ? `<div class="callout-body">${body}</div>` : '') +
+			`</div>`
+		);
+	});
 }
 
 export function renderNoteToHtml(src: string, notePath: string): string {
@@ -177,5 +224,5 @@ export function renderNoteToHtml(src: string, notePath: string): string {
 		const resolved = resolveAssetUrl(url, noteDir);
 		return resolved ? `<img${rest}src="${resolved}"` : m;
 	});
-	return html;
+	return renderCallouts(html);
 }

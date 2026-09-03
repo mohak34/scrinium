@@ -123,6 +123,11 @@
 			hint: `${mod}Shift+E`,
 			run: () => onCommand('mathBlock')
 		},
+		{
+			label: 'Insert callout',
+			hint: 'Obsidian-style [!note] box',
+			run: () => onCommand('callout')
+		},
 		{ label: 'Full preview', hint: 'Esc', run: () => onCommand('preview') },
 		{ label: 'Open command palette', hint: `${mod}K` }
 	];

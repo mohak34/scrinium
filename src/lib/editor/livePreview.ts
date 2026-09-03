@@ -34,6 +34,7 @@ import {
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { findMathBlockRanges } from './mathRanges';
+import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts } from './callouts';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
 // regardless of where the cursor is. Entered with Escape, exited by clicking
@@ -122,6 +123,51 @@ class BulletWidget extends WidgetType {
 	}
 	eq(other: BulletWidget) {
 		return true;
+	}
+	ignoreEvent() {
+		return true;
+	}
+}
+
+// Callout header marker: replaces the raw `[!note]-` text (cursor off the
+// line) with the type icon, an optional fold chevron, and the default title
+// when the author left the title empty. The written title itself stays as
+// plain text so it remains editable via the line-active reveal.
+class CalloutHeaderWidget extends WidgetType {
+	constructor(
+		readonly icon: string,
+		readonly fold: '' | '-' | '+',
+		readonly fallbackTitle: string | null
+	) {
+		super();
+	}
+	eq(other: CalloutHeaderWidget) {
+		return (
+			other.icon === this.icon &&
+			other.fold === this.fold &&
+			other.fallbackTitle === this.fallbackTitle
+		);
+	}
+	toDOM() {
+		const span = document.createElement('span');
+		span.className = 'cm-callout-marker';
+		const icon = document.createElement('span');
+		icon.className = 'material-symbols-outlined cm-callout-icon';
+		icon.textContent = this.icon;
+		span.appendChild(icon);
+		if (this.fold) {
+			const chev = document.createElement('span');
+			chev.className = 'material-symbols-outlined cm-callout-fold';
+			chev.textContent = 'expand_more';
+			span.appendChild(chev);
+		}
+		if (this.fallbackTitle) {
+			const t = document.createElement('span');
+			t.className = 'cm-callout-default-title';
+			t.textContent = this.fallbackTitle;
+			span.appendChild(t);
+		}
+		return span;
 	}
 	ignoreEvent() {
 		return true;
@@ -268,6 +314,14 @@ function buildDecorations(view: EditorView): DecorationSet {
 	const pending: PendingDecoration[] = [];
 	const tree = syntaxTree(view.state);
 
+	// Callouts first: the `[!note]` header parses as Link/LinkMark nodes, so
+	// the walk below must skip those inner decorations where our header
+	// widget replaces the whole marker (overlapping replaces corrupt the
+	// RangeSetBuilder).
+	const callouts = findCallouts(view.state);
+	const inCalloutHeader = (from: number, to: number): boolean =>
+		callouts.some((c) => from >= c.headerFrom && to <= c.headerTo);
+
 	for (const { from, to } of view.visibleRanges) {
 		tree.iterate({
 			from,
@@ -298,7 +352,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 					});
 				}
 				if (node.name === 'Link') {
-					pending.push({ from: node.from, to: node.to, deco: Decoration.mark({ class: 'cm-link' }) });
+					if (!inCalloutHeader(node.from, node.to)) {
+						pending.push({ from: node.from, to: node.to, deco: Decoration.mark({ class: 'cm-link' }) });
+					}
 				}
 
 				// Fenced code: hide fences + lang when cursor is off the whole block,
@@ -354,21 +410,31 @@ function buildDecorations(view: EditorView): DecorationSet {
 				}
 
 				if (HIDEABLE_MARKS.has(node.name)) {
-					let shouldHide = !active;
-					if (node.name === 'CodeMark' || node.name === 'CodeInfo') {
-						const parent = node.node.parent?.name;
-						if (parent === 'FencedCode' || parent === 'CodeBlock') {
-							// Math fences belong to mathBlock.ts, never hide here.
-							if (parent === 'FencedCode') {
-								const info = node.node.parent!.getChild('CodeInfo');
-								if (info && view.state.sliceDoc(info.from, info.to).trim() === 'math')
-									return;
+					// The callout header widget owns the whole `[!type]-`
+					// marker when the line is pretty; inner LinkMark/URL
+					// hides would overlap that replace.
+					if (
+						(node.name === 'LinkMark' || node.name === 'URL') &&
+						inCalloutHeader(node.from, node.to)
+					) {
+						// fall through to nothing (skip)
+					} else {
+						let shouldHide = !active;
+						if (node.name === 'CodeMark' || node.name === 'CodeInfo') {
+							const parent = node.node.parent?.name;
+							if (parent === 'FencedCode' || parent === 'CodeBlock') {
+								// Math fences belong to mathBlock.ts, never hide here.
+								if (parent === 'FencedCode') {
+									const info = node.node.parent!.getChild('CodeInfo');
+									if (info && view.state.sliceDoc(info.from, info.to).trim() === 'math')
+										return;
+								}
+								shouldHide = !isLineActive(view, node.node.parent!.from, node.node.parent!.to);
 							}
-							shouldHide = !isLineActive(view, node.node.parent!.from, node.node.parent!.to);
 						}
-					}
-					if (shouldHide) {
-						pending.push({ from: node.from, to: node.to, deco: Decoration.replace({}) });
+						if (shouldHide) {
+							pending.push({ from: node.from, to: node.to, deco: Decoration.replace({}) });
+						}
 					}
 				}
 
@@ -427,6 +493,54 @@ function buildDecorations(view: EditorView): DecorationSet {
 				}
 			}
 		});
+	}
+
+	// Callouts: box the whole quote via line decorations, hide the leading
+	// `>` per line and swap the `[!type]-` marker for an icon widget - all
+	// gated on the cursor being off that line, same contract as every other
+	// hideable mark. Line backgrounds stay on while editing so the box never
+	// collapses under the cursor.
+	for (const c of callouts) {
+		for (let n = c.firstLine; n <= c.lastLine; n++) {
+			if (n < 1 || n > view.state.doc.lines) continue;
+			const line = view.state.doc.line(n);
+			const isFirst = n === c.firstLine;
+			const isLast = n === c.lastLine;
+			pending.push({
+				from: line.from,
+				to: line.from,
+				deco: Decoration.line({
+					class: `cm-callout cm-callout-${c.kind}${isFirst ? ' cm-callout-first' : ''}${isLast ? ' cm-callout-last' : ''}${isFirst ? '' : ' cm-callout-body'}`
+				})
+			});
+			const lineActive = isLineActive(view, line.from, line.to);
+			if (!lineActive) {
+				const prefix = c.prefixes[n - c.firstLine];
+				if (prefix && prefix.to > prefix.from) {
+					pending.push({ from: prefix.from, to: prefix.to, deco: Decoration.replace({}) });
+				}
+				if (isFirst) {
+					pending.push({
+						from: c.headerFrom,
+						to: c.headerTo,
+						deco: Decoration.replace({
+							widget: new CalloutHeaderWidget(
+								CALLOUT_ICONS[c.kind],
+								c.fold,
+								c.title ? null : defaultCalloutTitle(c.raw)
+							)
+						})
+					});
+				}
+			}
+			if (isFirst && c.title) {
+				pending.push({
+					from: c.headerTo,
+					to: line.to,
+					deco: Decoration.mark({ class: 'cm-callout-title' })
+				});
+			}
+		}
 	}
 
 	// Inline math: single-line `$...$` only. Block math (```math fences and
