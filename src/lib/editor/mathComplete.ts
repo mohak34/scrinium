@@ -13,9 +13,7 @@
 
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import type { EditorView } from '@codemirror/view';
-import { syntaxTree } from '@codemirror/language';
-import type { EditorState } from '@codemirror/state';
-import { findMathBlockRanges } from './mathRanges';
+import { inMathRegion } from './mathRanges';
 
 interface MathEntry {
 	/** Shown and typed text, with leading backslash. */
@@ -150,44 +148,14 @@ const LATEX_COMMANDS: MathEntry[] = [
 
 const TRIGGER = /\\[A-Za-z]*$/;
 
-function insideCode(state: EditorState, pos: number): boolean {
-	const inner = syntaxTree(state).resolveInner(Math.min(pos, state.doc.length), 0);
-	let cur: typeof inner | null = inner;
-	while (cur) {
-		if (
-			cur.name === 'CodeText' ||
-			cur.name === 'CodeMark' ||
-			cur.name === 'CodeInfo' ||
-			cur.name === 'InlineCode' ||
-			cur.name === 'FencedCode' ||
-			cur.name === 'CodeBlock'
-		)
-			return true;
-		cur = cur.parent;
-	}
-	return false;
-}
-
-// Unclosed single `$` on this line before the cursor (escaped `\$` and
-// `$$` pairs ignored) - the signal for "typing inline math".
-function hasOpenDollar(lineText: string): boolean {
-	return lineText.replace(/\\\$/g, '').replace(/\$\$/g, '').includes('$');
-}
-
 export function mathCompletionSource(context: CompletionContext): CompletionResult | null {
 	const { state, pos } = context;
 	const line = state.doc.lineAt(pos);
 	const before = line.text.slice(0, pos - line.from);
 	const trigger = TRIGGER.exec(before);
 	if (!trigger) return null;
+	if (!inMathRegion(state, pos)) return null;
 	const from = pos - trigger[0].length;
-
-	// Block math ranges first (covers ```math fences, whose content the
-	// tree reports as code).
-	if (!findMathBlockRanges(state).some((r) => pos >= r.from && pos <= r.to)) {
-		if (insideCode(state, pos)) return null;
-		if (!hasOpenDollar(before)) return null;
-	}
 
 	return {
 		from,
