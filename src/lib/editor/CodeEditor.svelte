@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
-	import { Compartment } from '@codemirror/state';
+	import { Compartment, Prec } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
@@ -16,7 +16,7 @@
 	import { autocompletion, closeCompletion, completionStatus } from '@codemirror/autocomplete';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
 	import { mathBlockField } from './mathBlock';
-	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask } from './formatting';
+	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 
 	interface Props {
 		value: string;
@@ -205,6 +205,11 @@
 				]),
 				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
 				keymap.of([indentWithTab]),
+				// List continuation must beat the default Enter binding; it
+				// returns false everywhere except a collapsed cursor on a
+				// list line outside code. Completion's own Enter (highest
+				// precedence) still wins when its panel is open.
+				Prec.high(keymap.of([{ key: 'Enter', run: insertListNewline }])),
 				search({ top: true }),
 				highlightSelectionMatches({ minSelectionLength: 2 }),
 				markdownLanguage(),
