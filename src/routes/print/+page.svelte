@@ -18,7 +18,7 @@
 		}
 		loadNote(notePath)
 			.then((content) => {
-				html = renderNoteToHtml(content);
+				html = renderNoteToHtml(content, notePath);
 			})
 			.catch(() => {
 				error = 'Could not load note';
@@ -177,6 +177,7 @@
 	}
 	.paper :global(img) {
 		max-width: 100%;
+		break-inside: avoid;
 	}
 
 	@page {
