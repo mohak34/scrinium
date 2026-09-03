@@ -11,6 +11,7 @@
 		syncFilenameToTitle,
 		deletePath,
 		movePath,
+		downloadNote,
 		type VaultEntry
 	} from '$lib/stores/vault';
 	import {
@@ -167,10 +168,19 @@
 			];
 		}
 		if (entry.type === 'file') {
-			return [
+			const items: { label: string; danger?: boolean; action: () => void }[] = [
 				{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) },
 				{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
 			];
+			// Notes download as plain text; other assets open in the preview
+			// overlay instead, so only .md entries get a download row.
+			if (entry.path.endsWith('.md')) {
+				items.splice(1, 0, {
+					label: 'Download as .md',
+					action: () => void downloadNote(entry.path).catch(() => {})
+				});
+			}
+			return items;
 		}
 		return [
 			{
