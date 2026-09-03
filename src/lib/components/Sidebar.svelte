@@ -175,10 +175,18 @@
 			// Notes download as plain text; other assets open in the preview
 			// overlay instead, so only .md entries get a download row.
 			if (entry.path.endsWith('.md')) {
-				items.splice(1, 0, {
-					label: 'Download as .md',
-					action: () => void downloadNote(entry.path).catch(() => {})
-				});
+				items.splice(
+					1,
+					0,
+					{
+						label: 'Download as .md',
+						action: () => void downloadNote(entry.path).catch(() => {})
+					},
+					{
+						label: 'Print / PDF',
+						action: () => goto(`/print?note=${encodeURIComponent(entry.path)}`)
+					}
+				);
 			}
 			return items;
 		}

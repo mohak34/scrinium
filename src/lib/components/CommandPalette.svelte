@@ -106,6 +106,14 @@
 			}
 		},
 		{
+			label: 'Print note to PDF',
+			hint: 'Open the print view',
+			run: () => {
+				const p = get(activePath);
+				if (p) goto(`/print?note=${encodeURIComponent(p)}`);
+			}
+		},
+		{
 			label: 'Math inline',
 			hint: `${mod}M`,
 			run: () => onCommand('mathInline')

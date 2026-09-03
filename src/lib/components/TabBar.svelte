@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { openTabs, closeTab, saveStatus, pinnedPaths, togglePin, deletePath, downloadNote } from '$lib/stores/vault';
+	import { goto } from '$app/navigation';
 	import { renameRequest } from '$lib/stores/actions';
 	import ContextMenu from './ContextMenu.svelte';
 
@@ -37,6 +38,10 @@
 			{ label: 'Rename', action: () => renameRequest.set({ path: p }) },
 			{ label: 'Copy path', action: () => copyPath(p) },
 			{ label: 'Download .md', action: () => void downloadNote(p).catch(() => {}) },
+			{
+				label: 'Print / PDF',
+				action: () => goto(`/print?note=${encodeURIComponent(p)}`)
+			},
 			{ label: 'Move to trash', danger: true, action: () => void deletePath(p) }
 		];
 	});
