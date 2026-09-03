@@ -79,48 +79,38 @@ function pushSourceLines(
 	}
 }
 
-function buildBlockMathDecorations(state: EditorState): DecorationSet {
-	const pending: { from: number; to: number; deco: Decoration }[] = [];
+export interface MathBlockRange {
+	from: number;
+	to: number;
+	source: string;
+}
+
+// All display-math ranges in the doc, regardless of active state. Shared by
+// the decoration builder and the arrow-key handler in CodeEditor, so both
+// agree on where the blocks are.
+export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
+	const ranges: MathBlockRange[] = [];
 	const fencedRanges: Array<[number, number]> = [];
 
 	// 1. ```math fenced blocks via the syntax tree.
 	syntaxTree(state).iterate({
 		enter: (node) => {
 			if (node.name !== 'FencedCode') return;
-			const info = node.node.getChild('CodeInfo');
-			if (!info || state.doc.sliceString(info.from, info.to).trim() !== 'math') return;
 			fencedRanges.push([node.from, node.to]);
+			const info = node.node.getChild('CodeInfo');
+			if (!info || state.doc.sliceString(info.from, info.to).trim() !== 'math') return false;
 			const textNode = node.node.getChild('CodeText');
 			const source = textNode ? state.doc.sliceString(textNode.from, textNode.to).trim() : '';
-			if (!source) return;
-			if (isRangeActive(state, node.from, node.to)) {
-				pushSourceLines(pending, state, node.from, node.to);
-			} else {
-				pending.push({
-					from: node.from,
-					to: node.to,
-					deco: Decoration.replace({ widget: new BlockMathWidget(source), block: true })
-				});
-			}
+			if (!source) return false;
+			ranges.push({ from: node.from, to: node.to, source });
 			return false;
-		}
-	});
-
-	// Record all remaining fenced ranges so $$ never spans code.
-	syntaxTree(state).iterate({
-		enter: (node) => {
-			if (node.name === 'FencedCode') {
-				if (!fencedRanges.some(([f, t]) => overlaps(f, t, node.from, node.to))) {
-					fencedRanges.push([node.from, node.to]);
-				}
-				return false;
-			}
 		}
 	});
 
 	// 2. Own-line $$...$$ blocks. Strict shape only: opening $$ at line
 	// start (indent allowed) with nothing after it, closing $$ on its own
 	// line, or the whole thing on one line. Anything else stays raw text.
+	// Never spans a fenced block, so math and code cannot overlap.
 	const docText = state.doc.toString();
 	const blockRegex = /\$\$([\s\S]*?)\$\$/g;
 	let m: RegExpExecArray | null;
@@ -145,13 +135,23 @@ function buildBlockMathDecorations(state: EditorState): DecorationSet {
 		}
 		const source = content.trim();
 		if (!source) continue;
-		if (isRangeActive(state, start, Math.max(start, end - 1))) {
-			pushSourceLines(pending, state, start, end);
+		ranges.push({ from: start, to: end, source });
+	}
+
+	ranges.sort((a, b) => a.from - b.from);
+	return ranges;
+}
+
+function buildBlockMathDecorations(state: EditorState): DecorationSet {
+	const pending: { from: number; to: number; deco: Decoration }[] = [];
+	for (const r of findMathBlockRanges(state)) {
+		if (isRangeActive(state, r.from, r.to)) {
+			pushSourceLines(pending, state, r.from, r.to);
 		} else {
 			pending.push({
-				from: start,
-				to: end,
-				deco: Decoration.replace({ widget: new BlockMathWidget(source), block: true })
+				from: r.from,
+				to: r.to,
+				deco: Decoration.replace({ widget: new BlockMathWidget(r.source), block: true })
 			});
 		}
 	}
