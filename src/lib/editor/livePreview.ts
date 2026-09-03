@@ -33,6 +33,7 @@ import {
 } from '@codemirror/view';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { findMathBlockRanges } from './mathRanges';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
 // regardless of where the cursor is. Entered with Escape, exited by clicking
@@ -429,8 +430,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// Inline math: single-line `$...$` only. Block math (```math fences and
 	// own-line $$...$$) lives in mathBlock.ts as a StateField, because
 	// multi-line replaces must not go through this ViewPlugin. Skip anything
-	// inside code; fence lines of $$ blocks naturally match nothing since the
-	// regex needs non-$ content between single dollars.
+	// inside code or inside a block-math range - an inline replace overlapping
+	// a block replace corrupts the RangeSetBuilder.
+	const blockRanges = findMathBlockRanges(view.state);
 	const inlineRegex = /(?<!\$)\$(?!\$)([^$\n]{1,200}?)(?<!\\)\$(?!\$)/g;
 	const docText = view.state.doc.toString();
 	let m: RegExpExecArray | null;
@@ -445,6 +447,10 @@ function buildDecorations(view: EditorView): DecorationSet {
 		}
 		// Skip prices and bare numbers: need at least one letter or backslash.
 		if (!/[A-Za-z\\]/.test(content)) {
+			inlineRegex.lastIndex = start + 1;
+			continue;
+		}
+		if (blockRanges.some((r) => start <= r.to && r.from <= end)) {
 			inlineRegex.lastIndex = start + 1;
 			continue;
 		}

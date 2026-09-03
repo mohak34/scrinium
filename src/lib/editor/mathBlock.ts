@@ -13,12 +13,12 @@
  * ```math fences so the two never claim the same range.
  */
 
-import { syntaxTree } from '@codemirror/language';
 import { StateField } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import type { EditorState } from '@codemirror/state';
 import katex from 'katex';
 import { previewModeEffect, isPreviewMode } from './livePreview';
+import { findMathBlockRanges } from './mathRanges';
 
 const blockCache = new Map<string, string>();
 function renderBlockMath(content: string): string {
@@ -56,11 +56,12 @@ function isRangeActive(state: EditorState, from: number, to: number): boolean {
 	const cursorLine = state.doc.lineAt(state.selection.main.head).number;
 	const startLine = state.doc.lineAt(from).number;
 	const endLine = state.doc.lineAt(to).number;
-	return cursorLine >= startLine && cursorLine <= endLine;
-}
-
-function overlaps(aFrom: number, aTo: number, bFrom: number, bTo: number): boolean {
-	return aFrom <= bTo && bFrom <= aTo;
+	// One line of grace on each side: a replaced block hides its lines from
+	// layout, so native Up/Down from further out can jump clean over it and
+	// the cursor would never land inside to reveal source. Revealing when
+	// adjacent means hidden lines never exist near the cursor and all arrow
+	// motion stays native (symmetric both directions).
+	return cursorLine >= startLine - 1 && cursorLine <= endLine + 1;
 }
 
 function pushSourceLines(
@@ -77,69 +78,6 @@ function pushSourceLines(
 		if (line.to >= end) break;
 		pos = line.to + 1;
 	}
-}
-
-export interface MathBlockRange {
-	from: number;
-	to: number;
-	source: string;
-}
-
-// All display-math ranges in the doc, regardless of active state. Shared by
-// the decoration builder and the arrow-key handler in CodeEditor, so both
-// agree on where the blocks are.
-export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
-	const ranges: MathBlockRange[] = [];
-	const fencedRanges: Array<[number, number]> = [];
-
-	// 1. ```math fenced blocks via the syntax tree.
-	syntaxTree(state).iterate({
-		enter: (node) => {
-			if (node.name !== 'FencedCode') return;
-			fencedRanges.push([node.from, node.to]);
-			const info = node.node.getChild('CodeInfo');
-			if (!info || state.doc.sliceString(info.from, info.to).trim() !== 'math') return false;
-			const textNode = node.node.getChild('CodeText');
-			const source = textNode ? state.doc.sliceString(textNode.from, textNode.to).trim() : '';
-			if (!source) return false;
-			ranges.push({ from: node.from, to: node.to, source });
-			return false;
-		}
-	});
-
-	// 2. Own-line $$...$$ blocks. Strict shape only: opening $$ at line
-	// start (indent allowed) with nothing after it, closing $$ on its own
-	// line, or the whole thing on one line. Anything else stays raw text.
-	// Never spans a fenced block, so math and code cannot overlap.
-	const docText = state.doc.toString();
-	const blockRegex = /\$\$([\s\S]*?)\$\$/g;
-	let m: RegExpExecArray | null;
-	while ((m = blockRegex.exec(docText)) !== null) {
-		const start = m.index;
-		const end = start + m[0].length;
-		const content = m[1];
-		if (!content.trim() || content.length > 2000) continue;
-		if (fencedRanges.some(([f, t]) => overlaps(f, t, start, end))) continue;
-		const startLine = state.doc.lineAt(start);
-		const endLine = state.doc.lineAt(Math.max(start, end - 1));
-		if (startLine.number === endLine.number) {
-			// Single line: allow `$$...$$` anywhere on the line.
-			if (content.includes('\n')) continue;
-		} else {
-			// Multi-line: fences on their own lines.
-			if (state.doc.sliceString(startLine.from, start).trim() !== '') continue;
-			if (state.doc.sliceString(start + 2, startLine.to).trim() !== '') continue;
-			if (end - 2 < endLine.from) continue;
-			if (state.doc.sliceString(endLine.from, end - 2).trim() !== '') continue;
-			if (state.doc.sliceString(end, endLine.to).trim() !== '') continue;
-		}
-		const source = content.trim();
-		if (!source) continue;
-		ranges.push({ from: start, to: end, source });
-	}
-
-	ranges.sort((a, b) => a.from - b.from);
-	return ranges;
 }
 
 function buildBlockMathDecorations(state: EditorState): DecorationSet {

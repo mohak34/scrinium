@@ -135,10 +135,12 @@ State channels you will touch:
 - `src/lib/editor/` — live preview (`livePreview.ts`, read this first),
   markdownSetup.ts (CM6 language + theme + code/math highlight themes),
   CodeEditor.svelte (editor view; editor settings are reconfigurable via
-  CodeMirror `Compartment`s; Tab indents via `indentWithTab`; ArrowUp/Down
-  step into block-replaced math so source reveals instead of skipping),
+  CodeMirror `Compartment`s; Tab indents via `indentWithTab`; math blocks
+  reveal source when the cursor is on an adjacent line so arrows never
+  have to cross hidden lines),
   mathBlock.ts (display math as a StateField: ```math fences + own-line
-  `$$`, block replaces; inline `$` stays in `livePreview.ts`),
+  `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
+  in `livePreview.ts` never overlaps a block replace),
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
   move/list/restore/purge backed by `.trash/index.json`), db.ts (sqlite cache
