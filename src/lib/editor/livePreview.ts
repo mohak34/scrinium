@@ -490,7 +490,6 @@ export const livePreview = ViewPlugin.fromClass(
 		update(update: ViewUpdate) {
 			if (
 				update.docChanged ||
-				update.selectionSet ||
 				update.viewportChanged ||
 				update.transactions.some(
 					(tr) =>
@@ -499,6 +498,16 @@ export const livePreview = ViewPlugin.fromClass(
 				)
 			) {
 				this.decorations = buildDecorations(update.view);
+				return;
+			}
+			// Every hide/reveal decision is line-based, so same-line selection
+			// motion reuses the set instead of churning layout per keypress.
+			if (update.selectionSet) {
+				const a = update.startState.selection.main.head;
+				const b = update.state.selection.main.head;
+				if (update.startState.doc.lineAt(a).number !== update.state.doc.lineAt(b).number) {
+					this.decorations = buildDecorations(update.view);
+				}
 			}
 		}
 	},
