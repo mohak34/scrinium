@@ -1,5 +1,6 @@
 import type { Line } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
+import { syntaxTree } from '@codemirror/language';
 
 // Wrap the selection (or, if collapsed, the cursor point) in `marker`, toggling
 // it off when the surrounding characters are already the markers (so Cmd+B on a
@@ -159,6 +160,83 @@ export function toggleBullet(view: EditorView): boolean {
 				const indent = l.text.match(/^\s*/)![0];
 				return { from: l.from + indent.length, to: l.from + indent.length, insert: '- ' };
 			})
+	});
+	return true;
+}
+
+export interface ListEnterEdit {
+	from: number;
+	to: number;
+	insert: string;
+	anchor: number;
+}
+
+// Pure core of list continuation: given a line's text, its doc offset and a
+// collapsed cursor, either continue the list item, outdent an empty item, or
+// exit the list - or return null to leave Enter to the default handler.
+// Non-empty `- item` -> new `- ` below; `- [x] done` -> fresh `- [ ] `;
+// `1. one` -> `2. ` (both `.` and `)` styles, unsafe ints keep the marker);
+// empty `- ` at indent 0 clears the line, nested clears one indent level
+// (tasks drop the checkbox on the way out).
+export function computeListEnter(
+	lineText: string,
+	lineFrom: number,
+	head: number
+): ListEnterEdit | null {
+	const m = /^(\s*)([-*+]|\d+[.)])(.*)$/.exec(lineText);
+	if (!m) return null;
+	const indent = m[1];
+	const marker = m[2];
+	let rest = m[3];
+	let isTask = false;
+	const tm = /^(\s+\[[ xX]\])([\s\S]*)$/.exec(rest);
+	if (tm) {
+		isTask = true;
+		rest = tm[2];
+	}
+	if (!/^[ \t]*$/.test(rest)) {
+		let next = marker;
+		const om = /^(\d+)([.)])$/.exec(marker);
+		if (om) {
+			const n = parseInt(om[1], 10);
+			next = Number.isSafeInteger(n + 1) ? `${n + 1}${om[2]}` : marker;
+		}
+		const prefix = indent + next + ' ' + (isTask ? '[ ] ' : '');
+		return { from: head, to: head, insert: '\n' + prefix, anchor: head + 1 + prefix.length };
+	}
+	if (indent.length === 0) {
+		return { from: lineFrom, to: lineFrom + lineText.length, insert: '', anchor: lineFrom };
+	}
+	const om = /^(\d+)([.)])$/.exec(marker);
+	const base = om ? `1${om[2]}` : marker;
+	const newLine = indent.slice(0, Math.max(0, indent.length - 2)) + base + ' ';
+	return {
+		from: lineFrom,
+		to: lineFrom + lineText.length,
+		insert: newLine,
+		anchor: lineFrom + newLine.length
+	};
+}
+
+// Enter inside a list item: continue/outdent/exit via computeListEnter.
+// Collapsed cursor on a list line outside code only - anything else falls
+// through to the default newline handler.
+export function insertListNewline(view: EditorView): boolean {
+	const sel = view.state.selection.main;
+	if (!sel.empty) return false;
+	const head = sel.head;
+	const inner = syntaxTree(view.state).resolveInner(head, 0);
+	let cur: typeof inner | null = inner;
+	while (cur) {
+		if (cur.name === 'FencedCode' || cur.name === 'CodeBlock') return false;
+		cur = cur.parent;
+	}
+	const line = view.state.doc.lineAt(head);
+	const edit = computeListEnter(line.text, line.from, head);
+	if (!edit) return false;
+	view.dispatch({
+		changes: { from: edit.from, to: edit.to, insert: edit.insert },
+		selection: { anchor: edit.anchor }
 	});
 	return true;
 }
