@@ -104,6 +104,24 @@ export async function loadNote(path: string): Promise<string> {
 	return res.text();
 }
 
+// Download the note as a plain `.md` file through the browser. Flushes the
+// autosave debounce first so the file includes the latest keystrokes.
+export async function downloadNote(path: string) {
+	await flushSave();
+	const content = await loadNote(path);
+	const url = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' }));
+	try {
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = path.split('/').pop() ?? 'note.md';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	} finally {
+		URL.revokeObjectURL(url);
+	}
+}
+
 let pendingSave: { path: string; content: string } | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
