@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { searchNotes, type SearchResult } from '$lib/stores/vault';
+	import { get } from 'svelte/store';
+	import { searchNotes, activePath, downloadNote, type SearchResult } from '$lib/stores/vault';
 	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
 
@@ -96,6 +97,14 @@
 		},
 		{ label: 'Find in note', hint: `${mod}F`, run: () => onCommand('find') },
 		{ label: 'Find & replace', hint: `${mod}H`, run: () => onCommand('replace') },
+		{
+			label: 'Download note as Markdown',
+			hint: 'Save the open note as a .md file',
+			run: () => {
+				const p = get(activePath);
+				if (p) void downloadNote(p).catch(() => {});
+			}
+		},
 		{
 			label: 'Math inline',
 			hint: `${mod}M`,
