@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
-	import { Compartment } from '@codemirror/state';
+	import { Compartment, Prec } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
@@ -15,6 +15,7 @@
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
 	import { mathBlockField } from './mathBlock';
+	import { findMathBlockRanges } from './mathBlock';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask } from './formatting';
 
 	interface Props {
@@ -61,6 +62,39 @@
 		find: openSearchPanel,
 		replace: replaceNext
 	};
+
+	// Arrow keys skip over block-replaced math (its lines are hidden from
+	// layout), so the cursor can never land inside to reveal source. Step
+	// onto the block's edge line instead - the rebuild then shows source
+	// and further arrows move through real text.
+	function arrowIntoMath(dir: 1 | -1) {
+		return (view: EditorView) => {
+			if (isPreviewMode()) return false;
+			const sel = view.state.selection.main;
+			if (!sel.empty) return false;
+			const cur = view.state.doc.lineAt(sel.head).number;
+			for (const r of findMathBlockRanges(view.state)) {
+				const sLine = view.state.doc.lineAt(r.from).number;
+				const eLine = view.state.doc.lineAt(r.to).number;
+				if (cur >= sLine && cur <= eLine) return false;
+				if (dir === 1 && cur === sLine - 1) {
+					view.dispatch({
+						selection: { anchor: view.state.doc.line(sLine).from },
+						scrollIntoView: true
+					});
+					return true;
+				}
+				if (dir === -1 && cur === eLine + 1) {
+					view.dispatch({
+						selection: { anchor: view.state.doc.line(eLine).to },
+						scrollIntoView: true
+					});
+					return true;
+				}
+			}
+			return false;
+		};
+	}
 
 	export function runCommand(name: string) {
 		if (!view) return;
@@ -153,6 +187,12 @@
 				]),
 				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
 				keymap.of([indentWithTab]),
+				Prec.high(
+					keymap.of([
+						{ key: 'ArrowDown', run: arrowIntoMath(1) },
+						{ key: 'ArrowUp', run: arrowIntoMath(-1) }
+					])
+				),
 				search({ top: true }),
 				highlightSelectionMatches({ minSelectionLength: 2 }),
 				markdownLanguage(),
