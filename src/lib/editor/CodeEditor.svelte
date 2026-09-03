@@ -63,7 +63,8 @@
 		find: openSearchPanel,
 		replace: replaceNext,
 		mathInline: wrapMathInline,
-		mathBlock: insertMathBlock
+		mathBlock: insertMathBlock,
+		callout: insertCallout
 	};
 
 	// Wrap the selection in `$...$` for inline math, or drop `$|$ with the
@@ -97,6 +98,23 @@
 		view.dispatch({
 			changes: onBlank ? { from: line.from, to: line.to, insert } : { from: pos, insert },
 			selection: { anchor: pos + (onBlank ? 0 : 1) + 3 }
+		});
+		view.focus();
+	}
+
+	// Insert an Obsidian-style callout skeleton with "Title" selected so it
+	// can be typed over immediately. On a blank line it replaces the line;
+	// otherwise it goes below the current line.
+	function insertCallout(view: EditorView) {
+		const head = view.state.selection.main.head;
+		const line = view.state.doc.lineAt(head);
+		const onBlank = line.text.trim() === '';
+		const pos = onBlank ? line.from : line.to;
+		const insert = `${onBlank ? '' : '\n'}> [!note] Title\n> `;
+		const titleFrom = pos + (onBlank ? 0 : 1) + '> [!note] '.length;
+		view.dispatch({
+			changes: onBlank ? { from: line.from, to: line.to, insert } : { from: pos, insert },
+			selection: { anchor: titleFrom, head: titleFrom + 'Title'.length }
 		});
 		view.focus();
 	}

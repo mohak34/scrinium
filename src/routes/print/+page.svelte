@@ -5,6 +5,7 @@
 	import { loadNote } from '$lib/stores/vault';
 	import { renderNoteToHtml } from '$lib/print/renderNote';
 	import 'katex/dist/katex.min.css';
+	import '@material-symbols/font-400';
 
 	const notePath = $derived($page.url.searchParams.get('note') ?? '');
 	const title = $derived(notePath.split('/').pop() ?? 'note');
@@ -178,6 +179,73 @@
 	.paper :global(img) {
 		max-width: 100%;
 		break-inside: avoid;
+	}
+	.paper :global(.callout) {
+		border-left: 4px solid var(--callout-accent, #448aff);
+		background: var(--callout-bg, rgba(68, 138, 255, 0.1));
+		border-radius: 6px;
+		padding: 0.6rem 0.9rem;
+		margin: 0.9rem 0;
+		break-inside: avoid;
+	}
+	.paper :global(.callout-title) {
+		display: flex;
+		align-items: center;
+		gap: 0.4em;
+		font-weight: 700;
+		color: var(--callout-accent, #1a53d6);
+		margin-bottom: 0.3rem;
+	}
+	.paper :global(.callout-icon),
+	.paper :global(.callout-fold) {
+		font-size: 18px;
+	}
+	.paper :global(.callout-body > :first-child) {
+		margin-top: 0;
+	}
+	.paper :global(.callout-body > :last-child) {
+		margin-bottom: 0;
+	}
+	.paper :global(.callout-note) {
+		--callout-accent: #1a53d6;
+		--callout-bg: rgba(26, 83, 214, 0.08);
+	}
+	.paper :global(.callout-abstract) {
+		--callout-accent: #00798c;
+		--callout-bg: rgba(0, 121, 140, 0.08);
+	}
+	.paper :global(.callout-info),
+	.paper :global(.callout-todo) {
+		--callout-accent: #1a53d6;
+		--callout-bg: rgba(26, 83, 214, 0.08);
+	}
+	.paper :global(.callout-tip) {
+		--callout-accent: #007a5e;
+		--callout-bg: rgba(0, 122, 94, 0.08);
+	}
+	.paper :global(.callout-success) {
+		--callout-accent: #16803c;
+		--callout-bg: rgba(22, 128, 60, 0.08);
+	}
+	.paper :global(.callout-question) {
+		--callout-accent: #a16207;
+		--callout-bg: rgba(161, 98, 7, 0.08);
+	}
+	.paper :global(.callout-warning) {
+		--callout-accent: #c25700;
+		--callout-bg: rgba(194, 87, 0, 0.08);
+	}
+	.paper :global(.callout-failure) {
+		--callout-accent: #c81e2e;
+		--callout-bg: rgba(200, 30, 46, 0.08);
+	}
+	.paper :global(.callout-example) {
+		--callout-accent: #6d28d9;
+		--callout-bg: rgba(109, 40, 217, 0.08);
+	}
+	.paper :global(.callout-quote) {
+		--callout-accent: #6b7280;
+		--callout-bg: rgba(107, 114, 128, 0.08);
 	}
 
 	@page {

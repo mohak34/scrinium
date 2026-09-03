@@ -138,6 +138,9 @@ State channels you will touch:
 
 - `src/lib/editor/` — live preview (`livePreview.ts`, read this first),
   markdownSetup.ts (CM6 language + theme + code/math highlight themes),
+  callouts.ts (shared Obsidian `> [!note]` parser: kinds, aliases, icons,
+  `findCallouts`; editor boxes via line decos + `!active` hides, print
+  rewrites blockquotes post-restore so math/code inside keep rendering),
   CodeEditor.svelte (editor view; editor settings are reconfigurable via
   CodeMirror `Compartment`s; Tab indents via `indentWithTab`; math blocks
   reveal source when the cursor is on an adjacent line so arrows never

@@ -177,6 +177,92 @@ export const baseTheme = EditorView.theme(
 			borderLeft: '1px solid var(--border-default)',
 			borderRight: '1px solid var(--border-default)'
 		},
+		// Callouts: per-line backgrounds form the box (line decorations, so
+		// no height-map risk). Accent per type via CSS vars, corners rounded
+		// on first/last lines only.
+		'.cm-callout': {
+			backgroundColor: 'var(--callout-bg)',
+			borderLeft: '3px solid var(--callout-accent)',
+			paddingLeft: '0.7em',
+			paddingRight: '0.7em'
+		},
+		'.cm-callout-first': {
+			paddingTop: '0.55em',
+			borderTopLeftRadius: '6px',
+			borderTopRightRadius: '6px'
+		},
+		'.cm-callout-last': {
+			paddingBottom: '0.55em',
+			borderBottomLeftRadius: '6px',
+			borderBottomRightRadius: '6px'
+		},
+		'.cm-callout-body': {
+			paddingTop: '0.1em'
+		},
+		'.cm-callout-title': { fontWeight: '700' },
+		'.cm-callout-marker': {
+			display: 'inline-flex',
+			alignItems: 'center',
+			gap: '0.35em',
+			marginRight: '0.45em',
+			verticalAlign: 'middle'
+		},
+		'.cm-callout-icon': {
+			fontSize: '17px',
+			color: 'var(--callout-accent)'
+		},
+		'.cm-callout-fold': {
+			fontSize: '16px',
+			color: 'var(--outline)'
+		},
+		'.cm-callout-default-title': {
+			fontWeight: '700',
+			color: 'var(--callout-accent)'
+		},
+		'.cm-callout-note': {
+			'--callout-accent': '#448aff',
+			'--callout-bg': 'rgba(68, 138, 255, 0.12)'
+		},
+		'.cm-callout-abstract': {
+			'--callout-accent': '#00b8d4',
+			'--callout-bg': 'rgba(0, 184, 212, 0.12)'
+		},
+		'.cm-callout-info': {
+			'--callout-accent': '#448aff',
+			'--callout-bg': 'rgba(68, 138, 255, 0.12)'
+		},
+		'.cm-callout-todo': {
+			'--callout-accent': '#448aff',
+			'--callout-bg': 'rgba(68, 138, 255, 0.12)'
+		},
+		'.cm-callout-tip': {
+			'--callout-accent': '#00bfa5',
+			'--callout-bg': 'rgba(0, 191, 165, 0.12)'
+		},
+		'.cm-callout-success': {
+			'--callout-accent': '#23d160',
+			'--callout-bg': 'rgba(35, 209, 96, 0.12)'
+		},
+		'.cm-callout-question': {
+			'--callout-accent': '#eab308',
+			'--callout-bg': 'rgba(234, 179, 8, 0.12)'
+		},
+		'.cm-callout-warning': {
+			'--callout-accent': '#fb8500',
+			'--callout-bg': 'rgba(251, 133, 0, 0.12)'
+		},
+		'.cm-callout-failure': {
+			'--callout-accent': '#f43f5e',
+			'--callout-bg': 'rgba(244, 63, 94, 0.12)'
+		},
+		'.cm-callout-example': {
+			'--callout-accent': '#a78bfa',
+			'--callout-bg': 'rgba(167, 139, 250, 0.12)'
+		},
+		'.cm-callout-quote': {
+			'--callout-accent': '#9ca3af',
+			'--callout-bg': 'rgba(156, 163, 175, 0.12)'
+		},
 		'.cm-tooltip-autocomplete': {
 			backgroundColor: 'var(--surface-container)',
 			border: '1px solid var(--border-raised)',
