@@ -5,7 +5,6 @@
 	import { loadNote } from '$lib/stores/vault';
 	import { renderNoteToHtml } from '$lib/print/renderNote';
 	import 'katex/dist/katex.min.css';
-	import '@material-symbols/font-400';
 
 	const notePath = $derived($page.url.searchParams.get('note') ?? '');
 	const title = $derived(notePath.split('/').pop() ?? 'note');
@@ -196,9 +195,10 @@
 		color: var(--callout-accent, #1a53d6);
 		margin-bottom: 0.3rem;
 	}
-	.paper :global(.callout-icon),
-	.paper :global(.callout-fold) {
-		font-size: 18px;
+	.paper :global(.callout-icon) {
+		width: 18px;
+		height: 18px;
+		flex-shrink: 0;
 	}
 	.paper :global(.callout-body > :first-child) {
 		margin-top: 0;
