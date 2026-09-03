@@ -20,7 +20,12 @@ import { EditorState } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { markdownLanguage } from '$lib/editor/markdownSetup';
 import { findMathBlockRanges } from '$lib/editor/mathRanges';
-import { CALLOUT_ICONS, canonicalCalloutType, defaultCalloutTitle } from '$lib/editor/callouts';
+import {
+	calloutChevronSvg,
+	calloutIconSvg,
+	canonicalCalloutType,
+	defaultCalloutTitle
+} from '$lib/editor/callouts';
 import { resolveAssetUrl } from '$lib/editor/livePreview';
 
 const parser = new MarkdownIt({ html: false, linkify: true, breaks: true });
@@ -82,12 +87,10 @@ function renderCallouts(html: string): string {
 			if (firstBody) body = `<p>${firstBody}</p>` + body;
 		}
 		body = renderCalloutBody(body);
-		const chev = fold
-			? `<span class="material-symbols-outlined callout-fold">${fold === '-' ? 'expand_more' : 'expand_less'}</span>`
-			: '';
+		const chev = fold ? calloutChevronSvg(fold !== '-') : '';
 		return (
 			`<div class="callout callout-${kind}">` +
-			`<div class="callout-title"><span class="material-symbols-outlined callout-icon">${CALLOUT_ICONS[kind]}</span>` +
+			`<div class="callout-title">${calloutIconSvg(kind)}` +
 			`<span>${title}</span>${chev}</div>` +
 			(body.trim() ? `<div class="callout-body">${body}</div>` : '') +
 			`</div>`

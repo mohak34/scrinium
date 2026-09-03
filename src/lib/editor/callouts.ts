@@ -69,6 +69,42 @@ export const CALLOUT_ICONS: Record<CalloutKind, string> = {
 	quote: 'format_quote'
 };
 
+// Font-free stroke icons for print/PDF. The Material Symbols webfont embeds
+// as Type 3 in Chrome PDFs, which breaks text selection around it - these
+// inline SVGs print as vectors and leave surrounding text selectable.
+const CALLOUT_SVG_PATHS: Record<CalloutKind, string> = {
+	note: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
+	abstract:
+		'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+	info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+	todo: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+	tip: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+	success: '<path d="M20 6 9 17l-5-5"/>',
+	question:
+		'<circle cx="12" cy="12" r="9"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+	warning:
+		'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+	failure: '<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+	example:
+		'<path d="M10 2v7.5a2 2 0 0 1-.2.9L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5L14.2 10.4a2 2 0 0 1-.2-.9V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>',
+	quote:
+		'<path d="M10 11H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v7a3 3 0 0 1-3 3"/><path d="M20 11h-4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v7a3 3 0 0 1-3 3"/>'
+};
+
+function svgWrap(inner: string): string {
+	return `<svg class="callout-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+}
+
+/** Font-free callout icon for print/PDF (keeps nearby text selectable). */
+export function calloutIconSvg(kind: CalloutKind): string {
+	return svgWrap(CALLOUT_SVG_PATHS[kind]);
+}
+
+/** Font-free fold chevron for print/PDF. */
+export function calloutChevronSvg(open: boolean): string {
+	return svgWrap(open ? '<path d="m18 15-6-6-6 6"/>' : '<path d="m6 9 6 6 6-6"/>');
+}
+
 export function canonicalCalloutType(raw: string): CalloutKind {
 	return ALIASES[raw.toLowerCase()] ?? 'note';
 }
