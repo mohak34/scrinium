@@ -98,12 +98,12 @@
 		{ label: 'Find & replace', hint: `${mod}H`, run: () => onCommand('replace') },
 		{
 			label: 'Math inline',
-			hint: 'Wrap selection in $…$',
+			hint: `${mod}M`,
 			run: () => onCommand('mathInline')
 		},
 		{
 			label: 'Math block',
-			hint: 'Insert a $$ block',
+			hint: `${mod}Shift+E`,
 			run: () => onCommand('mathBlock')
 		},
 		{ label: 'Full preview', hint: 'Esc', run: () => onCommand('preview') },
