@@ -187,7 +187,21 @@
 					{ key: 'Mod-6', run: setHeading(6) },
 					{ key: 'Mod-Shift-b', run: toggleBullet },
 					{ key: 'Mod-l', run: toggleTask },
-					{ key: 'Mod-Shift-l', run: removeTask }
+					{ key: 'Mod-Shift-l', run: removeTask },
+					{
+						key: 'Mod-m',
+						run: (view) => {
+							wrapMathInline(view);
+							return true;
+						}
+					},
+					{
+						key: 'Mod-Shift-e',
+						run: (view) => {
+							insertMathBlock(view);
+							return true;
+						}
+					}
 				]),
 				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
 				keymap.of([indentWithTab]),
