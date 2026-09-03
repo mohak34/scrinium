@@ -75,3 +75,50 @@ export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
 	ranges.sort((a, b) => a.from - b.from);
 	return ranges;
 }
+
+// True when completions or snippet triggers may fire at pos: inside a
+// display-math block (closed or still being typed), or on a line with an
+// unclosed inline `$` - but never inside code.
+export function inMathRegion(state: EditorState, pos: number): boolean {
+	const blocks = findMathBlockRanges(state);
+	if (blocks.some((r) => pos >= r.from && pos <= r.to)) return true;
+	const inner = syntaxTree(state).resolveInner(Math.min(pos, state.doc.length), 0);
+	let cur: typeof inner | null = inner;
+	while (cur) {
+		if (
+			cur.name === 'CodeText' ||
+			cur.name === 'CodeMark' ||
+			cur.name === 'CodeInfo' ||
+			cur.name === 'InlineCode' ||
+			cur.name === 'FencedCode' ||
+			cur.name === 'CodeBlock'
+		)
+			return false;
+		cur = cur.parent;
+	}
+	const line = state.doc.lineAt(pos);
+	const before = line.text.slice(0, pos - line.from);
+	if (before.replace(/\\\$/g, '').replace(/\$\$/g, '').includes('$')) return true;
+	// Unclosed `$$` opener earlier in the doc (a display block being typed).
+	// Closed blocks and fenced code don't count toward the parity.
+	const fenced: Array<[number, number]> = [];
+	syntaxTree(state).iterate({
+		enter: (node) => {
+			if (node.name === 'FencedCode') {
+				fenced.push([node.from, node.to]);
+				return false;
+			}
+		}
+	});
+	const textBefore = state.doc.sliceString(0, pos);
+	const fences = /\$\$/g;
+	let count = 0;
+	let fm: RegExpExecArray | null;
+	while ((fm = fences.exec(textBefore)) !== null) {
+		const at = fm.index;
+		if (blocks.some((r) => at >= r.from && at < r.to)) continue;
+		if (fenced.some(([f, t]) => at >= f && at < t)) continue;
+		count++;
+	}
+	return count % 2 === 1;
+}

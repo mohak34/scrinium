@@ -146,6 +146,7 @@ State channels you will touch:
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),
   mathComplete.ts (`\command` completion source, math regions only),
+  mathSnippets.ts (Tab word/subscript and Space fraction triggers),
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
   move/list/restore/purge backed by `.trash/index.json`), db.ts (sqlite cache

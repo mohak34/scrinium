@@ -17,6 +17,7 @@
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
 	import { mathBlockField } from './mathBlock';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
+	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
 
 	interface Props {
 		value: string;
@@ -205,11 +206,16 @@
 				]),
 				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
 				keymap.of([indentWithTab]),
-				// List continuation must beat the default Enter binding; it
-				// returns false everywhere except a collapsed cursor on a
-				// list line outside code. Completion's own Enter (highest
-				// precedence) still wins when its panel is open.
-				Prec.high(keymap.of([{ key: 'Enter', run: insertListNewline }])),
+				// Snippet triggers run before indent; both fall through when the
+				// cursor is not on a trigger in math. Completion's own Enter
+				// (highest precedence) still wins when its panel is open.
+				Prec.high(
+					keymap.of([
+						{ key: 'Enter', run: insertListNewline },
+						{ key: 'Tab', run: expandMathSnippet },
+						{ key: ' ', run: expandMathFraction }
+					])
+				),
 				search({ top: true }),
 				highlightSelectionMatches({ minSelectionLength: 2 }),
 				markdownLanguage(),
