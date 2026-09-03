@@ -145,6 +145,7 @@ State channels you will touch:
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),
+  mathComplete.ts (`\command` completion source, math regions only),
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
   move/list/restore/purge backed by `.trash/index.json`), db.ts (sqlite cache

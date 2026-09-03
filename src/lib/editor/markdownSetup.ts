@@ -3,6 +3,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { tags as t } from '@lezer/highlight';
 import { EditorView } from '@codemirror/view';
+import { mathCompletionSource } from './mathComplete';
 
 // Dark-tuned code colors (OneDark-like) for fenced blocks on
 // var(--surface-container) bg. Replaces defaultHighlightStyle which
@@ -175,6 +176,28 @@ export const baseTheme = EditorView.theme(
 			backgroundColor: 'var(--surface-container)',
 			borderLeft: '1px solid var(--border-default)',
 			borderRight: '1px solid var(--border-default)'
+		},
+		'.cm-tooltip-autocomplete': {
+			backgroundColor: 'var(--surface-container)',
+			border: '1px solid var(--border-raised)',
+			borderRadius: 'var(--radius-lg)',
+			boxShadow: 'var(--shadow-pop)',
+			color: 'var(--on-surface)'
+		},
+		'.cm-tooltip-autocomplete ul': {
+			fontFamily: 'var(--font-ui)'
+		},
+		'.cm-tooltip-autocomplete li[aria-selected]': {
+			backgroundColor: 'var(--surface-container-highest)',
+			color: 'var(--on-surface)'
+		},
+		'.cm-tooltip-autocomplete .cm-completionDetail': {
+			color: 'var(--outline)',
+			fontStyle: 'normal'
+		},
+		'.cm-tooltip-autocomplete .cm-completionMatchedText': {
+			color: 'var(--primary)',
+			textDecoration: 'none'
 		}
 	},
 	{ dark: true }
@@ -183,5 +206,8 @@ export const baseTheme = EditorView.theme(
 export function markdownLanguage() {
 	// GFM as the base parser so task-list markers (`- [x]`) parse as
 	// TaskMarker nodes instead of links.
-	return markdown({ base: gfm, codeLanguages: languages });
+	const support = markdown({ base: gfm, codeLanguages: languages });
+	// Math completions ride the language-data channel (same one the built-in
+	// HTML-tag completion uses) so both stay active.
+	return [support, support.language.data.of({ autocomplete: mathCompletionSource })];
 }
