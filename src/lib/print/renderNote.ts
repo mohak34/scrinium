@@ -20,6 +20,7 @@ import { EditorState } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { markdownLanguage } from '$lib/editor/markdownSetup';
 import { findMathBlockRanges } from '$lib/editor/mathRanges';
+import { resolveAssetUrl } from '$lib/editor/livePreview';
 
 const parser = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
@@ -47,7 +48,8 @@ function katexInline(source: string): string {
 	}
 }
 
-export function renderNoteToHtml(src: string): string {
+export function renderNoteToHtml(src: string, notePath: string): string {
+	const noteDir = notePath.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/')) : null;
 	const state = EditorState.create({ doc: src, extensions: [markdownLanguage()] });
 	const chunks: string[] = [];
 	const stash = (html: string): string => {
@@ -167,6 +169,13 @@ export function renderNoteToHtml(src: string): string {
 	chunks.forEach((chunk, i) => {
 		const token = `SCRINIUMPRINT${i}X`;
 		html = html.split(`<p>${token}</p>`).join(chunk).split(token).join(chunk);
+	});
+	// 6. Relative image URLs resolve against the note's folder (same rule as
+	// the editor) - otherwise they 404 against /print and only alt shows.
+	html = html.replace(/<img([^>]*?)src="([^"]*)"/g, (m, rest, url) => {
+		if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('/')) return m;
+		const resolved = resolveAssetUrl(url, noteDir);
+		return resolved ? `<img${rest}src="${resolved}"` : m;
 	});
 	return html;
 }
