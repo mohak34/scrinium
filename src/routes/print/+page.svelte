@@ -38,6 +38,10 @@
 			Print / Save as PDF
 		</button>
 	</div>
+	<p class="print-tip no-print">
+		Tip: uncheck “Headers and footers” in the print dialog to drop the title
+		and URL strip. The saved filename defaults to the note name.
+	</p>
 	{#if error}
 		<p class="print-error">{error}</p>
 	{:else}
@@ -91,9 +95,21 @@
 		padding: 2rem;
 		text-align: center;
 	}
+	.print-tip {
+		max-width: 720px;
+		margin: 12px auto 0;
+		padding: 0 8px;
+		color: var(--outline);
+		font-size: var(--font-ui-small);
+	}
 	.paper {
 		background: #fff;
 		color: #161616;
+		/* Static system stack on purpose: the variable Inter webfont embeds
+		poorly in some PDF writers (bold/headings came out unselectable),
+		while system fonts copy cleanly everywhere. */
+		font-family:
+			-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		max-width: 720px;
 		margin: 24px auto 48px;
 		padding: 48px 56px;
