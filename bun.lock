@@ -5,6 +5,7 @@
     "": {
       "name": "scrinium",
       "dependencies": {
+        "@codemirror/autocomplete": "^6.20.3",
         "@codemirror/commands": "^6.7.0",
         "@codemirror/lang-markdown": "^6.3.0",
         "@codemirror/language": "^6.10.0",

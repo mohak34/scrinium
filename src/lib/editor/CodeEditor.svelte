@@ -13,6 +13,7 @@
 	highlightSelectionMatches
 } from '@codemirror/search';
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
+	import { autocompletion, closeCompletion, completionStatus } from '@codemirror/autocomplete';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
 	import { mathBlockField } from './mathBlock';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask } from './formatting';
@@ -59,8 +60,45 @@
 		task: toggleTask,
 		removeTask,
 		find: openSearchPanel,
-		replace: replaceNext
+		replace: replaceNext,
+		mathInline: wrapMathInline,
+		mathBlock: insertMathBlock
 	};
+
+	// Wrap the selection in `$...$` for inline math, or drop `$|$ with the
+	// cursor between the dollars when nothing is selected.
+	function wrapMathInline(view: EditorView) {
+		const sel = view.state.selection.main;
+		if (sel.empty) {
+			view.dispatch({
+				changes: { from: sel.head, insert: '$$' },
+				selection: { anchor: sel.head + 1 }
+			});
+		} else {
+			const text = view.state.sliceDoc(sel.from, sel.to);
+			view.dispatch({
+				changes: { from: sel.from, to: sel.to, insert: `$${text}$` },
+				selection: { anchor: sel.from + 1, head: sel.to + 1 }
+			});
+		}
+		view.focus();
+	}
+
+	// Insert an own-line `$$` block skeleton with the cursor on the empty
+	// middle line. On a blank line it replaces the line; otherwise the block
+	// goes below the current line.
+	function insertMathBlock(view: EditorView) {
+		const head = view.state.selection.main.head;
+		const line = view.state.doc.lineAt(head);
+		const onBlank = line.text.trim() === '';
+		const pos = onBlank ? line.from : line.to;
+		const insert = `${onBlank ? '' : '\n'}$$\n\n$$`;
+		view.dispatch({
+			changes: onBlank ? { from: line.from, to: line.to, insert } : { from: pos, insert },
+			selection: { anchor: pos + (onBlank ? 0 : 1) + 3 }
+		});
+		view.focus();
+	}
 
 	export function runCommand(name: string) {
 		if (!view) return;
@@ -157,6 +195,7 @@
 				highlightSelectionMatches({ minSelectionLength: 2 }),
 				markdownLanguage(),
 				codeHighlight,
+				autocompletion({ icons: false }),
 				noteDirField,
 				livePreview,
 				mathBlockField,
@@ -167,6 +206,13 @@
 				EditorView.domEventHandlers({
 					keydown: (e, view) => {
 						if (e.key === 'Escape') {
+							// An open completion list gets first claim on Esc -
+							// closing it must not also flip to full preview.
+							if (completionStatus(view.state)) {
+								closeCompletion(view);
+								e.preventDefault();
+								return true;
+							}
 							// Full preview: render the whole note, stop the cursor
 							// blinking. Click back into the editor to resume editing.
 							e.preventDefault();

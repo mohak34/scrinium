@@ -96,6 +96,16 @@
 		},
 		{ label: 'Find in note', hint: `${mod}F`, run: () => onCommand('find') },
 		{ label: 'Find & replace', hint: `${mod}H`, run: () => onCommand('replace') },
+		{
+			label: 'Math inline',
+			hint: 'Wrap selection in $…$',
+			run: () => onCommand('mathInline')
+		},
+		{
+			label: 'Math block',
+			hint: 'Insert a $$ block',
+			run: () => onCommand('mathBlock')
+		},
 		{ label: 'Full preview', hint: 'Esc', run: () => onCommand('preview') },
 		{ label: 'Open command palette', hint: `${mod}K` }
 	];
