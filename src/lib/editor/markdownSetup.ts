@@ -97,11 +97,15 @@ export const baseTheme = EditorView.theme(
 		},
 		'.cm-link': { color: 'var(--primary)', textDecoration: 'underline' },
 		// Rendered image: full-width lines, unmounted when the cursor leaves.
+		// NOTE: no vertical margin - CodeMirror measures block widgets without
+		// margins, so any vertical margin desyncs the height map (gutter,
+		// cursor coords and arrow targets all shift below the widget).
 		'& .cm-image': {
 			display: 'block',
 			maxWidth: '100%',
 			maxHeight: '60vh',
-			margin: '0.4em 0',
+			margin: '0',
+			padding: '0.4em 0',
 			borderRadius: '6px',
 			objectFit: 'contain'
 		},
@@ -152,8 +156,11 @@ export const baseTheme = EditorView.theme(
 		'.cm-math-block': {
 			display: 'block',
 			textAlign: 'center',
-			margin: '0.75rem 0',
-			padding: '0.75rem 1rem',
+			// No vertical margin here, same reason as .cm-image above:
+			// unmeasured margins shift every line below the widget. The old
+			// 0.75rem margin is folded into padding so spacing is measured.
+			margin: '0',
+			padding: '1.5rem 1rem',
 			backgroundColor: 'var(--surface-container)',
 			border: '1px solid var(--border-default)',
 			borderRadius: '6px',

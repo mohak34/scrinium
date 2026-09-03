@@ -91,6 +91,10 @@ Scrinium is small, but there are a few footguns specific to it.
    and record the original path in `.trash/index.json`. If you touch trash
    internals, keep that file in sync or restore falls back to guessing from
    the timestamp-prefixed name.
+7. **Vertical margins on block widgets.** CodeMirror measures block widgets
+   without their margins, so `margin: X 0` on `.cm-math-block` / `.cm-image`
+   desyncs the height map — gutter numbers, cursor coords and arrow targets
+   all shift below the widget, compounding per block. Put spacing in padding.
 
 ## Commands
 
