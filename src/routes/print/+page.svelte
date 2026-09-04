@@ -143,6 +143,12 @@
 		border-radius: 4px;
 		font-size: 0.9em;
 	}
+	.paper :global(.print-wikilink) {
+		color: #1a53d6;
+		background: rgba(26, 83, 214, 0.08);
+		padding: 0.05em 0.35em;
+		border-radius: 4px;
+	}
 	.paper :global(pre.print-code) {
 		background: #f5f5f5;
 		border: 1px solid #ddd;

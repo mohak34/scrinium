@@ -141,6 +141,9 @@ State channels you will touch:
   callouts.ts (shared Obsidian `> [!note]` parser: kinds, aliases, icons,
   `findCallouts`; editor boxes via line decos + `!active` hides, print
   rewrites blockquotes post-restore so math/code inside keep rendering),
+  wikilinks.ts (shared `[[link]]` parse/resolve/backlink-match; editor pill
+  widgets + click-to-open/create via `wikiCtxField`, `[[` completion in
+  wikiComplete.ts),
   CodeEditor.svelte (editor view; editor settings are reconfigurable via
   CodeMirror `Compartment`s; Tab indents via `indentWithTab`; math blocks
   reveal source when the cursor is on an adjacent line so arrows never
@@ -162,7 +165,7 @@ State channels you will touch:
   Sidebar, TabBar.
 - `src/routes/` — `/` (+page.svelte shell), `/login`, `/settings` (account +
   mobile tokens + editor prefs), `/trash` (grouped restore/purge page),
-  api/{auth,notes,tree,search,assets,attachments,tokens,trash}. Mobile-only
+  api/{auth,notes,tree,search,assets,attachments,tokens,trash,backlinks}. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing).
 

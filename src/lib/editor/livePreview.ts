@@ -35,6 +35,14 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { findMathBlockRanges } from './mathRanges';
 import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts } from './callouts';
+import {
+	findWikilinksInText,
+	resolveWikilink,
+	wikilinkDisplay,
+	wikilinkFilename,
+	type Wikilink
+} from './wikilinks';
+import { createNote, flushSave, openTab } from '$lib/stores/vault';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
 // regardless of where the cursor is. Entered with Escape, exited by clicking
@@ -52,6 +60,24 @@ export const noteDirField = StateField.define<string | null>({
 	update(value, tr) {
 		for (const e of tr.effects) {
 			if (e.is(noteDirEffect)) return e.value;
+		}
+		return value;
+	}
+});
+
+// Vault-wide link context for wikilinks: flat `.md` paths plus the open
+// note (creation folder for unresolved targets). Mirrored from the vault
+// store by CodeEditor; the decoration set rebuilds when it flips.
+export interface WikiCtx {
+	notes: string[];
+	current: string | null;
+}
+export const wikiCtxEffect = StateEffect.define<WikiCtx>();
+export const wikiCtxField = StateField.define<WikiCtx>({
+	create: () => ({ notes: [], current: null }),
+	update(value, tr) {
+		for (const e of tr.effects) {
+			if (e.is(wikiCtxEffect)) return e.value;
 		}
 		return value;
 	}
@@ -108,6 +134,54 @@ class CheckboxWidget extends WidgetType {
 			});
 		};
 		return box;
+	}
+	ignoreEvent() {
+		return true;
+	}
+}
+
+// A `[[wikilink]]` rendered as a clickable pill when the cursor is off
+// the line. Click navigates; clicking an unresolved target creates the
+// note first (same folder as the open note, vault root otherwise).
+class WikilinkWidget extends WidgetType {
+	constructor(
+		readonly target: string,
+		readonly display: string
+	) {
+		super();
+	}
+	eq(other: WikilinkWidget) {
+		return other.target === this.target && other.display === this.display;
+	}
+	toDOM(view: EditorView) {
+		const span = document.createElement('span');
+		const resolved = resolveWikilink(this.target, view.state.field(wikiCtxField, false)?.notes ?? []);
+		span.className = resolved ? 'cm-wikilink' : 'cm-wikilink cm-wikilink-unresolved';
+		span.textContent = this.display;
+		span.onmousedown = (e) => {
+			e.preventDefault();
+			const notes = view.state.field(wikiCtxField, false)?.notes ?? [];
+			const current = view.state.field(wikiCtxField, false)?.current ?? null;
+			const path = resolveWikilink(this.target, notes);
+			if (path) {
+				void flushSave().then(() => openTab(path));
+				return;
+			}
+			const name = wikilinkFilename(this.target);
+			if (!name) return;
+			const dir = current?.includes('/') ? current.slice(0, current.lastIndexOf('/')) : null;
+			const full = dir ? `${dir}/${name}` : name;
+			void (async () => {
+				try {
+					await flushSave();
+					await createNote(full);
+					openTab(full);
+				} catch {
+					// creation failed - leave the raw link alone
+				}
+			})();
+		};
+		return span;
 	}
 	ignoreEvent() {
 		return true;
@@ -322,6 +396,21 @@ function buildDecorations(view: EditorView): DecorationSet {
 	const inCalloutHeader = (from: number, to: number): boolean =>
 		callouts.some((c) => from >= c.headerFrom && to <= c.headerTo);
 
+	// Wikilinks via text scan (the `[[]]` shape has no dedicated Lezer
+	// node). Ranges are computed up front so the tree walk can skip the
+	// inner `[x]` Link decorations where the widget replaces the whole
+	// `[[...]]` - same overlap rule as callout headers.
+	const docText = view.state.doc.toString();
+	const blockRanges = findMathBlockRanges(view.state);
+	const wikilinks: Wikilink[] = findWikilinksInText(docText).filter((w) => {
+		if (blockRanges.some((r) => w.from <= r.to && r.from <= w.to)) return false;
+		if (isInsideCode(view, w.from) || isInsideCode(view, Math.max(w.from, w.to - 1)))
+			return false;
+		return true;
+	});
+	const inWikilink = (from: number, to: number): boolean =>
+		wikilinks.some((w) => from >= w.from && to <= w.to);
+
 	for (const { from, to } of view.visibleRanges) {
 		tree.iterate({
 			from,
@@ -352,7 +441,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 					});
 				}
 				if (node.name === 'Link') {
-					if (!inCalloutHeader(node.from, node.to)) {
+					if (!inCalloutHeader(node.from, node.to) && !inWikilink(node.from, node.to)) {
 						pending.push({ from: node.from, to: node.to, deco: Decoration.mark({ class: 'cm-link' }) });
 					}
 				}
@@ -412,10 +501,11 @@ function buildDecorations(view: EditorView): DecorationSet {
 				if (HIDEABLE_MARKS.has(node.name)) {
 					// The callout header widget owns the whole `[!type]-`
 					// marker when the line is pretty; inner LinkMark/URL
-					// hides would overlap that replace.
+					// hides would overlap that replace. Same for wikilink
+					// widgets over the inner `[x]` LinkMarks.
 					if (
 						(node.name === 'LinkMark' || node.name === 'URL') &&
-						inCalloutHeader(node.from, node.to)
+						(inCalloutHeader(node.from, node.to) || inWikilink(node.from, node.to))
 					) {
 						// fall through to nothing (skip)
 					} else {
@@ -543,14 +633,30 @@ function buildDecorations(view: EditorView): DecorationSet {
 		}
 	}
 
+	// Wikilinks: pretty pill off-line, raw text on-line. Same contract as
+	// every other hideable mark. Resolution happens live in the widget so
+	// newly created notes flip from unresolved without an edit.
+	for (const w of wikilinks) {
+		const active = isLineActive(view, w.from, Math.max(w.from, w.to - 1));
+		if (active) {
+			pending.push({ from: w.from, to: w.to, deco: Decoration.mark({ class: 'cm-wikilink-source' }) });
+		} else {
+			pending.push({
+				from: w.from,
+				to: w.to,
+				deco: Decoration.replace({
+					widget: new WikilinkWidget(w.target, wikilinkDisplay(w))
+				})
+			});
+		}
+	}
+
 	// Inline math: single-line `$...$` only. Block math (```math fences and
 	// own-line $$...$$) lives in mathBlock.ts as a StateField, because
 	// multi-line replaces must not go through this ViewPlugin. Skip anything
 	// inside code or inside a block-math range - an inline replace overlapping
 	// a block replace corrupts the RangeSetBuilder.
-	const blockRanges = findMathBlockRanges(view.state);
 	const inlineRegex = /(?<!\$)\$(?!\$)([^$\n]{1,200}?)(?<!\\)\$(?!\$)/g;
-	const docText = view.state.doc.toString();
 	let m: RegExpExecArray | null;
 	inlineRegex.lastIndex = 0;
 	while ((m = inlineRegex.exec(docText)) !== null) {
@@ -610,7 +716,8 @@ export const livePreview = ViewPlugin.fromClass(
 				update.transactions.some(
 					(tr) =>
 						tr.effects.some((e) => e.is(previewModeEffect)) ||
-						tr.effects.some((e) => e.is(noteDirEffect))
+						tr.effects.some((e) => e.is(noteDirEffect)) ||
+						tr.effects.some((e) => e.is(wikiCtxEffect))
 				)
 			) {
 				this.decorations = buildDecorations(update.view);
