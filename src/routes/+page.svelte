@@ -94,6 +94,10 @@
 			} else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
 				e.preventDefault();
 				paletteOpen = !paletteOpen;
+			} else if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+				// Toggle the left sidebar from anywhere, editor included.
+				e.preventDefault();
+				toggleCollapse();
 			} else if (e.key === 'Escape' && paletteOpen) {
 				paletteOpen = false;
 			} else if (e.key === 'Escape' && imagePreview) {
@@ -189,13 +193,9 @@
 		class="sidebar-wrap"
 		class:collapsed={collapsed}
 		class:resizing={resizing}
-		style="width: {collapsed ? 40 : sidebarWidth}px"
+		style="width: {collapsed ? 0 : sidebarWidth}px"
 	>
-		{#if collapsed}
-			<button class="expand-btn" onclick={toggleCollapse} title="Expand sidebar">
-				<span class="material-symbols-outlined">right_panel_open</span>
-			</button>
-		{:else}
+		{#if !collapsed}
 		<Sidebar
 			onSelect={openNote}
 			onToggleCollapse={toggleCollapse}
@@ -220,7 +220,12 @@
 		{/if}
 	</div>
 	<div class="main">
-		<TabBar activePath={$activePath} onActivate={openNote} />
+		<TabBar
+			activePath={$activePath}
+			onActivate={openNote}
+			sidebarCollapsed={collapsed}
+			onToggleSidebar={toggleCollapse}
+		/>
 		<div class="editor-scroll">
 			{#if $activePath}
 				<CodeEditor
@@ -302,27 +307,9 @@
 	}
 	.sidebar-wrap.collapsed {
 		width: 0;
-		background: #15161c;
-		border-right: 1px solid var(--border-default);
 	}
 	.sidebar-wrap.resizing {
 		transition: none;
-	}
-	.expand-btn {
-		width: 100%;
-		height: 48px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: none;
-		border: none;
-		color: var(--on-surface-variant);
-		cursor: pointer;
-		line-height: 1;
-	}
-	.expand-btn:hover {
-		background: var(--surface-container-low);
-		color: var(--on-surface);
 	}
 	.resize-handle {
 		position: absolute;
