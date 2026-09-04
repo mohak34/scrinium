@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { searchNotes, type SearchResult } from '$lib/stores/vault';
-	import { focusSearchRequest } from '$lib/stores/actions';
+	import { focusSearchRequest, searchTagRequest } from '$lib/stores/actions';
 
 	interface Props {
 		onSelect: (path: string) => void;
@@ -16,11 +16,23 @@
 	let inputEl = $state<HTMLInputElement>();
 
 	// The command palette's "Open search" command requests focus here.
+	// The rail Tags panel requests a tag search the same way.
 	onMount(() => {
-		const unsub = focusSearchRequest.subscribe((n) => {
+		const unsubFocus = focusSearchRequest.subscribe((n) => {
 			if (n) inputEl?.focus();
 		});
-		return unsub;
+		const unsubTag = searchTagRequest.subscribe((t) => {
+			if (t) {
+				query = t;
+				open = true;
+				inputEl?.focus();
+				searchTagRequest.set(null);
+			}
+		});
+		return () => {
+			unsubFocus();
+			unsubTag();
+		};
 	});
 
 	$effect(() => {
