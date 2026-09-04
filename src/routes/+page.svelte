@@ -4,6 +4,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Backlinks from '$lib/components/Backlinks.svelte';
 	import Outline from '$lib/components/Outline.svelte';
+	import Tags from '$lib/components/Tags.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
 	import CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
@@ -243,6 +244,7 @@
 	{#if $activePath && !rightCollapsed}
 		<aside class="rightbar" aria-label="Right sidebar">
 			<Backlinks onSelect={openNote} onClose={toggleRightCollapse} />
+			<Tags content={currentContent} />
 			<Outline content={currentContent} onJump={(line) => editorRef?.gotoLine(line)} />
 		</aside>
 	{/if}
