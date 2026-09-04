@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import fs from 'node:fs/promises';
 import { safeResolve } from '$lib/server/vault';
-import { findBacklinks } from '$lib/editor/wikilinks';
+import { findBacklinks, findUnlinkedMentions } from '$lib/editor/wikilinks';
 
 export interface Backlink {
 	path: string;
@@ -43,9 +43,9 @@ export const GET: RequestHandler = async ({ url }) => {
 			}
 		})
 	);
-	const out: Backlink[] = findBacklinks(
-		target,
-		files.filter((f): f is { path: string; content: string } => f !== null)
-	);
-	return json(out);
+	const clean = files.filter((f): f is { path: string; content: string } => f !== null);
+	return json({
+		linked: findBacklinks(target, clean) as Backlink[],
+		unlinked: findUnlinkedMentions(target, clean) as Backlink[]
+	});
 };

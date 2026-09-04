@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store';
+import { linkFirstMention } from '$lib/editor/wikilinks';
 
 export interface VaultEntry {
 	name: string;
@@ -277,6 +278,32 @@ export async function createFolder(path: string) {
 		body: JSON.stringify({ folder: true })
 	});
 	await loadTree();
+}
+
+// Convert the first bare mention of the target note into a `[[link]]`
+// inside the source file. Flushes first so debounced keystrokes are never
+// clobbered; pushes into the editor when the source is the open note.
+export async function linkUnlinkedMention(sourcePath: string, targetPath: string): Promise<boolean> {
+	await flushSave();
+	let content: string;
+	try {
+		content = await loadNote(sourcePath);
+	} catch {
+		return false;
+	}
+	const next = linkFirstMention(content, targetPath);
+	if (!next) return false;
+	const res = await fetch(`/api/notes/${encPath(sourcePath)}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'text/plain' },
+		body: next
+	});
+	if (!res.ok) return false;
+	if (get(activePath) === sourcePath) {
+		externalContentUpdate.set({ path: sourcePath, content: next });
+	}
+	await loadTree();
+	return true;
 }
 
 // Centralized rename that keeps tabs/activePath/pinned in sync.
