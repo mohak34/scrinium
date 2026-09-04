@@ -30,8 +30,9 @@
 	interface Props {
 		onSelect: (path: string) => void;
 		onOpenAsset: (path: string) => void;
+		onToggleCollapse: () => void;
 	}
-	let { onSelect, onOpenAsset }: Props = $props();
+	let { onSelect, onOpenAsset, onToggleCollapse }: Props = $props();
 
 	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
 	let addMenu = $state<{ x: number; y: number } | null>(null);
@@ -216,13 +217,22 @@
 >
 	<div class="header">
 		<span class="brand">Scrinium</span>
-		<button
-			class="icon-btn"
-			onclick={(e) => (addMenu = { x: e.clientX, y: e.clientY })}
-			title="New note or folder"
-		>
-			<span class="material-symbols-outlined">add</span>
-		</button>
+		<div class="header-actions">
+			<button
+				class="icon-btn"
+				onclick={onToggleCollapse}
+				title="Collapse sidebar"
+			>
+				<span class="material-symbols-outlined">left_panel_close</span>
+			</button>
+			<button
+				class="icon-btn"
+				onclick={(e) => (addMenu = { x: e.clientX, y: e.clientY })}
+				title="New note or folder"
+			>
+				<span class="material-symbols-outlined">add</span>
+			</button>
+		</div>
 	</div>
 	<SearchBox {onSelect} />
 	<div
@@ -301,6 +311,11 @@
 		font-weight: var(--font-editor-title-weight);
 		letter-spacing: var(--font-editor-title-tracking);
 		color: var(--on-surface);
+	}
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 2px;
 	}
 	.icon-btn {
 		display: flex;

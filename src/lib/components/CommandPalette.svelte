@@ -46,7 +46,7 @@
 		},
 		{
 			label: 'Toggle right sidebar',
-			hint: 'Collapse or expand the backlinks panel',
+			hint: 'Show or hide the backlinks panel',
 			run: () => onToggleRightSidebar()
 		},
 		{

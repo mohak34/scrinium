@@ -57,6 +57,8 @@
 
 	let collapsed = $state(false);
 	let rightCollapsed = $state(false);
+	let sidebarWidth = $state(260);
+	let resizing = $state(false);
 	let paletteOpen = $state(false);
 	let imagePreview = $state<string | null>(null);
 	let zoom = $state(100);
@@ -68,6 +70,10 @@
 	onMount(() => {
 		collapsed = localStorage.getItem('scrinium:sidebarCollapsed') === '1';
 		rightCollapsed = localStorage.getItem('scrinium:rightCollapsed') === '1';
+		const savedWidth = Number(localStorage.getItem('scrinium:sidebarWidth'));
+		if (Number.isFinite(savedWidth) && savedWidth >= 180 && savedWidth <= 480) {
+			sidebarWidth = savedWidth;
+		}
 		loadTree();
 
 		const key = (e: KeyboardEvent) => {
@@ -115,6 +121,46 @@
 		localStorage.setItem('scrinium:rightCollapsed', rightCollapsed ? '1' : '0');
 	}
 
+	// Drag the sidebar's right edge to resize. Double-click resets to the
+	// default width. Multi-clicks never start a drag (detail > 1).
+	function startSidebarResize(e: MouseEvent) {
+		if (e.detail > 1 || collapsed) return;
+		e.preventDefault();
+		resizing = true;
+		const startX = e.clientX;
+		const startW = sidebarWidth;
+		const move = (ev: MouseEvent) => {
+			sidebarWidth = Math.min(480, Math.max(180, startW + ev.clientX - startX));
+		};
+		const up = () => {
+			resizing = false;
+			localStorage.setItem('scrinium:sidebarWidth', String(sidebarWidth));
+			window.removeEventListener('mousemove', move);
+			window.removeEventListener('mouseup', up);
+		};
+		window.addEventListener('mousemove', move);
+		window.addEventListener('mouseup', up);
+	}
+
+	function resetSidebarWidth() {
+		sidebarWidth = 260;
+		localStorage.setItem('scrinium:sidebarWidth', '260');
+	}
+
+	// Keyboard resize on the focused handle: arrows step, Home resets.
+	function resizeKey(e: KeyboardEvent) {
+		const step = e.shiftKey ? 20 : 10;
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+			e.preventDefault();
+			const delta = e.key === 'ArrowRight' ? step : -step;
+			sidebarWidth = Math.min(480, Math.max(180, sidebarWidth + delta));
+			localStorage.setItem('scrinium:sidebarWidth', String(sidebarWidth));
+		} else if (e.key === 'Home') {
+			e.preventDefault();
+			resetSidebarWidth();
+		}
+	}
+
 	async function openNote(path: string) {
 		// Finish saving the current note before swapping, so the debounce never
 		// drops edits made right before switching.
@@ -139,14 +185,35 @@
 </script>
 
 <div class="layout">
-	<div class="sidebar-wrap" class:collapsed={collapsed}>
+	<div
+		class="sidebar-wrap"
+		class:collapsed={collapsed}
+		class:resizing={resizing}
+		style="width: {collapsed ? 0 : sidebarWidth}px"
+	>
 		<Sidebar
 			onSelect={openNote}
+			onToggleCollapse={toggleCollapse}
 			onOpenAsset={(path) => {
 				imagePreview = path;
 				zoom = 100;
 			}}
 		/>
+		{#if !collapsed}
+			<div
+				class="resize-handle"
+				role="slider"
+				tabindex="0"
+				aria-label="Sidebar width"
+				aria-valuemin="180"
+				aria-valuemax="480"
+				aria-valuenow={sidebarWidth}
+				onmousedown={startSidebarResize}
+				ondblclick={resetSidebarWidth}
+				onkeydown={resizeKey}
+				title="Drag to resize, double-click to reset"
+			></div>
+		{/if}
 	</div>
 	<div class="main">
 		<TabBar activePath={$activePath} onActivate={openNote} />
@@ -163,9 +230,11 @@
 			{/if}
 		</div>
 	</div>
-	<aside class="rightbar" class:collapsed={rightCollapsed} aria-label="Right sidebar">
-		<Backlinks onSelect={openNote} />
-	</aside>
+	{#if $activePath && !rightCollapsed}
+		<aside class="rightbar" aria-label="Right sidebar">
+			<Backlinks onSelect={openNote} onClose={toggleRightCollapse} />
+		</aside>
+	{/if}
 </div>
 
 {#if paletteOpen}
@@ -224,10 +293,29 @@
 		flex-shrink: 0;
 		height: 100vh;
 		overflow: hidden;
+		position: relative;
 		transition: width 0.18s ease;
 	}
 	.sidebar-wrap.collapsed {
 		width: 0;
+	}
+	.sidebar-wrap.resizing {
+		transition: none;
+	}
+	.resize-handle {
+		position: absolute;
+		top: 0;
+		right: -3px;
+		width: 7px;
+		height: 100%;
+		cursor: col-resize;
+		z-index: 10;
+		background: transparent;
+	}
+	.resize-handle:hover,
+	.resize-handle:focus-visible {
+		background: rgba(181, 196, 255, 0.25);
+		outline: none;
 	}
 	.rightbar {
 		width: 260px;
@@ -238,11 +326,6 @@
 		border-left: 1px solid var(--border-default);
 		display: flex;
 		flex-direction: column;
-		transition: width 0.18s ease;
-	}
-	.rightbar.collapsed {
-		width: 0;
-		border-left: none;
 	}
 	.main {
 		flex: 1;
