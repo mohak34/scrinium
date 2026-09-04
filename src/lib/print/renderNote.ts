@@ -27,6 +27,7 @@ import {
 	defaultCalloutTitle
 } from '$lib/editor/callouts';
 import { findWikilinksInText, wikilinkDisplay } from '$lib/editor/wikilinks';
+import { findTagsInText } from '$lib/editor/tags';
 import { resolveAssetUrl } from '$lib/editor/livePreview';
 
 const parser = new MarkdownIt({ html: false, linkify: true, breaks: true });
@@ -242,6 +243,37 @@ export function renderNoteToHtml(src: string, notePath: string): string {
 		});
 	}
 	for (const s of wikiSpans.sort((a, b) => b.from - a.from)) {
+		const token = stash(s.html);
+		text = text.slice(0, s.from) + token + text.slice(s.to);
+	}
+
+	// 4b. Tags: same stash trick, same code guard. Tag bodies are
+	// grammar-safe (letters/digits/`_`/`-`/`/`), so no escaping needed.
+	const tagState = EditorState.create({ doc: text, extensions: [markdownLanguage()] });
+	const tagSpans: Span[] = [];
+	for (const t of findTagsInText(text)) {
+		if (claimed(t.from, t.to)) {
+			continue;
+		}
+		const inner = syntaxTree(tagState).resolveInner(Math.min(t.from, text.length), 0);
+		let cur: typeof inner | null = inner;
+		let inCode = false;
+		while (cur) {
+			if (['CodeText', 'CodeMark', 'CodeInfo', 'InlineCode', 'FencedCode', 'CodeBlock'].includes(cur.name)) {
+				inCode = true;
+				break;
+			}
+			cur = cur.parent;
+		}
+		if (inCode) continue;
+		tagSpans.push({
+			from: t.from,
+			to: t.to,
+			html: `<span class="print-tag">#${t.name}</span>`,
+			block: false
+		});
+	}
+	for (const s of tagSpans.sort((a, b) => b.from - a.from)) {
 		const token = stash(s.html);
 		text = text.slice(0, s.from) + token + text.slice(s.to);
 	}
