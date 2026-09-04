@@ -118,11 +118,6 @@
 		color: var(--on-surface-variant);
 		cursor: pointer;
 		line-height: 1;
-		opacity: 0;
-	}
-	header:hover .close-btn,
-	.close-btn:focus-visible {
-		opacity: 1;
 	}
 	.close-btn:hover {
 		background: var(--surface-container-low);

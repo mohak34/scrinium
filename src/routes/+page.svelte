@@ -327,7 +327,7 @@
 		outline: none;
 	}
 	.rightbar {
-		width: 170px;
+		width: 260px;
 		flex-shrink: 0;
 		height: 100vh;
 		overflow: hidden;
