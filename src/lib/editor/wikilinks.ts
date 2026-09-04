@@ -120,6 +120,21 @@ export interface BacklinkMatch {
 	excerpt: string;
 }
 
+/**
+ * The matching line with every `[[...]]` replaced by its display text
+ * (alias, else target) - excerpts read as prose instead of markup.
+ */
+export function plainExcerpt(line: string): string {
+	let out = '';
+	let last = 0;
+	for (const w of findWikilinksInText(line)) {
+		out += line.slice(last, w.from);
+		out += w.alias?.trim() ? w.alias.trim() : w.target;
+		last = w.to;
+	}
+	return (out + line.slice(last)).trim().slice(0, 160);
+}
+
 /** Notes linking TO target (first matching line as excerpt, one per file). */
 export function findBacklinks(
 	target: string,
@@ -134,7 +149,7 @@ export function findBacklinks(
 				(w) => resolveWikilink(w.target, notes) === target
 			);
 			if (hit) {
-				out.push({ path: f.path, excerpt: line.trim().slice(0, 160) });
+				out.push({ path: f.path, excerpt: plainExcerpt(line) });
 				break;
 			}
 		}
