@@ -18,13 +18,6 @@
 
 	const tabName = (path: string) => (path.split('/').pop() ?? path).replace(/\.md$/, '');
 	const pinned = $derived(!!activePath && $pinnedPaths.includes(activePath));
-	// Folder trail for the collapsed-state breadcrumb (static orientation,
-	// folders are not destinations so they are not links).
-	const crumbs = $derived.by(() => {
-		if (!activePath) return { dirs: [] as string[], note: '' };
-		const parts = activePath.split('/');
-		return { dirs: parts.slice(0, -1), note: (parts.pop() ?? '').replace(/\.md$/, '') };
-	});
 
 	const statusLabel: Record<string, string> = {
 		idle: '',
@@ -67,15 +60,6 @@
 			<span class="material-symbols-outlined">left_panel_open</span>
 			<span>Sidebar</span>
 		</button>
-		{#if activePath}
-			<nav class="crumbs" aria-label="Note location" title={activePath}>
-				{#each crumbs.dirs as d}
-					<span class="crumb-dir">{d}</span>
-					<span class="crumb-sep" aria-hidden="true">›</span>
-				{/each}
-				<span class="crumb-note">{crumbs.note}</span>
-			</nav>
-		{/if}
 	{/if}
 	{#each $openTabs as path (path)}
 		<div
@@ -245,30 +229,6 @@
 	}
 	.sidebtn .material-symbols-outlined {
 		font-size: 16px;
-	}
-	.crumbs {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-left: 10px;
-		font-size: var(--font-ui-small);
-		white-space: nowrap;
-		overflow: hidden;
-		flex-shrink: 0;
-	}
-	.crumb-dir {
-		color: var(--outline);
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.crumb-sep {
-		color: var(--outline-variant);
-	}
-	.crumb-note {
-		color: var(--on-surface);
-		font-weight: var(--font-ui-medium-weight);
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 	.end {
 		margin-left: auto;
