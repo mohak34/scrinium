@@ -57,11 +57,9 @@
 	}
 </script>
 
-<section aria-label="Backlinks">
+<section aria-label="Linked mentions">
 	<header>
-		<span class="material-symbols-outlined">link</span>
-		<span class="title">Backlinks</span>
-		{#if !loading && !failed}<span class="count">{links.length}</span>{/if}
+		<span class="title">Linked mentions</span>
 		<button class="close-btn" onclick={onClose} title="Close panel">
 			<span class="material-symbols-outlined">close</span>
 		</button>
@@ -72,7 +70,7 @@
 				<li>
 					<button onclick={() => onSelect(l.path)} title={l.path}>
 						<span class="name">{nameOf(l.path)}</span>
-						{#if l.excerpt}<span class="excerpt">{l.excerpt}</span>{/if}
+						{#if l.excerpt}<span class="excerpt">"{l.excerpt}"</span>{/if}
 					</button>
 				</li>
 			{/each}
@@ -80,7 +78,7 @@
 	{:else if $activePath && !loading && failed}
 		<p class="empty">Couldn't load backlinks.</p>
 	{:else if $activePath && !loading}
-		<p class="empty">No notes link here yet.</p>
+		<p class="empty">None yet.</p>
 	{/if}
 </section>
 
@@ -90,29 +88,23 @@
 		flex-direction: column;
 		min-height: 0;
 		flex: 1;
-		padding: 0.75rem var(--gutter);
+		padding: 1rem var(--gutter);
 		overflow-y: auto;
 	}
 	header {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		color: var(--on-surface-variant);
-		margin-bottom: 0.25rem;
-	}
-	header .material-symbols-outlined {
-		font-size: 16px;
+		margin-bottom: 1rem;
 	}
 	.title {
-		font-size: var(--font-ui-small);
-		font-weight: 600;
+		font-size: var(--font-label-caps);
+		line-height: var(--font-label-caps-lh);
+		font-weight: var(--font-label-caps-weight);
+		letter-spacing: var(--label-caps-spacing);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		color: var(--on-surface-variant);
 		flex: 1;
-	}
-	.count {
-		font-size: var(--font-ui-small);
-		color: var(--outline);
 	}
 	.close-btn {
 		display: flex;
@@ -126,6 +118,11 @@
 		color: var(--on-surface-variant);
 		cursor: pointer;
 		line-height: 1;
+		opacity: 0;
+	}
+	header:hover .close-btn,
+	.close-btn:focus-visible {
+		opacity: 1;
 	}
 	.close-btn:hover {
 		background: var(--surface-container-low);
@@ -138,43 +135,44 @@
 		list-style: none;
 		margin: 0;
 		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
 	}
-	button {
+	li button {
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
-		gap: 1px;
+		gap: 2px;
 		width: 100%;
 		background: none;
 		border: none;
-		border-radius: var(--radius);
-		padding: 0.3rem 0.4rem;
-		color: var(--on-surface);
+		padding: 0;
 		cursor: pointer;
 		text-align: left;
 	}
-	button:hover {
-		background: var(--surface-container-low);
-	}
 	.name {
-		font-size: var(--font-ui-medium);
-		color: var(--primary);
+		font-size: var(--font-ui-small);
+		color: var(--on-surface-variant);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		max-width: 100%;
 	}
+	li button:hover .name {
+		color: var(--primary);
+	}
 	.excerpt {
-		font-size: var(--font-ui-small);
-		color: var(--outline);
+		font-size: var(--font-ui-micro);
+		color: var(--outline-variant);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		max-width: 100%;
 	}
 	.empty {
-		font-size: var(--font-ui-small);
-		color: var(--outline);
-		margin: 0.25rem 0;
+		font-size: var(--font-ui-micro);
+		color: var(--outline-variant);
+		margin: 0;
 	}
 </style>

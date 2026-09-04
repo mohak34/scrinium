@@ -327,11 +327,10 @@
 		outline: none;
 	}
 	.rightbar {
-		width: 260px;
+		width: 170px;
 		flex-shrink: 0;
 		height: 100vh;
 		overflow: hidden;
-		background: #15161c;
 		border-left: 1px solid var(--border-default);
 		display: flex;
 		flex-direction: column;
