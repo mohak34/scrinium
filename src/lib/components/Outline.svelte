@@ -38,7 +38,7 @@
 		flex: none;
 		max-height: 40%;
 		margin-top: auto;
-		padding: 1rem var(--gutter) 0;
+		padding: 1rem var(--gutter);
 		overflow-y: auto;
 	}
 	header {
