@@ -332,7 +332,7 @@
 		width: 260px;
 		flex-shrink: 0;
 		height: 100vh;
-		overflow: hidden;
+		overflow-y: auto;
 		border-left: 1px solid var(--border-default);
 		display: flex;
 		flex-direction: column;

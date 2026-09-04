@@ -35,8 +35,7 @@
 	section {
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
-		flex-shrink: 0;
+		flex: none;
 		max-height: 40%;
 		padding: 1rem var(--gutter) 0;
 		overflow-y: auto;

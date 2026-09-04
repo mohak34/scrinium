@@ -126,8 +126,8 @@
 	section {
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
-		flex: 1;
+		flex: none;
+		max-height: 45%;
 		padding: 1rem var(--gutter);
 		overflow-y: auto;
 	}
