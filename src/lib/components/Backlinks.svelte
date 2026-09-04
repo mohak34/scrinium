@@ -14,6 +14,7 @@
 
 	let links = $state<Backlink[]>([]);
 	let loading = $state(false);
+	let failed = $state(false);
 
 	// Backlinks depend on other files, so refetch when the tree changes
 	// (create/rename/delete/save) as well as when switching notes.
@@ -22,17 +23,25 @@
 		$tree;
 		if (!current) {
 			links = [];
+			failed = false;
 			return;
 		}
 		loading = true;
+		failed = false;
 		let cancelled = false;
 		fetch(`/api/backlinks?note=${encodeURIComponent(current)}`)
-			.then((res) => (res.ok ? res.json() : []))
+			.then((res) => {
+				if (!res.ok) throw new Error('backlinks failed');
+				return res.json();
+			})
 			.then((data: Backlink[]) => {
 				if (!cancelled) links = Array.isArray(data) ? data : [];
 			})
 			.catch(() => {
-				if (!cancelled) links = [];
+				if (!cancelled) {
+					links = [];
+					failed = true;
+				}
 			})
 			.finally(() => {
 				if (!cancelled) loading = false;
@@ -64,6 +73,8 @@
 				</li>
 			{/each}
 		</ul>
+	{:else if $activePath && !loading && failed}
+		<p class="empty">Couldn't load backlinks.</p>
 	{:else if $activePath && !loading}
 		<p class="empty">No notes link here yet.</p>
 	{/if}
@@ -71,11 +82,12 @@
 
 <style>
 	section {
-		border-top: 1px solid var(--border-default);
-		padding: 0.5rem var(--gutter);
-		max-height: 32vh;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		flex: 1;
+		padding: 0.75rem var(--gutter);
 		overflow-y: auto;
-		flex-shrink: 0;
 	}
 	header {
 		display: flex;

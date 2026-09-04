@@ -3,7 +3,6 @@
 	import FileTree from './FileTree.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import SearchBox from './SearchBox.svelte';
-	import Backlinks from './Backlinks.svelte';
 	import {
 		tree,
 		createNote,
@@ -248,7 +247,6 @@
 			onCancelRename={() => (renameTarget = null)}
 		/>
 	</div>
-	<Backlinks {onSelect} />
 	<div class="footer">
 		<button class="footer-item" onclick={() => goto('/trash')}>
 			<span class="material-symbols-outlined">delete</span>

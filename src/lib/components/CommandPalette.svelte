@@ -9,9 +9,10 @@
 		onSelect: (path: string) => void;
 		onClose: () => void;
 		onToggleSidebar: () => void;
+		onToggleRightSidebar: () => void;
 		onCommand: (cmd: string) => void;
 	}
-	let { onSelect, onClose, onToggleSidebar, onCommand }: Props = $props();
+	let { onSelect, onClose, onToggleSidebar, onToggleRightSidebar, onCommand }: Props = $props();
 
 	const mod =
 		typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
@@ -42,6 +43,11 @@
 			label: 'Toggle sidebar',
 			hint: 'Collapse or expand the sidebar',
 			run: () => onToggleSidebar()
+		},
+		{
+			label: 'Toggle right sidebar',
+			hint: 'Collapse or expand the backlinks panel',
+			run: () => onToggleRightSidebar()
 		},
 		{
 			label: 'Open trash',
