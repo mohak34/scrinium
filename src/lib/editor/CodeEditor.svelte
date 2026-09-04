@@ -366,6 +366,19 @@
 		suppressChange = false;
 	}
 
+	// Jump the cursor to a 1-based line (outline navigation): place the
+	// caret at its start and center it in view.
+	export function gotoLine(lineNo: number) {
+		if (!view) return;
+		if (lineNo < 1 || lineNo > view.state.doc.lines) return;
+		const line = view.state.doc.line(lineNo);
+		view.dispatch({
+			selection: { anchor: line.from },
+			effects: EditorView.scrollIntoView(line.from, { y: 'center' })
+		});
+		view.focus();
+	}
+
 	// Keep the editor in sync whenever the parent's value changes, so the doc
 	// can never go stale even if setDoc's timing races the editor mount.
 	$effect(() => {
