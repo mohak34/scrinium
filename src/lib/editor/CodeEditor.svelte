@@ -14,7 +14,9 @@
 } from '@codemirror/search';
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
 	import { autocompletion, closeCompletion, completionStatus } from '@codemirror/autocomplete';
-	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField } from './livePreview';
+	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField } from './livePreview';
+	import { notePathsFromTree } from './wikilinks';
+	import { tree } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
@@ -136,6 +138,15 @@
 		view.dispatch({ effects: noteDirEffect.of(dir) });
 	});
 
+	// Feed the vault-wide link context (flat note list + open note) to the
+	// wikilink decorations and `[[` completion. Reads $tree so creating or
+	// deleting a note re-resolves links without an edit.
+	$effect(() => {
+		if (!view) return;
+		const notes = notePathsFromTree($tree);
+		view.dispatch({ effects: wikiCtxEffect.of({ notes, current: notePath ?? null }) });
+	});
+
 	// Markdown image links are note-relative (livePreview resolves them against
 	// the note's folder); the upload API returns vault-relative paths. Convert
 	// so nested notes don't get doubled paths.
@@ -240,6 +251,7 @@
 				codeHighlight,
 				autocompletion({ icons: false }),
 				noteDirField,
+				wikiCtxField,
 				livePreview,
 				mathBlockField,
 				baseTheme,

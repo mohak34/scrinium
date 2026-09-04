@@ -31,11 +31,14 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
   not just "whoever has a Google account".
 - **Task checkboxes** — click to toggle `[ ]` ↔ `[x]`; on the active line the
   raw brackets come back and the caret crosses them freely.
+- **Wikilinks + backlinks** — `[[Note]]`, `[[Note|alias]]`, `[[Note#section]]`
+  render as clickable pills with `[[` autocomplete; clicking an unresolved
+  link creates the note. The sidebar lists every note linking to the open one.
 - **A small editor chrome** — file tree, tabs, search, command palette,
   settings page (editor prefs stay local; manage mobile API tokens there).
 - **Attachment preview** — view images in an in-app overlay.
 - **Thin by design** — one process, one small sqlite cache, no graph view, no
-  backlinks, no plugin marketplace, no bloat. The architecture stays open to a
+  plugin marketplace, no bloat. The architecture stays open to a
   desktop or mobile client later without a rewrite.
 
 ## Getting started (local)

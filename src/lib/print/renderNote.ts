@@ -26,6 +26,7 @@ import {
 	canonicalCalloutType,
 	defaultCalloutTitle
 } from '$lib/editor/callouts';
+import { findWikilinksInText, wikilinkDisplay } from '$lib/editor/wikilinks';
 import { resolveAssetUrl } from '$lib/editor/livePreview';
 
 const parser = new MarkdownIt({ html: false, linkify: true, breaks: true });
@@ -210,6 +211,37 @@ export function renderNoteToHtml(src: string, notePath: string): string {
 		inlineSpans.push({ from: start, to: end, html: katexInline(content), block: false });
 	}
 	for (const s of inlineSpans.sort((a, b) => b.from - a.from)) {
+		const token = stash(s.html);
+		text = text.slice(0, s.from) + token + text.slice(s.to);
+	}
+
+	// 4b. Wikilinks after math+code so those claim first (Iverson `$[[P]]$`,
+	// code spans). Stashed like everything else for a clean restore.
+	const wikiState = EditorState.create({ doc: text, extensions: [markdownLanguage()] });
+	const wikiSpans: Span[] = [];
+	for (const w of findWikilinksInText(text)) {
+		if (claimed(w.from, w.to)) {
+			continue;
+		}
+		const inner = syntaxTree(wikiState).resolveInner(Math.min(w.from, text.length), 0);
+		let cur: typeof inner | null = inner;
+		let inCode = false;
+		while (cur) {
+			if (['CodeText', 'CodeMark', 'CodeInfo', 'InlineCode', 'FencedCode', 'CodeBlock'].includes(cur.name)) {
+				inCode = true;
+				break;
+			}
+			cur = cur.parent;
+		}
+		if (inCode) continue;
+		wikiSpans.push({
+			from: w.from,
+			to: w.to,
+			html: `<span class="print-wikilink">${parser.renderInline(wikilinkDisplay(w))}</span>`,
+			block: false
+		});
+	}
+	for (const s of wikiSpans.sort((a, b) => b.from - a.from)) {
 		const token = stash(s.html);
 		text = text.slice(0, s.from) + token + text.slice(s.to);
 	}

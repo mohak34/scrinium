@@ -4,6 +4,7 @@ import { languages } from '@codemirror/language-data';
 import { tags as t } from '@lezer/highlight';
 import { EditorView } from '@codemirror/view';
 import { mathCompletionSource } from './mathComplete';
+import { wikiCompletionSource } from './wikiComplete';
 
 // Dark-tuned code colors (OneDark-like) for fenced blocks on
 // var(--surface-container) bg. Replaces defaultHighlightStyle which
@@ -97,6 +98,21 @@ export const baseTheme = EditorView.theme(
 			fontSize: '0.9em'
 		},
 		'.cm-link': { color: 'var(--primary)', textDecoration: 'underline' },
+		'.cm-wikilink': {
+			color: 'var(--primary)',
+			backgroundColor: 'rgba(181, 196, 255, 0.12)',
+			padding: '0.05em 0.35em',
+			borderRadius: '4px',
+			cursor: 'pointer'
+		},
+		'.cm-wikilink-unresolved': {
+			color: 'var(--outline)',
+			border: '1px dashed var(--outline-variant)'
+		},
+		'.cm-wikilink-source': {
+			backgroundColor: 'rgba(181, 196, 255, 0.12)',
+			borderRadius: '3px'
+		},
 		// Rendered image: full-width lines, unmounted when the cursor leaves.
 		// NOTE: no vertical margin - CodeMirror measures block widgets without
 		// margins, so any vertical margin desyncs the height map (gutter,
@@ -293,7 +309,11 @@ export function markdownLanguage() {
 	// GFM as the base parser so task-list markers (`- [x]`) parse as
 	// TaskMarker nodes instead of links.
 	const support = markdown({ base: gfm, codeLanguages: languages });
-	// Math completions ride the language-data channel (same one the built-in
-	// HTML-tag completion uses) so both stay active.
-	return [support, support.language.data.of({ autocomplete: mathCompletionSource })];
+	// Math + wikilink completions ride the language-data channel (same one
+	// the built-in HTML-tag completion uses) so all three stay active.
+	return [
+		support,
+		support.language.data.of({ autocomplete: mathCompletionSource }),
+		support.language.data.of({ autocomplete: wikiCompletionSource })
+	];
 }
