@@ -138,9 +138,9 @@
 		margin-bottom: 1rem;
 	}
 	.title {
-		font-size: var(--font-label-caps);
-		line-height: var(--font-label-caps-lh);
-		font-weight: var(--font-label-caps-weight);
+		font-size: var(--font-ui-small);
+		line-height: var(--font-ui-small-lh);
+		font-weight: 600;
 		letter-spacing: var(--label-caps-spacing);
 		text-transform: uppercase;
 		color: var(--on-surface-variant);
