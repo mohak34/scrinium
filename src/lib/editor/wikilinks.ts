@@ -61,6 +61,10 @@ export function wikilinkDisplay(w: Pick<Wikilink, 'target' | 'alias'>): string {
 	return w.target;
 }
 
+function escapeRegExp(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function stem(p: string): string {
 	const base = p.split('/').pop() ?? p;
 	return base.replace(/\.md$/i, '');
@@ -156,4 +160,68 @@ export function findBacklinks(
 	}
 	out.sort((a, b) => a.path.localeCompare(b.path));
 	return out;
+}
+
+export interface UnlinkedMention {
+	path: string;
+	excerpt: string;
+}
+
+/**
+ * Plain-text name drops of the target note: the stem appears outside any
+ * `[[...]]`. Case-insensitive like resolution; single-char stems are noise
+ * and never match.
+ */
+export function findUnlinkedMentions(
+	target: string,
+	files: Array<{ path: string; content: string }>
+): UnlinkedMention[] {
+	const name = stem(target);
+	if (name.length < 2) return [];
+	const re = new RegExp(`\\b${escapeRegExp(name)}\\b`, 'gi');
+	const out: UnlinkedMention[] = [];
+	for (const f of files) {
+		if (f.path === target) continue;
+		for (const line of f.content.split('\n')) {
+			const spans = findWikilinksInText(line);
+			re.lastIndex = 0;
+			let m: RegExpExecArray | null;
+			let bare = false;
+			while ((m = re.exec(line)) !== null) {
+				if (!spans.some((s) => m!.index >= s.from && m!.index < s.to)) {
+					bare = true;
+					break;
+				}
+			}
+			if (bare) {
+				out.push({ path: f.path, excerpt: plainExcerpt(line) });
+				break;
+			}
+		}
+	}
+	out.sort((a, b) => a.path.localeCompare(b.path));
+	return out;
+}
+
+/**
+ * Wrap the first bare mention of the target's stem in `[[...]]`, keeping
+ * the author's original casing (resolution is case-insensitive). Null when
+ * there is nothing convertible.
+ */
+export function linkFirstMention(content: string, target: string): string | null {
+	const name = stem(target);
+	if (name.length < 2) return null;
+	const re = new RegExp(`\\b(${escapeRegExp(name)})\\b`, 'gi');
+	const lines = content.split('\n');
+	for (let i = 0; i < lines.length; i++) {
+		const spans = findWikilinksInText(lines[i]);
+		re.lastIndex = 0;
+		let m: RegExpExecArray | null;
+		while ((m = re.exec(lines[i])) !== null) {
+			if (spans.some((s) => m!.index >= s.from && m!.index < s.to)) continue;
+			lines[i] = lines[i].slice(0, m.index) + `[[${m[1]}]]` + lines[i].slice(m.index + m[0].length);
+			return lines.join('\n');
+		}
+	}
+	return null;
 }
