@@ -37,6 +37,7 @@
 		flex-direction: column;
 		flex: none;
 		max-height: 40%;
+		margin-top: auto;
 		padding: 1rem var(--gutter) 0;
 		overflow-y: auto;
 	}
