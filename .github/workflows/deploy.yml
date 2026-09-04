@@ -31,22 +31,30 @@ jobs:
           BETTER_AUTH_SECRET: build-time-only-placeholder
 
       - name: Ship to VPS
+        timeout-minutes: 20
         env:
           SSH_KEY: ${{ secrets.DEPLOY_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -euo pipefail
+          # Keepalives: npm/migrate print nothing for minutes while fetching,
+          # and the tunnel/NAT path severs silent connections (~5 min idle).
+          # These packets keep the channel alive through quiet phases.
+          # (Unquoted $SSH_OPTS below is intentional word splitting.)
+          SSH_OPTS="-i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 -o ServerAliveCountMax=6"
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          rsync -az -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
+          echo "--- rsync to $VPS_HOST ---"
+          rsync -az -e "ssh $SSH_OPTS" \
             --exclude node_modules --exclude .git --exclude .svelte-kit \
             --exclude data --exclude vault --exclude .opencode \
             --exclude '.env' --exclude '.env.*' \
             ./ "$VPS_USER@$VPS_HOST:/opt/scrinium/app/"
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
+          echo "--- remote install/migrate/restart ---"
+          ssh $SSH_OPTS \
             "$VPS_USER@$VPS_HOST" \
             'cd /opt/scrinium/app && \
              npm install --omit=dev --legacy-peer-deps && \
@@ -54,6 +62,7 @@ jobs:
              sudo systemctl restart scrinium.service && \
              sleep 2 && \
              systemctl is-active scrinium.service'
+          echo "--- ship done ---"
 
       - name: Smoke test
         env:
