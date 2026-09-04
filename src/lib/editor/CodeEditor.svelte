@@ -14,7 +14,7 @@
 } from '@codemirror/search';
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
 	import { autocompletion, closeCompletion, completionStatus, moveCompletionSelection } from '@codemirror/autocomplete';
-	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField } from './livePreview';
+	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
 	import { tree } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
@@ -147,6 +147,23 @@
 		view.dispatch({ effects: wikiCtxEffect.of({ notes, current: notePath ?? null }) });
 	});
 
+	// Feed the vault-wide tag list to `#` completion. Refetches when the
+	// tree changes (create/rename/delete/save), same trigger as wikiCtx.
+	$effect(() => {
+		if (!view) return;
+		$tree;
+		const v = view;
+		fetch('/api/tags')
+			.then((res) => (res.ok ? res.json() : []))
+			.then((data: Array<{ tag: string; count: number }> | string[]) => {
+				const tags = Array.isArray(data)
+					? data.map((d) => (typeof d === 'string' ? d : d.tag))
+					: [];
+				v.dispatch({ effects: tagCtxEffect.of(tags) });
+			})
+			.catch(() => {});
+	});
+
 	// Markdown image links are note-relative (livePreview resolves them against
 	// the note's folder); the upload API returns vault-relative paths. Convert
 	// so nested notes don't get doubled paths.
@@ -273,6 +290,7 @@
 				autocompletion({ icons: false }),
 				noteDirField,
 				wikiCtxField,
+				tagCtxField,
 				livePreview,
 				mathBlockField,
 				baseTheme,

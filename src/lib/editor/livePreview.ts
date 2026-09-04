@@ -42,6 +42,7 @@ import {
 	wikilinkFilename,
 	type Wikilink
 } from './wikilinks';
+import { findTagsInText } from './tags';
 import { createNote, flushSave, openTab } from '$lib/stores/vault';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
@@ -78,6 +79,19 @@ export const wikiCtxField = StateField.define<WikiCtx>({
 	update(value, tr) {
 		for (const e of tr.effects) {
 			if (e.is(wikiCtxEffect)) return e.value;
+		}
+		return value;
+	}
+});
+
+// Vault-wide tag list for `#` completion. Mirrored from /api/tags by
+// CodeEditor when the tree changes; plain strings, no resolution needed.
+export const tagCtxEffect = StateEffect.define<string[]>();
+export const tagCtxField = StateField.define<string[]>({
+	create: () => [],
+	update(value, tr) {
+		for (const e of tr.effects) {
+			if (e.is(tagCtxEffect)) return e.value;
 		}
 		return value;
 	}
@@ -649,6 +663,17 @@ function buildDecorations(view: EditorView): DecorationSet {
 				})
 			});
 		}
+	}
+
+	// Tags: plain style marks, never hidden or swapped, so there is no
+	// caret-crossing hazard and no active-line gating. Code, math blocks
+	// and wikilinks are excluded like every other decoration.
+	for (const t of findTagsInText(docText)) {
+		if (blockRanges.some((r) => t.from <= r.to && r.from <= t.to)) continue;
+		if (isInsideCode(view, t.from) || isInsideCode(view, Math.max(t.from, t.to - 1)))
+			continue;
+		if (inWikilink(t.from, t.to)) continue;
+		pending.push({ from: t.from, to: t.to, deco: Decoration.mark({ class: 'cm-tag' }) });
 	}
 
 	// Inline math: single-line `$...$` only. Block math (```math fences and
