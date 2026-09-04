@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import Sidebar from '$lib/components/Sidebar.svelte';
+	import Backlinks from '$lib/components/Backlinks.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
 	import CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
@@ -55,6 +56,7 @@
 	});
 
 	let collapsed = $state(false);
+	let rightCollapsed = $state(false);
 	let paletteOpen = $state(false);
 	let imagePreview = $state<string | null>(null);
 	let zoom = $state(100);
@@ -65,6 +67,7 @@
 
 	onMount(() => {
 		collapsed = localStorage.getItem('scrinium:sidebarCollapsed') === '1';
+		rightCollapsed = localStorage.getItem('scrinium:rightCollapsed') === '1';
 		loadTree();
 
 		const key = (e: KeyboardEvent) => {
@@ -105,6 +108,11 @@
 	function toggleCollapse() {
 		collapsed = !collapsed;
 		localStorage.setItem('scrinium:sidebarCollapsed', collapsed ? '1' : '0');
+	}
+
+	function toggleRightCollapse() {
+		rightCollapsed = !rightCollapsed;
+		localStorage.setItem('scrinium:rightCollapsed', rightCollapsed ? '1' : '0');
 	}
 
 	async function openNote(path: string) {
@@ -155,6 +163,9 @@
 			{/if}
 		</div>
 	</div>
+	<aside class="rightbar" class:collapsed={rightCollapsed} aria-label="Right sidebar">
+		<Backlinks onSelect={openNote} />
+	</aside>
 </div>
 
 {#if paletteOpen}
@@ -162,6 +173,7 @@
 		onSelect={openNote}
 		onClose={() => (paletteOpen = false)}
 		onToggleSidebar={toggleCollapse}
+		onToggleRightSidebar={toggleRightCollapse}
 		onCommand={(cmd) => editorRef?.runCommand(cmd)}
 	/>
 {/if}
@@ -216,6 +228,21 @@
 	}
 	.sidebar-wrap.collapsed {
 		width: 0;
+	}
+	.rightbar {
+		width: 260px;
+		flex-shrink: 0;
+		height: 100vh;
+		overflow: hidden;
+		background: #15161c;
+		border-left: 1px solid var(--border-default);
+		display: flex;
+		flex-direction: column;
+		transition: width 0.18s ease;
+	}
+	.rightbar.collapsed {
+		width: 0;
+		border-left: none;
 	}
 	.main {
 		flex: 1;
