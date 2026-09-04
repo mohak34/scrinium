@@ -13,7 +13,7 @@
 	highlightSelectionMatches
 } from '@codemirror/search';
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
-	import { autocompletion, closeCompletion, completionStatus } from '@codemirror/autocomplete';
+	import { autocompletion, closeCompletion, completionStatus, moveCompletionSelection } from '@codemirror/autocomplete';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
 	import { tree } from '$lib/stores/vault';
@@ -241,6 +241,27 @@
 				Prec.high(
 					keymap.of([
 						{ key: 'Enter', run: insertListNewline },
+						// With a completion panel open (math `\` or `[[`),
+						// Tab cycles suggestions and Enter accepts; otherwise
+						// both fall through to snippet/indent behaviour.
+						{
+							key: 'Tab',
+							run: (view) => {
+								if (completionStatus(view.state) === 'active') {
+									return moveCompletionSelection(true)(view);
+								}
+								return false;
+							}
+						},
+						{
+							key: 'Shift-Tab',
+							run: (view) => {
+								if (completionStatus(view.state) === 'active') {
+									return moveCompletionSelection(false)(view);
+								}
+								return false;
+							}
+						},
 						{ key: 'Tab', run: expandMathSnippet },
 						{ key: ' ', run: expandMathFraction }
 					])
