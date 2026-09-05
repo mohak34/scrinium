@@ -1,0 +1,148 @@
+/**
+ * YAML frontmatter helpers (no editor imports, pure parse + rewrite).
+ *
+ * A note may open with a `---` block of YAML properties:
+ *
+ *   ---
+ *   title: My Note
+ *   author: Ada
+ *   tags: [ml, course/neural]
+ *   ---
+ *   # My Note
+ *
+ * Shared by the client title<->filename sync, the server title indexing
+ * (both must skip the block or a propertied note titles itself `---`),
+ * the tags census and the properties panel. Invalid YAML or a non-mapping
+ * block means "no frontmatter" - raw text always wins, never a crash.
+ */
+
+import { parseDocument } from 'yaml';
+
+export interface Frontmatter {
+	data: Record<string, unknown>;
+	/** Offset of the first body line past the closing fence. */
+	bodyStart: number;
+	/** The raw `---...---` block including fences. */
+	raw: string;
+}
+
+function isOpenFence(line: string): boolean {
+	return /^---\s*$/.test(line);
+}
+
+function isCloseFence(line: string): boolean {
+	return /^(---|\.\.\.)\s*$/.test(line);
+}
+
+/** Leading `---` block parsed as a mapping, else null. */
+export function parseFrontmatter(text: string): Frontmatter | null {
+	const lines = text.split('\n');
+	if (!isOpenFence(lines[0] ?? '')) return null;
+	let off = lines[0].length + 1;
+	for (let i = 1; i < lines.length; i++) {
+		if (isCloseFence(lines[i])) {
+			const raw = text.slice(0, off + lines[i].length + 1);
+			let data: unknown;
+			try {
+				data = parseDocument(raw.replace(/^---\s*\n/, '').replace(/\n(---|\.\.\.)\s*\n?$/, '')).toJS();
+			} catch {
+				return null;
+			}
+			if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
+			return { data: data as Record<string, unknown>, bodyStart: raw.length, raw };
+		}
+		off += lines[i].length + 1;
+	}
+	return null;
+}
+
+/** Text with a leading frontmatter block removed, else unchanged. */
+export function stripFrontmatter(text: string): string {
+	return text.slice(parseFrontmatter(text)?.bodyStart ?? 0);
+}
+
+/** First `# ` heading at or after `from`, with its line index. */
+function firstHeading(text: string, from: number): { line: number; title: string } | null {
+	const lines = text.split('\n');
+	let off = 0;
+	for (let i = 0; i < lines.length; i++) {
+		const len = lines[i].length + 1;
+		if (off + lines[i].length >= from) {
+			const m = lines[i].match(/^#\s+(.+?)\s*$/);
+			if (m && m[1].trim()) return { line: i, title: m[1].trim() };
+		}
+		off += len;
+	}
+	return null;
+}
+
+function fmTitle(data: Record<string, unknown>): string | null {
+	const v = data['title'];
+	if (typeof v === 'string') return v.trim() || null;
+	if (typeof v === 'number') return String(v);
+	return null;
+}
+
+/**
+ * Display title: frontmatter `title` wins, then the first `# ` heading
+ * below the block, then the caller fallback (usually the filename stem).
+ */
+export function effectiveTitle(content: string, fallback: string): string {
+	const fm = parseFrontmatter(content);
+	if (fm) {
+		const t = fmTitle(fm.data);
+		if (t) return t.slice(0, 200);
+	}
+	return firstHeading(content, fm?.bodyStart ?? 0)?.title.slice(0, 200) ?? fallback;
+}
+
+/** Bare YAML scalar unless quoting is required (`#`, `:`, edges...). */
+function yamlScalar(s: string): string {
+	if (/^[A-Za-z0-9 _\-/().]+$/.test(s) && !/^\s|\s$/.test(s)) return s;
+	return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Rewrite the same source `effectiveTitle` reads: the `title:` key when
+ * the block has one, else the first body `# ` heading. Null when there is
+ * nothing to rewrite (sync callers treat that as a no-op, as before).
+ */
+export function setEffectiveTitle(content: string, newTitle: string): string | null {
+	const fm = parseFrontmatter(content);
+	const lines = content.split('\n');
+	// A `title:` key owns the title; without one the body heading does, so a
+	// rename never injects keys the author didn't write.
+	if (fm) {
+		if (!('title' in fm.data)) {
+			const h = firstHeading(content, fm.bodyStart);
+			if (!h) return null;
+			lines[h.line] = `# ${newTitle}`;
+			return lines.join('\n');
+		}
+		const fmLines = fm.raw.split('\n');
+		const idx = fmLines.findIndex((l) => /^\s*title\s*:/.test(l));
+		if (idx === -1) return null;
+		fmLines[idx] = `title: ${yamlScalar(newTitle)}`;
+		return fmLines.join('\n') + content.slice(fm.raw.length);
+	}
+	const h = firstHeading(content, 0);
+	if (!h) return null;
+	lines[h.line] = `# ${newTitle}`;
+	return lines.join('\n');
+}
+
+/**
+ * The `tags:` key as a clean list: arrays item-wise, single strings split
+ * on commas/whitespace. Leading `#`s tolerated (`tags: "#a, b"`).
+ */
+export function frontmatterTags(data: Record<string, unknown>): string[] {
+	const v = data['tags'];
+	const items: unknown[] = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[\s,]+/) : [];
+	const out: string[] = [];
+	for (const item of items) {
+		if (typeof item !== 'string') continue;
+		const name = item.trim().replace(/^#+/, '').trim();
+		if (name) out.push(name);
+	}
+	return [...new Set(out)];
+}
