@@ -16,7 +16,7 @@
  * block means "no frontmatter" - raw text always wins, never a crash.
  */
 
-import { parseDocument, isMap, type Document } from 'yaml';
+import { parseDocument, isMap, isPair, type Document } from 'yaml';
 
 export interface Frontmatter {
 	data: Record<string, unknown>;
@@ -167,6 +167,25 @@ function isEmptyDoc(doc: Document): boolean {
 	if (!doc.contents) return true;
 	if (isMap(doc.contents)) return doc.contents.items.length === 0;
 	return false;
+}
+
+/**
+ * Rename a top-level key in place: position and comments survive (delete +
+ * set would sink the key to the bottom). Refuses missing keys, blank or
+ * malformed names, and collisions.
+ */
+export function renameKey(doc: Document, oldKey: string, newKey: string): boolean {
+	if (!/^[A-Za-z0-9_-]+$/.test(newKey) || newKey === oldKey) return false;
+	if (!isMap(doc.contents)) return false;
+	const nameOf = (p: unknown): string | null =>
+		isPair(p) && p.key !== null && typeof p.key === 'object' && 'value' in p.key
+			? String((p.key as { value: unknown }).value)
+			: null;
+	if (doc.contents.items.some((p) => nameOf(p) === newKey)) return false;
+	const pair = doc.contents.items.find((p) => nameOf(p) === oldKey);
+	if (!pair || !isPair(pair)) return false;
+	pair.key = doc.createNode(newKey);
+	return true;
 }
 /**
  * The `tags:` key as a clean list: arrays item-wise, single strings split

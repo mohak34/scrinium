@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { parseFrontmatter, stripFrontmatter, propDisplayRows } from '$lib/editor/frontmatter';
 	import { activePath, updateFrontmatter } from '$lib/stores/vault';
+import { renameKey } from '$lib/editor/frontmatter';
 
 	interface Props {
 		content: string;
@@ -26,7 +27,7 @@
 	let fieldKey = $state('');
 	let fieldValue = $state('');
 	let saving = $state(false);
-	let editing = $state<string | null>(null);
+	let editing = $state<{ key: string; field: 'key' | 'value' } | null>(null);
 	let editValue = $state('');
 	let menuEl = $state<HTMLDivElement>();
 
@@ -118,20 +119,36 @@
 		return extra.find((r) => r.key === key)?.display ?? null;
 	}
 
-	function startEdit(key: string) {
+	function startEdit(key: string, field: 'key' | 'value') {
 		if (saving || !$activePath) return;
-		const d = displayOf(key);
-		if (d === null) return;
-		editing = key;
-		editValue = d;
+		if (field === 'value') {
+			const d = displayOf(key);
+			if (d === null) return;
+			editValue = d;
+		} else {
+			editValue = key;
+		}
+		editing = { key, field };
 	}
 
-	async function commitEdit(key: string) {
-		if (editing !== key) return;
+	async function commitEdit(key: string, field: 'key' | 'value') {
+		if (editing?.key !== key || editing.field !== field) return;
 		editing = null;
 		const path = $activePath;
 		if (!path || saving) return;
 		const raw = editValue.trim();
+		if (field === 'key') {
+			if (!raw || raw === key) return;
+			saving = true;
+			try {
+				await updateFrontmatter(path, (doc) => {
+					renameKey(doc, key, raw);
+				});
+			} finally {
+				saving = false;
+			}
+			return;
+		}
 		if (!raw || raw === displayOf(key)) return;
 		saving = true;
 		try {
@@ -261,67 +278,101 @@
 		</div>
 	{/if}
 	<div class="card">
-		{#if status}
-			<div
-				class="row"
+		{#snippet keyInput(key: string)}
+			<input
+				class="in key-edit"
+				use:takeFocus
+				bind:value={editValue}
+				disabled={saving}
+				onfocus={(e) => e.currentTarget.select()}
+				onblur={() => void commitEdit(key, 'key')}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') void commitEdit(key, 'key');
+					if (e.key === 'Escape') editing = null;
+				}}
+			/>
+		{/snippet}
+		{#snippet valueInput(key: string)}
+			<input
+				class="in"
+				use:takeFocus
+				bind:value={editValue}
+				disabled={saving}
+				onfocus={(e) => e.currentTarget.select()}
+				onblur={() => void commitEdit(key, 'value')}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') void commitEdit(key, 'value');
+					if (e.key === 'Escape') editing = null;
+				}}
+			/>
+		{/snippet}
+		{#snippet editableLabel(key: string, text: string)}
+			<span
+				class="label edit"
 				role="button"
 				tabindex="0"
-				ondblclick={() => startEdit('status')}
+				title="Double-click to rename"
+				ondblclick={() => startEdit(key, 'key')}
 				onkeydown={(e) => {
-					if (e.key === 'Enter') startEdit('status');
+					if (e.key === 'Enter') startEdit(key, 'key');
 				}}
-				title="Double-click to edit"
 			>
-				<span class="label">
-					<span class="material-symbols-outlined">flag</span> Status
-				</span>
-				{#if editing === 'status'}
-					<input
-						class="in"
-						use:takeFocus
-						bind:value={editValue}
-						disabled={saving}
-						onfocus={(e) => e.currentTarget.select()}
-						onblur={() => void commitEdit('status')}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') void commitEdit('status');
-							if (e.key === 'Escape') editing = null;
-						}}
-					/>
+				{text}
+			</span>
+		{/snippet}
+		{#if status}
+			<div class="row">
+				{#if editing?.key === 'status' && editing.field === 'key'}
+					{@render keyInput('status')}
 				{:else}
-					<span class="pill {pill(status)}">{status}</span>
+					<span class="label">
+						<span class="material-symbols-outlined">flag</span>
+						{@render editableLabel('status', 'Status')}
+					</span>
+				{/if}
+				{#if editing?.key === 'status' && editing.field === 'value'}
+					{@render valueInput('status')}
+				{:else}
+					<span
+						class="pill {pill(status)}"
+						role="button"
+						tabindex="0"
+						title="Double-click to edit"
+						ondblclick={() => startEdit('status', 'value')}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') startEdit('status', 'value');
+						}}
+					>
+						{status}
+					</span>
 				{/if}
 			</div>
 		{/if}
 		{#if priority}
-			<div
-				class="row"
-				role="button"
-				tabindex="0"
-				ondblclick={() => startEdit('priority')}
-				onkeydown={(e) => {
-					if (e.key === 'Enter') startEdit('priority');
-				}}
-				title="Double-click to edit"
-			>
-				<span class="label">
-					<span class="material-symbols-outlined">priority_high</span> Priority
-				</span>
-				{#if editing === 'priority'}
-					<input
-						class="in"
-						use:takeFocus
-						bind:value={editValue}
-						disabled={saving}
-						onfocus={(e) => e.currentTarget.select()}
-						onblur={() => void commitEdit('priority')}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') void commitEdit('priority');
-							if (e.key === 'Escape') editing = null;
-						}}
-					/>
+			<div class="row">
+				{#if editing?.key === 'priority' && editing.field === 'key'}
+					{@render keyInput('priority')}
 				{:else}
-					<span class="pill {pill(priority)}">{priority}</span>
+					<span class="label">
+						<span class="material-symbols-outlined">priority_high</span>
+						{@render editableLabel('priority', 'Priority')}
+					</span>
+				{/if}
+				{#if editing?.key === 'priority' && editing.field === 'value'}
+					{@render valueInput('priority')}
+				{:else}
+					<span
+						class="pill {pill(priority)}"
+						role="button"
+						tabindex="0"
+						title="Double-click to edit"
+						ondblclick={() => startEdit('priority', 'value')}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') startEdit('priority', 'value');
+						}}
+					>
+						{priority}
+					</span>
 				{/if}
 			</div>
 		{/if}
@@ -332,32 +383,27 @@
 			<span class="val">{words.toLocaleString()}</span>
 		</div>
 		{#each extra as r (r.key)}
-			<div
-				class="row"
-				role="button"
-				tabindex="0"
-				ondblclick={() => startEdit(r.key)}
-				onkeydown={(e) => {
-					if (e.key === 'Enter') startEdit(r.key);
-				}}
-				title="Double-click to edit"
-			>
-				<span class="label" title={r.key}>{r.key}</span>
-				{#if editing === r.key}
-					<input
-						class="in"
-						use:takeFocus
-						bind:value={editValue}
-						disabled={saving}
-						onfocus={(e) => e.currentTarget.select()}
-						onblur={() => void commitEdit(r.key)}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') void commitEdit(r.key);
-							if (e.key === 'Escape') editing = null;
-						}}
-					/>
+			<div class="row">
+				{#if editing?.key === r.key && editing.field === 'key'}
+					{@render keyInput(r.key)}
 				{:else}
-					<span class="val" title={r.display}>{r.display}</span>
+					{@render editableLabel(r.key, r.key)}
+				{/if}
+				{#if editing?.key === r.key && editing.field === 'value'}
+					{@render valueInput(r.key)}
+				{:else}
+					<span
+						class="val"
+						role="button"
+						tabindex="0"
+						title="Double-click to edit"
+						ondblclick={() => startEdit(r.key, 'value')}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') startEdit(r.key, 'value');
+						}}
+					>
+						{r.display}
+					</span>
 				{/if}
 			</div>
 		{/each}
@@ -411,6 +457,16 @@
 	}
 	.label .material-symbols-outlined {
 		font-size: 14px;
+	}
+	.label.edit {
+		cursor: text;
+		border-radius: var(--radius);
+	}
+	.label.edit:hover {
+		color: var(--primary);
+	}
+	.in.key-edit {
+		flex: 0 1 90px;
 	}
 	.val {
 		color: var(--on-surface);
