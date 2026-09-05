@@ -377,11 +377,15 @@ import { propBlockField } from './propBlock';
 
 	// If the parent swaps to a different note, reset the doc without treating
 	// it as a user edit (no spurious save).
-	export function setDoc(newValue: string) {
+	export function setDoc(newValue: string, resetCursor = false) {
 		if (!view) return;
 		suppressChange = true;
 		view.dispatch({
-			changes: { from: 0, to: view.state.doc.length, insert: newValue }
+			changes: { from: 0, to: view.state.doc.length, insert: newValue },
+			// Note switches park the cursor on line 1; same-note pushes
+			// (rename syncs, link conversions) leave it alone.
+			selection: resetCursor ? { anchor: 0 } : undefined,
+			effects: resetCursor ? [EditorView.scrollIntoView(0)] : []
 		});
 		suppressChange = false;
 	}
