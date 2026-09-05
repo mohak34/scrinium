@@ -153,6 +153,31 @@ export interface FoundCallout {
 }
 
 /**
+ * Box lines for a plain `>` quote: every doc line the Blockquote spans,
+ * or null when a callout owns those lines (it paints its own box) or the
+ * block sits inside frontmatter (raw YAML, never pretty).
+ */
+export function quoteBoxLines(
+	state: EditorState,
+	from: number,
+	to: number,
+	callouts: FoundCallout[],
+	fmEnd: number
+): number[] | null {
+	const firstLine = state.doc.lineAt(from).number;
+	const lastLine = state.doc.lineAt(Math.max(from, to - 1)).number;
+	if (fmEnd > 0 && from < fmEnd) return null;
+	for (let n = firstLine; n <= lastLine; n++) {
+		if (callouts.some((c) => n >= c.firstLine && n <= c.lastLine)) return null;
+	}
+	const out: number[] = [];
+	for (let n = firstLine; n <= lastLine; n++) {
+		if (n >= 1 && n <= state.doc.lines) out.push(n);
+	}
+	return out;
+}
+
+/**
  * Find callout blocks via Blockquote nodes. Line-based inside the node so
  * the Lezer `Link` parse of `[!note]` never matters.
  */

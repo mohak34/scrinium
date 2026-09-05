@@ -149,6 +149,14 @@
 		padding: 0.05em 0.35em;
 		border-radius: 4px;
 	}
+	.paper :global(blockquote) {
+		background: #f5f5f5;
+		border: 1px solid #ddd;
+		border-left: 3px solid #1a53d6;
+		border-radius: 0 6px 6px 0;
+		padding: 0.6rem 1rem;
+		margin: 1em 0;
+	}
 	.paper :global(.print-tag) {
 		color: #1a53d6;
 		background: rgba(26, 83, 214, 0.08);

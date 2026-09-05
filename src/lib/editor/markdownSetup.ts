@@ -222,6 +222,25 @@ export const baseTheme = EditorView.theme(
 			borderLeft: '1px solid var(--border-default)',
 			borderRight: '1px solid var(--border-default)'
 		},
+		// Plain quotes: the workbench box without callout chrome. Line
+		// decorations, so no height-map risk, same as callouts.
+		'.cm-quote': {
+			backgroundColor: 'var(--surface-container-low)',
+			borderLeft: '3px solid #648aff',
+			borderRight: '1px solid var(--border-default)',
+			paddingLeft: '0.7em',
+			paddingRight: '0.7em'
+		},
+		'.cm-quote-first': {
+			paddingTop: '0.55em',
+			borderTop: '1px solid var(--border-default)',
+			borderTopRightRadius: '6px'
+		},
+		'.cm-quote-last': {
+			paddingBottom: '0.55em',
+			borderBottom: '1px solid var(--border-default)',
+			borderBottomRightRadius: '6px'
+		},
 		// Callouts: per-line backgrounds form the box (line decorations, so
 		// no height-map risk). Workbench box: flat tint, full border, left
 		// accent, square left corners, round right ones.
