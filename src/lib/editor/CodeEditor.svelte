@@ -3,6 +3,8 @@
 	import { get } from 'svelte/store';
 	import { Compartment, Prec } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
+import { headingFoldRange } from './folding';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
 	import {
@@ -250,8 +252,14 @@
 						}
 					}
 				]),
-				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap]),
 				keymap.of([indentWithTab]),
+				// Heading folding: gutter chevrons plus keyboard, ranges from
+				// folding.ts (ATX only, fences and frontmatter excluded).
+				foldGutter({ openText: '▾', closedText: '▸' }),
+				foldService.of((state, lineStart) =>
+					headingFoldRange(state.doc.toString(), state.doc.lineAt(lineStart).number)
+				),
 				// Snippet triggers run before indent; both fall through when the
 				// cursor is not on a trigger in math. Completion's own Enter
 				// (highest precedence) still wins when its panel is open.

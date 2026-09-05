@@ -73,6 +73,26 @@ export const baseTheme = EditorView.theme(
 			display: 'flex',
 			alignItems: 'center'
 		},
+		// Fold gutter: quiet chevrons, primary on hover. Geometric shapes,
+		// not emoji, so no icon font needed inside the gutter.
+		'.cm-foldGutter': { width: '1.1em' },
+		'.cm-foldGutter .cm-gutterElement': {
+			color: 'var(--outline-variant)',
+			cursor: 'pointer',
+			fontSize: '0.8em',
+			paddingLeft: '0.15em'
+		},
+		'.cm-foldGutter .cm-gutterElement:hover': {
+			color: 'var(--primary)'
+		},
+		'.cm-foldPlaceholder': {
+			backgroundColor: 'var(--surface-container-low)',
+			border: '1px solid var(--border-default)',
+			borderRadius: '4px',
+			color: 'var(--on-surface-variant)',
+			margin: '0 0.25em',
+			padding: '0 0.35em'
+		},
 		'.cm-cursor': { borderLeftColor: 'var(--on-surface)' },
 		'.cm-selectionBackground': { backgroundColor: 'var(--selection-bg) !important' },
 
