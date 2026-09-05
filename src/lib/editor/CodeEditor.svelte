@@ -387,6 +387,8 @@ import { propBlockField } from './propBlock';
 			selection: resetCursor ? { anchor: 0 } : undefined,
 			effects: resetCursor ? [EditorView.scrollIntoView(0)] : []
 		});
+		// Note switches also take focus so typing starts immediately.
+		if (resetCursor) view.focus();
 		suppressChange = false;
 	}
 
