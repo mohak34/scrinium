@@ -15,6 +15,10 @@
 		{ id: 'tags', icon: 'tag', label: 'Tags', hint: 'Comma-separated' },
 		{ id: 'date', icon: 'calendar_month', label: 'Date', hint: "Today's date, MM/DD/YYYY" }
 	];
+	const PRESETS: Record<string, string[]> = {
+		status: ['Not started', 'In progress', 'Done'],
+		priority: ['Low', 'Medium', 'High']
+	};
 
 	let adding = $state<AddKind | null>(null);
 	let menuOpen = $state(false);
@@ -208,6 +212,21 @@
 		</div>
 	{/if}
 	{#if adding}
+		{#if (adding === 'status' || adding === 'priority') && PRESETS[adding].length}
+			<div class="menu presets">
+				{#each PRESETS[adding] as p (p)}
+					<button
+						class="menu-item"
+						onclick={() => {
+							fieldValue = p;
+							void saveAdd();
+						}}
+					>
+						<span class="pill {pill(p)}">{p}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
 		<div class="addform">
 			{#if adding === 'text'}
 				<input
@@ -230,29 +249,15 @@
 						? 'MM/DD/YYYY'
 						: adding === 'text'
 							? 'value'
-							: `New ${adding}…`}
+							: 'Custom value…'}
 				use:takeFocus
 				bind:value={fieldValue}
 				disabled={saving}
-				list={adding === 'status' || adding === 'priority' ? `props-${adding}` : undefined}
 				onkeydown={(e) => {
 					if (e.key === 'Enter') void saveAdd();
 					if (e.key === 'Escape') adding = null;
 				}}
 			/>
-			{#if adding === 'status'}
-				<datalist id="props-status">
-					<option value="Not started"></option>
-					<option value="In progress"></option>
-					<option value="Done"></option>
-				</datalist>
-			{:else if adding === 'priority'}
-				<datalist id="props-priority">
-					<option value="Low"></option>
-					<option value="Medium"></option>
-					<option value="High"></option>
-				</datalist>
-			{/if}
 		</div>
 	{/if}
 	<div class="card">
@@ -276,7 +281,6 @@
 						use:takeFocus
 						bind:value={editValue}
 						disabled={saving}
-						list="props-status-edit"
 						onfocus={(e) => e.currentTarget.select()}
 						onblur={() => void commitEdit('status')}
 						onkeydown={(e) => {
@@ -284,11 +288,6 @@
 							if (e.key === 'Escape') editing = null;
 						}}
 					/>
-					<datalist id="props-status-edit">
-						<option value="Not started"></option>
-						<option value="In progress"></option>
-						<option value="Done"></option>
-					</datalist>
 				{:else}
 					<span class="pill {pill(status)}">{status}</span>
 				{/if}
@@ -314,7 +313,6 @@
 						use:takeFocus
 						bind:value={editValue}
 						disabled={saving}
-						list="props-priority-edit"
 						onfocus={(e) => e.currentTarget.select()}
 						onblur={() => void commitEdit('priority')}
 						onkeydown={(e) => {
@@ -322,11 +320,6 @@
 							if (e.key === 'Escape') editing = null;
 						}}
 					/>
-					<datalist id="props-priority-edit">
-						<option value="Low"></option>
-						<option value="Medium"></option>
-						<option value="High"></option>
-					</datalist>
 				{:else}
 					<span class="pill {pill(priority)}">{priority}</span>
 				{/if}
@@ -483,6 +476,9 @@
 	}
 	.menu-item.on .material-symbols-outlined {
 		color: var(--primary);
+	}
+	.menu.presets {
+		margin-bottom: 4px;
 	}
 	.addform {
 		display: flex;
