@@ -35,7 +35,7 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { findMathBlockRanges } from './mathRanges';
 import { parseFrontmatter } from './frontmatter';
-import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts } from './callouts';
+import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
 import {
 	findWikilinksInText,
 	resolveWikilink,
@@ -573,6 +573,36 @@ function buildDecorations(view: EditorView): DecorationSet {
 						to: node.to,
 						deco: Decoration.replace({ widget: new CheckboxWidget(checked, node.from) })
 					});
+				}
+
+				// Plain `>` quotes get the callout box treatment minus the
+				// icon and title: line backgrounds form the box, `>` marks
+				// hide off-line. A Blockquote owned by a callout is skipped
+				// (the callout paints those lines), as is frontmatter.
+				if (node.name === 'Blockquote') {
+					const quoteLines = quoteBoxLines(view.state, node.from, node.to, callouts, fmEnd);
+					if (quoteLines) {
+						const firstLine = quoteLines[0];
+						const lastLine = quoteLines[quoteLines.length - 1];
+						for (const n of quoteLines) {
+							const line = view.state.doc.line(n);
+							pending.push({
+								from: line.from,
+								to: line.from,
+								deco: Decoration.line({
+									class: `cm-quote${n === firstLine ? ' cm-quote-first' : ''}${n === lastLine ? ' cm-quote-last' : ''}`
+								})
+							});
+						}
+					}
+				}
+				if (node.name === 'QuoteMark') {
+					const markLine = view.state.doc.lineAt(node.from).number;
+					const owned =
+						inFm(node.from) || callouts.some((c) => markLine >= c.firstLine && markLine <= c.lastLine);
+					if (!owned && !active) {
+						pending.push({ from: node.from, to: node.to, deco: Decoration.replace({}) });
+					}
 				}
 
 				// Render the whole image markdown as a real <img> while the cursor
