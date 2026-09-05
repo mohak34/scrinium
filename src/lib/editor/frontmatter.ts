@@ -16,7 +16,7 @@
  * block means "no frontmatter" - raw text always wins, never a crash.
  */
 
-import { parseDocument } from 'yaml';
+import { parseDocument, isMap, type Document } from 'yaml';
 
 export interface Frontmatter {
 	data: Record<string, unknown>;
@@ -131,6 +131,43 @@ export function setEffectiveTitle(content: string, newTitle: string): string | n
 	return lines.join('\n');
 }
 
+/**
+ * Rewrite the frontmatter block via a YAML Document (preserves comments and
+ * key order). Creates the block when missing, drops it when the mutation
+ * empties it. Null when there is nothing to write.
+ */
+export function updateFrontmatterBlock(
+	content: string,
+	mutate: (doc: Document) => void
+): string | null {
+	const fm = parseFrontmatter(content);
+	if (fm) {
+		const doc = parseDocument(fm.raw.replace(/^---\s*\n/, '').replace(/\n(---|\.\.\.)\s*\n?$/, ''));
+		try {
+			mutate(doc);
+		} catch {
+			return null;
+		}
+		if (isEmptyDoc(doc)) return content.slice(fm.bodyStart).replace(/^\n/, '');
+		return `---\n${String(doc).trimEnd()}\n---\n` + content.slice(fm.bodyStart);
+	}
+	const doc = parseDocument('');
+	try {
+		mutate(doc);
+	} catch {
+		return null;
+	}
+	if (isEmptyDoc(doc)) return null;
+	const sep = /^\s*$/.test(content.split('\n')[0] ?? '') ? '' : '\n';
+	return `---\n${String(doc).trimEnd()}\n---\n${sep}${content}`;
+}
+
+/** No content keys: empty docs stringify as `{}`/`null`, not `''`. */
+function isEmptyDoc(doc: Document): boolean {
+	if (!doc.contents) return true;
+	if (isMap(doc.contents)) return doc.contents.items.length === 0;
+	return false;
+}
 /**
  * The `tags:` key as a clean list: arrays item-wise, single strings split
  * on commas/whitespace. Leading `#`s tolerated (`tags: "#a, b"`).

@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { linkFirstMention } from '$lib/editor/wikilinks';
-import { effectiveTitle, setEffectiveTitle } from '$lib/editor/frontmatter';
+import { effectiveTitle, setEffectiveTitle, updateFrontmatterBlock } from '$lib/editor/frontmatter';
+import type { Document } from 'yaml';
 
 export interface VaultEntry {
 	name: string;
@@ -281,6 +282,35 @@ export async function createFolder(path: string) {
 	await loadTree();
 }
 
+// Rewrite the note's frontmatter block via a mutate callback (set/delete
+// keys). Creates the block when missing, drops it when emptied. Flushes
+// first so debounced keystrokes are never clobbered; pushes into the
+// editor when the note is open.
+export async function updateFrontmatter(
+	path: string,
+	mutate: (doc: Document) => void
+): Promise<boolean> {
+	await flushSave();
+	let content: string;
+	try {
+		content = await loadNote(path);
+	} catch {
+		return false;
+	}
+	const next = updateFrontmatterBlock(content, mutate);
+	if (!next || next === content) return false;
+	const res = await fetch(`/api/notes/${encPath(path)}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'text/plain' },
+		body: next
+	});
+	if (!res.ok) return false;
+	if (get(activePath) === path) {
+		externalContentUpdate.set({ path, content: next });
+	}
+	await loadTree();
+	return true;
+}
 // Convert the first bare mention of the target note into a `[[link]]`
 // inside the source file. Flushes first so debounced keystrokes are never
 // clobbered; pushes into the editor when the source is the open note.
