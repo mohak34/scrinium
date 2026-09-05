@@ -23,7 +23,8 @@
 		});
 		const unsubTag = searchTagRequest.subscribe((t) => {
 			if (t) {
-				query = t;
+				// Leading `#` routes into tag search, never FTS.
+				query = t.startsWith('#') ? t : `#${t}`;
 				open = true;
 				inputEl?.focus();
 				searchTagRequest.set(null);
@@ -40,6 +41,8 @@
 		// No debounce: this is a local SQLite query, so fire immediately on every
 		// keystroke. The guard below discards out-of-order responses. The
 		// "Searching…" row only appears if a request is genuinely slow (>250ms).
+		// A leading `#` means tag search: exact tag census instead of FTS, so
+		// plain-text occurrences never false-positive.
 		results = [];
 		pending = true;
 		loading = false;
@@ -50,7 +53,13 @@
 		const slowTimer = setTimeout(() => {
 			loading = true;
 		}, 250);
-		void searchNotes(q).then((res) => {
+		const req =
+			q.startsWith('#') && q.length > 1
+				? fetch(`/api/tagged?tag=${encodeURIComponent(q.slice(1))}`).then((res) =>
+						res.ok ? (res.json() as Promise<SearchResult[]>) : []
+					)
+				: searchNotes(q);
+		void req.then((res) => {
 			if (query.trim() === q) {
 				results = res;
 				pending = false;

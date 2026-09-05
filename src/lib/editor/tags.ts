@@ -79,3 +79,17 @@ export function uniqueTagNames(text: string): string[] {
 	for (const t of findTagsInText(text)) seen.add(t.name);
 	return [...seen];
 }
+
+/**
+ * Which of a note's tags satisfy a tag query: exact match or a nested
+ * child (`course` matches `course/neural`), case-insensitive like
+ * resolution. Leading `#` on the query tolerated.
+ */
+export function matchTag(noteTags: string[], query: string): string[] {
+	const q = query.replace(/^#+/, '').toLowerCase();
+	if (!q) return [];
+	return noteTags.filter((t) => {
+		const low = t.toLowerCase();
+		return low === q || low.startsWith(`${q}/`);
+	});
+}
