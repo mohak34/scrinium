@@ -183,3 +183,25 @@ export function frontmatterTags(data: Record<string, unknown>): string[] {
 	}
 	return [...new Set(out)];
 }
+
+export interface PropRow {
+	key: string;
+	display: string;
+}
+
+/**
+ * Display rows for a properties box: scalars as text (Date to YYYY-MM-DD),
+ * scalar arrays comma-joined, nested structures as compact JSON. Edited
+ * numbers/bools come back as strings - YAML still reads them fine.
+ */
+export function propDisplayRows(data: Record<string, unknown>): PropRow[] {
+	return Object.entries(data).map(([key, v]) => {
+		if (Array.isArray(v)) {
+			const flat = v.every((i) => typeof i === 'string' || typeof i === 'number');
+			return { key, display: flat ? v.map(String).join(', ') : JSON.stringify(v) };
+		}
+		if (v instanceof Date) return { key, display: v.toISOString().slice(0, 10) };
+		if (v !== null && typeof v === 'object') return { key, display: JSON.stringify(v) };
+		return { key, display: v === null || v === undefined ? '' : String(v) };
+	});
+}
