@@ -341,6 +341,14 @@
 		display: flex;
 		flex-direction: column;
 	}
+	/* One hairline between stacked sections; components untouched. The
+	   last child keeps its own top margin (Outline pins to the bottom). */
+	.rightbar > :global(*:not(:first-child)) {
+		border-top: 1px solid var(--border-default);
+	}
+	.rightbar > :global(*:not(:first-child):not(:last-child)) {
+		margin-top: 1rem;
+	}
 	.main {
 		flex: 1;
 		display: flex;
