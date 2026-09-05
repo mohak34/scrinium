@@ -236,7 +236,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 			{#if adding === 'text'}
 				<input
 					class="in key"
-					placeholder="key"
+					placeholder="name"
 					use:takeFocus
 					bind:value={fieldKey}
 					disabled={saving}
@@ -251,7 +251,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 				placeholder={adding === 'date'
 					? 'MM/DD/YYYY'
 					: adding === 'text'
-						? 'value'
+						? 'value…'
 						: 'Custom value…'}
 				use:takeFocus
 				bind:value={fieldValue}
