@@ -496,6 +496,15 @@
 	.in.key {
 		flex: 0 1 70px;
 	}
+	.in[type='date'] {
+		max-width: 100%;
+		font-size: var(--font-ui-micro);
+		color-scheme: dark;
+	}
+	.in[type='date']::-webkit-calendar-picker-indicator {
+		cursor: pointer;
+		opacity: 0.6;
+	}
 	.in:focus {
 		border-color: var(--primary);
 	}
