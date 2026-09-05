@@ -28,6 +28,7 @@ import {
 } from '$lib/editor/callouts';
 import { findWikilinksInText, wikilinkDisplay } from '$lib/editor/wikilinks';
 import { findTagsInText } from '$lib/editor/tags';
+import { stripFrontmatter } from '$lib/editor/frontmatter';
 import { resolveAssetUrl } from '$lib/editor/livePreview';
 
 const parser = new MarkdownIt({ html: false, linkify: true, breaks: true });
@@ -102,6 +103,9 @@ function renderCallouts(html: string): string {
 
 export function renderNoteToHtml(src: string, notePath: string): string {
 	const noteDir = notePath.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/')) : null;
+	// Properties are metadata, not content: drop the block before the
+	// pipeline so `---` never renders as a rule plus stray paragraphs.
+	src = stripFrontmatter(src);
 	const state = EditorState.create({ doc: src, extensions: [markdownLanguage()] });
 	const chunks: string[] = [];
 	const stash = (html: string): string => {

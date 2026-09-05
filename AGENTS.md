@@ -144,6 +144,13 @@ State channels you will touch:
   wikilinks.ts (shared `[[link]]` parse/resolve/backlink-match; editor pill
   widgets + click-to-open/create via `wikiCtxField`, `[[` completion in
   wikiComplete.ts),
+  frontmatter.ts (shared YAML `---` props: parse, `effectiveTitle`
+  fm-title > body-heading > filename, `setEffectiveTitle` same-source
+  rewrite, `frontmatterTags`, `updateFrontmatterBlock`; imported by the
+  server title indexing too - title sync/indexer must never read line 1
+  raw or a propertied note titles itself `---`),
+  tags.ts (shared `#tag` parse skipping fm/fences/`[[...]]`; `#`
+  completion in tagComplete.ts, census in `/api/tags`),
   CodeEditor.svelte (editor view; editor settings are reconfigurable via
   CodeMirror `Compartment`s; Tab indents via `indentWithTab`; math blocks
   reveal source when the cursor is on an adjacent line so arrows never
