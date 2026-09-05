@@ -217,12 +217,13 @@
 			{/if}
 			<input
 				class="in"
-				type={adding === 'date' ? 'date' : undefined}
 				placeholder={adding === 'tags'
 					? 'ml, course/neural'
-					: adding === 'text'
-						? 'value'
-						: `New ${adding}…`}
+					: adding === 'date'
+						? 'YYYY-MM-DD'
+						: adding === 'text'
+							? 'value'
+							: `New ${adding}…`}
 				use:takeFocus
 				bind:value={fieldValue}
 				disabled={saving}
@@ -495,15 +496,6 @@
 	}
 	.in.key {
 		flex: 0 1 70px;
-	}
-	.in[type='date'] {
-		max-width: 100%;
-		font-size: var(--font-ui-micro);
-		color-scheme: dark;
-	}
-	.in[type='date']::-webkit-calendar-picker-indicator {
-		cursor: pointer;
-		opacity: 0.6;
 	}
 	.in:focus {
 		border-color: var(--primary);
