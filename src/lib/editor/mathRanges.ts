@@ -14,10 +14,14 @@
  * Used by mathBlock.ts (decorations) and livePreview.ts (so the inline-$
  * scan never emits a replace inside a block range - overlapping replaces
  * corrupt the RangeSetBuilder).
+ *
+ * Frontmatter is excluded everywhere: properties hold YAML, never math,
+ * and the properties box owns those lines (same overlap rule as code).
  */
 
 import { syntaxTree } from '@codemirror/language';
 import type { EditorState } from '@codemirror/state';
+import { parseFrontmatter } from './frontmatter';
 
 export interface MathBlockRange {
 	from: number;
@@ -42,10 +46,12 @@ function scanDoc(state: EditorState): { fences: number[]; fenced: Array<[number,
 	});
 	const fences: number[] = [];
 	const docText = state.doc.toString();
+	const fmEnd = parseFrontmatter(docText)?.bodyStart ?? 0;
 	const fenceRe = /^[ \t]*\$\$[ \t]*\r?$/gm;
 	let fm: RegExpExecArray | null;
 	while ((fm = fenceRe.exec(docText)) !== null) {
 		const at = fm.index + fm[0].indexOf('$$');
+		if (fmEnd > 0 && at < fmEnd) continue;
 		if (fenced.some(([f, t]) => at >= f && at < t)) continue;
 		fences.push(at);
 	}
@@ -55,11 +61,13 @@ function scanDoc(state: EditorState): { fences: number[]; fenced: Array<[number,
 export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
 	const ranges: MathBlockRange[] = [];
 	const docText = state.doc.toString();
+	const fmEnd = parseFrontmatter(docText)?.bodyStart ?? 0;
 
 	// 1. ```math fenced blocks via the syntax tree.
 	syntaxTree(state).iterate({
 		enter: (node) => {
 			if (node.name !== 'FencedCode') return;
+			if (fmEnd > 0 && node.from < fmEnd) return false;
 			const info = node.node.getChild('CodeInfo');
 			if (!info || state.doc.sliceString(info.from, info.to).trim() !== 'math') return false;
 			const textNode = node.node.getChild('CodeText');
@@ -96,6 +104,7 @@ export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
 		const end = start + m[0].length;
 		const content = m[1];
 		if (!content.trim() || content.length > 2000) continue;
+		if (fmEnd > 0 && start < fmEnd) continue;
 		if (fenced.some(([f, t]) => overlaps(f, t, start, end))) continue;
 		if (ranges.some((r) => overlaps(r.from, r.to, start, end))) continue;
 		ranges.push({ from: start, to: end, source: content.trim() });
@@ -134,11 +143,13 @@ export function inMathRegion(state: EditorState, pos: number): boolean {
 	// findMathBlockRanges, parity only answers "is one still open".
 	const { fenced } = scanDoc(state);
 	const textBefore = state.doc.sliceString(0, pos);
+	const fmEnd = parseFrontmatter(state.doc.toString())?.bodyStart ?? 0;
 	const occur = /\$\$/g;
 	let count = 0;
 	let fm: RegExpExecArray | null;
 	while ((fm = occur.exec(textBefore)) !== null) {
 		const at = fm.index;
+		if (fmEnd > 0 && at < fmEnd) continue;
 		if (blocks.some((r) => at >= r.from && at < r.to)) continue;
 		if (fenced.some(([f, t]) => at >= f && at < t)) continue;
 		count++;

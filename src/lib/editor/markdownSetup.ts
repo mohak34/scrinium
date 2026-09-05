@@ -200,6 +200,38 @@ export const baseTheme = EditorView.theme(
 			borderLeft: '1px solid var(--border-default)',
 			borderRight: '1px solid var(--border-default)'
 		},
+		// Properties box: read-only key/value rows over the `---` block.
+		// Padding, never vertical margin (same height-map rule as math).
+		'.cm-prop-block': {
+			display: 'block',
+			margin: '0',
+			padding: '0.6rem 0.8rem',
+			backgroundColor: 'var(--surface-container)',
+			border: '1px solid var(--border-default)',
+			borderRadius: '6px'
+		},
+		'.cm-prop-row': {
+			display: 'flex',
+			gap: '8px',
+			fontSize: 'var(--font-ui-small)',
+			lineHeight: '1.6'
+		},
+		'.cm-prop-key': {
+			flex: 'none',
+			width: '88px',
+			overflow: 'hidden',
+			textOverflow: 'ellipsis',
+			whiteSpace: 'nowrap',
+			color: 'var(--outline-variant)'
+		},
+		'.cm-prop-value': {
+			flex: '1',
+			minWidth: '0',
+			overflow: 'hidden',
+			textOverflow: 'ellipsis',
+			whiteSpace: 'nowrap',
+			color: 'var(--on-surface)'
+		},
 		// Callouts: per-line backgrounds form the box (line decorations, so
 		// no height-map risk). Accent per type via CSS vars, corners rounded
 		// on first/last lines only.

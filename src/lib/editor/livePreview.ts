@@ -423,6 +423,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 	const fmEnd = parseFrontmatter(docText)?.bodyStart ?? 0;
 	const inFm = (from: number): boolean => fmEnd > 0 && from < fmEnd;
 	const wikilinks: Wikilink[] = findWikilinksInText(docText).filter((w) => {
+		if (inFm(w.from)) return false;
 		if (blockRanges.some((r) => w.from <= r.to && r.from <= w.to)) return false;
 		if (isInsideCode(view, w.from) || isInsideCode(view, Math.max(w.from, w.to - 1)))
 			return false;
@@ -578,7 +579,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				// is elsewhere (and always in full preview). Returning false stops
 				// the walk from also decorating the inner LinkMark/URL nodes, which
 				// would overlap this replacement and break the RangeSetBuilder.
-				if (node.name === 'Image' && !active) {
+				if (node.name === 'Image' && !active && !inFm(node.from)) {
 					const urlNode = node.node.getChild('URL');
 					if (urlNode) {
 						const firstMark = node.node.getChild('LinkMark');
@@ -611,6 +612,8 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// hideable mark. Line backgrounds stay on while editing so the box never
 	// collapses under the cursor.
 	for (const c of callouts) {
+		// A `>` line inside YAML is data, never a callout box.
+		if (inFm(c.headerFrom)) continue;
 		for (let n = c.firstLine; n <= c.lastLine; n++) {
 			if (n < 1 || n > view.state.doc.lines) continue;
 			const line = view.state.doc.line(n);
