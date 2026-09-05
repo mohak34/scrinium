@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import fs from 'node:fs/promises';
 import { safeResolve } from '$lib/server/vault';
 import { findTagsInText } from '$lib/editor/tags';
+import { parseFrontmatter, frontmatterTags } from '$lib/editor/frontmatter';
 
 export interface TagCount {
 	tag: string;
@@ -39,9 +40,11 @@ export const GET: RequestHandler = async () => {
 			} catch {
 				return;
 			}
-			for (const name of new Set(findTagsInText(content).map((t) => t.name))) {
-				counts.set(name, (counts.get(name) ?? 0) + 1);
-			}
+			const found = new Set(findTagsInText(content).map((t) => t.name));
+			// A `tags:` key counts the same as inline `#tags`.
+			const fm = parseFrontmatter(content);
+			if (fm) for (const t of frontmatterTags(fm.data)) found.add(t);
+			for (const name of found) counts.set(name, (counts.get(name) ?? 0) + 1);
 		})
 	);
 	const out: TagCount[] = [...counts.entries()]

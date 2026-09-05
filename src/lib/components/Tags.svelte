@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { uniqueTagNames } from '$lib/editor/tags';
+	import { parseFrontmatter, frontmatterTags } from '$lib/editor/frontmatter';
 	import { searchTagRequest } from '$lib/stores/actions';
 
 	interface Props {
@@ -7,7 +8,14 @@
 	}
 	let { content }: Props = $props();
 
-	const tags = $derived(uniqueTagNames(content));
+	// `tags:` key first (note-level metadata), then inline `#tags`.
+	const tags = $derived.by(() => {
+		const seen = new Set<string>();
+		const fm = parseFrontmatter(content);
+		if (fm) for (const t of frontmatterTags(fm.data)) seen.add(t);
+		for (const t of uniqueTagNames(content)) seen.add(t);
+		return [...seen];
+	});
 </script>
 
 {#if tags.length > 0}
