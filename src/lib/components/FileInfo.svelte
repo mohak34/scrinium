@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { parseFrontmatter, stripFrontmatter, propDisplayRows } from '$lib/editor/frontmatter';
 	import { activePath, updateFrontmatter } from '$lib/stores/vault';
-import { uniqueTagNames } from '$lib/editor/tags';
 import { renameKey } from '$lib/editor/frontmatter';
 
 	interface Props {
@@ -9,12 +8,11 @@ import { renameKey } from '$lib/editor/frontmatter';
 	}
 	let { content }: Props = $props();
 
-	type AddKind = 'text' | 'status' | 'priority' | 'tags' | 'date';
+	type AddKind = 'text' | 'status' | 'priority' | 'date';
 	const ADD_TYPES: Array<{ id: AddKind; icon: string; label: string; hint: string }> = [
-		{ id: 'text', icon: 'text_fields', label: 'Text', hint: 'Any key and value' },
+		{ id: 'text', icon: 'text_fields', label: 'Custom', hint: 'Any key and value' },
 		{ id: 'status', icon: 'flag', label: 'Status', hint: 'Not started, In progress, Done' },
 		{ id: 'priority', icon: 'priority_high', label: 'Priority', hint: 'Low, Medium, High' },
-		{ id: 'tags', icon: 'tag', label: 'Tags', hint: 'Comma-separated' },
 		{ id: 'date', icon: 'calendar_month', label: 'Date', hint: "Today's date, MM/DD/YYYY" }
 	];
 	const PRESETS: Record<string, string[]> = {
@@ -54,23 +52,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 		saving = true;
 		try {
 			const ok = await updateFrontmatter(path, (doc) => {
-				if (kind === 'tags') {
-					// Tags already inline as `#tag` need no second home in
-					// the key; the section shows the union either way.
-					const inline = new Set(uniqueTagNames(content));
-					const prev = Array.isArray(doc.get(key))
-						? (doc.get(key) as unknown[]).map(String)
-						: [];
-					const next = value
-						.split(',')
-						.map((s) => s.trim().replace(/^#+/, ''))
-						.filter(Boolean)
-						.filter((t) => !inline.has(t));
-					const merged = [...new Set([...prev, ...next])];
-					if (merged.length !== prev.length) doc.set(key, merged);
-				} else {
-					doc.set(key, value);
-				}
+				doc.set(key, value);
 			});
 			if (ok) {
 				adding = null;
@@ -266,13 +248,11 @@ import { renameKey } from '$lib/editor/frontmatter';
 			{/if}
 			<input
 				class="in"
-				placeholder={adding === 'tags'
-					? 'ml, course/neural'
-					: adding === 'date'
-						? 'MM/DD/YYYY'
-						: adding === 'text'
-							? 'value'
-							: 'Custom value…'}
+				placeholder={adding === 'date'
+					? 'MM/DD/YYYY'
+					: adding === 'text'
+						? 'value'
+						: 'Custom value…'}
 				use:takeFocus
 				bind:value={fieldValue}
 				disabled={saving}
