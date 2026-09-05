@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { linkFirstMention } from '$lib/editor/wikilinks';
+import { effectiveTitle, setEffectiveTitle } from '$lib/editor/frontmatter';
 
 export interface VaultEntry {
 	name: string;
@@ -161,11 +162,11 @@ export async function flushSave() {
 
 // --- Title <-> filename sync ---
 
-export function extractTitle(content: string): string | null {
-	const first = content.split('\n')[0] ?? '';
-	const m = first.match(/^#\s+(.+?)\s*$/);
-	if (!m) return null;
-	const title = m[1].trim();
+export function extractTitle(content: string, fallback = ''): string | null {
+	// Frontmatter-aware: a `title:` key wins, else the first body `# `
+	// heading. Never the `---` fence - that rename bug is why this helper
+	// exists. Empty means "nothing to sync", as before.
+	const title = effectiveTitle(content, fallback);
 	return title || null;
 }
 
@@ -222,12 +223,12 @@ export async function syncFilenameToTitle(oldPath: string, newPath: string) {
 		const res = await fetch(`/api/notes/${encPath(newPath)}`);
 		if (!res.ok) return;
 		let content = await res.text();
-		const lines = content.split('\n');
-		if (!lines[0]?.match(/^#\s+/)) return;
-		const curTitle = lines[0].replace(/^#\s+/, '').trim();
+		// Rewrite the same source the sync reads (fm `title:` key when the
+		// block owns one, else the body heading); null means no target.
+		const curTitle = effectiveTitle(content, '');
 		if (curTitle === newBase) return;
-		lines[0] = `# ${newBase}`;
-		const newContent = lines.join('\n');
+		const newContent = setEffectiveTitle(content, newBase);
+		if (!newContent) return;
 		const putRes = await fetch(`/api/notes/${encPath(newPath)}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'text/plain' },

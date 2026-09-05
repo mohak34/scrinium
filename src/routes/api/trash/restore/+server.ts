@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '$env/dynamic/private';
 import { upsertNoteMeta, indexNote } from '$lib/server/db';
+import { effectiveTitle } from '$lib/editor/frontmatter';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
 
@@ -28,7 +29,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			} else if (rel.endsWith('.md')) {
 				try {
 					const content = await fs.readFile(full, 'utf-8');
-					const title = content.split('\n')[0]?.replace(/^#+\s*/, '').slice(0, 200) || rel;
+					const title = effectiveTitle(content, rel);
 					upsertNoteMeta(rel, title, Date.now());
 					indexNote(rel, title, content);
 				} catch {}
