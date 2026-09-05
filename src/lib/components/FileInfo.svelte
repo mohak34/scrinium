@@ -12,7 +12,6 @@
 		const body = stripFrontmatter(content).replace(/```[\s\S]*?(```|$)/g, ' ');
 		return body.match(/[A-Za-z0-9']+/g)?.length ?? 0;
 	});
-	const readingTime = $derived(Math.max(1, Math.round(words / 200)));
 
 	const fm = $derived(parseFrontmatter(content)?.data ?? null);
 	const status = $derived(fm && typeof fm['status'] === 'string' && fm['status'].trim() ? fm['status'].trim() : null);
@@ -55,12 +54,6 @@
 				<span class="material-symbols-outlined">format_align_left</span> Words
 			</span>
 			<span class="val">{words.toLocaleString()}</span>
-		</div>
-		<div class="row">
-			<span class="label">
-				<span class="material-symbols-outlined">schedule</span> Reading time
-			</span>
-			<span class="val">{readingTime} min</span>
 		</div>
 	</div>
 </section>
