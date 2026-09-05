@@ -13,7 +13,7 @@
 		{ id: 'status', icon: 'flag', label: 'Status', hint: 'Not started, In progress, Done' },
 		{ id: 'priority', icon: 'priority_high', label: 'Priority', hint: 'Low, Medium, High' },
 		{ id: 'tags', icon: 'tag', label: 'Tags', hint: 'Comma-separated' },
-		{ id: 'date', icon: 'calendar_month', label: 'Date', hint: 'Picks a calendar date' }
+		{ id: 'date', icon: 'calendar_month', label: 'Date', hint: "Today's date, MM/DD/YYYY" }
 	];
 
 	let adding = $state<AddKind | null>(null);
@@ -28,6 +28,13 @@
 
 	function takeFocus(el: HTMLInputElement) {
 		el.focus();
+	}
+
+	function usToday(): string {
+		const d = new Date();
+		const mm = String(d.getMonth() + 1).padStart(2, '0');
+		const dd = String(d.getDate()).padStart(2, '0');
+		return `${mm}/${dd}/${d.getFullYear()}`;
 	}
 
 	async function saveAdd() {
@@ -69,7 +76,7 @@
 		menuOpen = false;
 		menuIndex = ADD_TYPES.findIndex((t) => t.id === kind);
 		fieldKey = '';
-		fieldValue = kind === 'date' ? new Date().toISOString().slice(0, 10) : '';
+		fieldValue = kind === 'date' ? usToday() : '';
 	}
 
 	function toggleMenu() {
@@ -220,7 +227,7 @@
 				placeholder={adding === 'tags'
 					? 'ml, course/neural'
 					: adding === 'date'
-						? 'YYYY-MM-DD'
+						? 'MM/DD/YYYY'
 						: adding === 'text'
 							? 'value'
 							: `New ${adding}…`}
