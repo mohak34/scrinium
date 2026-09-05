@@ -436,13 +436,8 @@ import { renameKey } from '$lib/editor/frontmatter';
 		flex: 1;
 	}
 	.card {
-		background: var(--surface-container-low);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-lg);
-		padding: 8px 10px;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
 	}
 	.row {
 		display: flex;
@@ -450,6 +445,12 @@ import { renameKey } from '$lib/editor/frontmatter';
 		justify-content: space-between;
 		gap: 8px;
 		font-size: var(--font-ui-small);
+		padding: 5px 0;
+		border-top: 1px solid var(--border-default);
+	}
+	.row:first-child {
+		border-top: none;
+		padding-top: 0;
 	}
 	.label {
 		display: flex;
