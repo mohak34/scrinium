@@ -187,6 +187,23 @@ import { renameKey } from '$lib/editor/frontmatter';
 		if (['high', 'urgent', 'blocked'].includes(v)) return 'bad';
 		return '';
 	}
+
+	// One icon per key so custom properties sit evenly beside the premade
+	// rows; unknown keys get the generic tag icon, never bare text.
+	const KEY_ICONS: Record<string, string> = {
+		title: 'title',
+		author: 'person',
+		date: 'calendar_month',
+		course: 'school',
+		tags: 'tag',
+		status: 'flag',
+		priority: 'priority_high',
+		description: 'description',
+		source: 'link'
+	};
+	function iconFor(key: string): string {
+		return KEY_ICONS[key.toLowerCase()] ?? 'label';
+	}
 </script>
 
 <section aria-label="Properties">
@@ -303,6 +320,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 					if (e.key === 'Enter') startEdit(key, 'key');
 				}}
 			>
+				<span class="material-symbols-outlined">{iconFor(key)}</span>
 				{text}
 			</span>
 		{/snippet}
@@ -312,7 +330,6 @@ import { renameKey } from '$lib/editor/frontmatter';
 					{@render keyInput('status')}
 				{:else}
 					<span class="label">
-						<span class="material-symbols-outlined">flag</span>
 						{@render editableLabel('status', 'Status')}
 					</span>
 				{/if}
@@ -340,7 +357,6 @@ import { renameKey } from '$lib/editor/frontmatter';
 					{@render keyInput('priority')}
 				{:else}
 					<span class="label">
-						<span class="material-symbols-outlined">priority_high</span>
 						{@render editableLabel('priority', 'Priority')}
 					</span>
 				{/if}
@@ -440,6 +456,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 		align-items: center;
 		gap: 6px;
 		color: var(--on-surface-variant);
+		font-weight: 600;
 	}
 	.label .material-symbols-outlined {
 		font-size: 14px;
