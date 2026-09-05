@@ -34,6 +34,7 @@ import {
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { findMathBlockRanges } from './mathRanges';
+import { parseFrontmatter } from './frontmatter';
 import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts } from './callouts';
 import {
 	findWikilinksInText,
@@ -416,6 +417,11 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// `[[...]]` - same overlap rule as callout headers.
 	const docText = view.state.doc.toString();
 	const blockRanges = findMathBlockRanges(view.state);
+	// Frontmatter is raw YAML, never pretty markdown: nothing inside the
+	// block is styled, hidden or swapped (its closing `---` parses as a
+	// setext HeaderMark, YAML `-` lists as bullets, `#` comments as ATX).
+	const fmEnd = parseFrontmatter(docText)?.bodyStart ?? 0;
+	const inFm = (from: number): boolean => fmEnd > 0 && from < fmEnd;
 	const wikilinks: Wikilink[] = findWikilinksInText(docText).filter((w) => {
 		if (blockRanges.some((r) => w.from <= r.to && r.from <= w.to)) return false;
 		if (isInsideCode(view, w.from) || isInsideCode(view, Math.max(w.from, w.to - 1)))
@@ -433,7 +439,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				const active = isLineActive(view, node.from, node.to);
 
 				const headingClass = HEADING_CLASS[node.name];
-				if (headingClass) {
+				if (headingClass && !inFm(node.from)) {
 					pending.push({
 						from: node.from,
 						to: node.to,
@@ -512,7 +518,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 					}
 				}
 
-				if (HIDEABLE_MARKS.has(node.name)) {
+				if (HIDEABLE_MARKS.has(node.name) && !inFm(node.from)) {
 					// The callout header widget owns the whole `[!type]-`
 					// marker when the line is pretty; inner LinkMark/URL
 					// hides would overlap that replace. Same for wikilink
@@ -545,7 +551,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				// Turn a bare bullet marker ("-", "*", "+") into a "•" dot while
 				// the cursor is elsewhere. Ordered-list markers ("1.") are left
 				// alone, hence the single-char check.
-				if (node.name === 'ListMark' && !active && /^[-*+]$/.test(view.state.doc.sliceString(node.from, node.to))) {
+				if (node.name === 'ListMark' && !active && !inFm(node.from) && /^[-*+]$/.test(view.state.doc.sliceString(node.from, node.to))) {
 					pending.push({
 						from: node.from,
 						to: node.to,
@@ -558,7 +564,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				// the task line, leave the raw "[ ]" text so it's editable and the
 				// cursor can pass either side of it - mirroring how the bullet and
 				// heading markers already behave.
-				if (node.name === 'TaskMarker' && !active) {
+				if (node.name === 'TaskMarker' && !active && !inFm(node.from)) {
 					const text = view.state.doc.sliceString(node.from, node.to);
 					const checked = /\[[xX]\]/.test(text);
 					pending.push({
@@ -689,6 +695,11 @@ function buildDecorations(view: EditorView): DecorationSet {
 		const end = start + m[0].length;
 		const content = m[1];
 		if (!content.trim() || /^\s|\s$/.test(content)) {
+			inlineRegex.lastIndex = start + 1;
+			continue;
+		}
+		// Frontmatter values are YAML, never math.
+		if (inFm(start)) {
 			inlineRegex.lastIndex = start + 1;
 			continue;
 		}
