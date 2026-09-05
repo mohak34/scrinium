@@ -5,6 +5,7 @@
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
 import { headingFoldRange, listFoldRange } from './folding';
+import { findCallouts } from './callouts';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
 	import {
@@ -260,7 +261,16 @@ import { headingFoldRange, listFoldRange } from './folding';
 				foldService.of((state, lineStart) => {
 					const doc = state.doc.toString();
 					const lineNo = state.doc.lineAt(lineStart).number;
-					return headingFoldRange(doc, lineNo) ?? listFoldRange(doc, lineNo);
+					const fold = headingFoldRange(doc, lineNo) ?? listFoldRange(doc, lineNo);
+					if (fold) return fold;
+					// Callout bodies fold from a `-`/`+` header; single-line
+					// callouts have nothing to fold.
+					for (const c of findCallouts(state)) {
+						if (c.firstLine === lineNo && c.fold !== '' && c.lastLine > c.firstLine) {
+							return { from: state.doc.line(c.firstLine).to, to: state.doc.line(c.lastLine).to };
+						}
+					}
+					return null;
 				}),
 				// Snippet triggers run before indent; both fall through when the
 				// cursor is not on a trigger in math. Completion's own Enter
