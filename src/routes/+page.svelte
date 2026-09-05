@@ -3,6 +3,7 @@
 	import { get } from 'svelte/store';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Backlinks from '$lib/components/Backlinks.svelte';
+	import FileInfo from '$lib/components/FileInfo.svelte';
 	import Outline from '$lib/components/Outline.svelte';
 	import Tags from '$lib/components/Tags.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
@@ -243,6 +244,7 @@
 	</div>
 	{#if $activePath && !rightCollapsed}
 		<aside class="rightbar" aria-label="Right sidebar">
+			<FileInfo content={currentContent} />
 			<Backlinks onSelect={openNote} onClose={toggleRightCollapse} />
 			<Tags content={currentContent} />
 			<Outline content={currentContent} onJump={(line) => editorRef?.gotoLine(line)} />
