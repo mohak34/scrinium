@@ -4,9 +4,8 @@
 
 	interface Props {
 		onSelect: (path: string) => void;
-		onClose: () => void;
 	}
-	let { onSelect, onClose }: Props = $props();
+	let { onSelect }: Props = $props();
 
 	interface Backlink {
 		path: string;
@@ -80,9 +79,6 @@
 		{#if $activePath && !loading && !failed && links.length > 0}
 			<span class="count">{links.length}</span>
 		{/if}
-		<button class="close-btn" onclick={onClose} title="Close panel">
-			<span class="material-symbols-outlined">close</span>
-		</button>
 	</header>
 	{#if $activePath && !loading && links.length > 0}
 		<ul>
@@ -161,26 +157,6 @@
 		background: var(--surface-container-low);
 		border-radius: var(--radius);
 		padding: 1px 8px;
-	}
-	.close-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 22px;
-		height: 22px;
-		border: none;
-		border-radius: var(--radius);
-		background: none;
-		color: var(--on-surface-variant);
-		cursor: pointer;
-		line-height: 1;
-	}
-	.close-btn:hover {
-		background: var(--surface-container-low);
-		color: var(--on-surface);
-	}
-	.close-btn .material-symbols-outlined {
-		font-size: 16px;
 	}
 	header.sub {
 		margin-top: 1.5rem;

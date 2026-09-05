@@ -5,8 +5,9 @@ import { renameKey } from '$lib/editor/frontmatter';
 
 	interface Props {
 		content: string;
+		onClose: () => void;
 	}
-	let { content }: Props = $props();
+	let { content, onClose }: Props = $props();
 
 	type AddKind = 'text' | 'status' | 'priority' | 'date';
 	const ADD_TYPES: Array<{ id: AddKind; icon: string; label: string; hint: string }> = [
@@ -216,6 +217,9 @@ import { renameKey } from '$lib/editor/frontmatter';
 			onclick={() => toggleMenu()}
 		>
 			<span class="material-symbols-outlined">add</span>
+		</button>
+		<button class="add-toggle" onclick={onClose} title="Close panel">
+			<span class="material-symbols-outlined">close</span>
 		</button>
 	</header>
 	{#if menuOpen && !adding}
