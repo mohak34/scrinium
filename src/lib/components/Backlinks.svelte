@@ -191,7 +191,7 @@
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: 0.5rem;
 	}
 	li {
 		background: var(--surface-container-low);
@@ -202,11 +202,11 @@
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
-		gap: 4px;
+		gap: 2px;
 		width: 100%;
 		background: none;
 		border: none;
-		padding: 10px 12px;
+		padding: 7px 10px;
 		cursor: pointer;
 		text-align: left;
 	}
@@ -234,7 +234,7 @@
 	}
 	.link-btn {
 		align-self: flex-start;
-		margin: 2px 0 10px 12px;
+		margin: 2px 0 7px 10px;
 		background: none;
 		border: 1px solid var(--border-strong);
 		border-radius: var(--radius);
