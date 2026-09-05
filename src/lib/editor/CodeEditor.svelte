@@ -18,7 +18,6 @@
 	import { notePathsFromTree } from './wikilinks';
 	import { tree } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
-import { propBlockField } from './propBlock';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
 
@@ -294,7 +293,6 @@ import { propBlockField } from './propBlock';
 				tagCtxField,
 				livePreview,
 				mathBlockField,
-				propBlockField,
 				baseTheme,
 				fontSizeCompartment.of(themeForFontSize(initialSettings.editor.fontSize)),
 				lineNumbersCompartment.of(initialSettings.editor.showLineNumbers ? lineNumbers() : []),
