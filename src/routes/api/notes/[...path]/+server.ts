@@ -1,6 +1,7 @@
 import { json, text, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { readNote, writeNote, createFolder, renamePath, moveToTrash } from '$lib/server/vault';
+import { effectiveTitle } from '$lib/editor/frontmatter';
 import {
 	upsertNoteMeta,
 	deleteNoteMetaByPrefix,
@@ -24,7 +25,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	const content = await request.text();
 	await writeNote(params.path, content);
 
-	const title = content.split('\n')[0]?.replace(/^#+\s*/, '').slice(0, 200) || params.path;
+	const title = effectiveTitle(content, params.path);
 	upsertNoteMeta(params.path, title, Date.now());
 	indexNote(params.path, title, content);
 

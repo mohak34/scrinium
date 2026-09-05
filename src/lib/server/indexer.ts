@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '$env/dynamic/private';
 import { indexNote } from './db';
+import { effectiveTitle } from '$lib/editor/frontmatter';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
 
@@ -33,8 +34,7 @@ async function walkAndIndex(dir: string, rel: string) {
 		} else if (dirent.name.endsWith('.md')) {
 			try {
 				const body = await fs.readFile(full, 'utf-8');
-				const title =
-					body.split('\n')[0]?.replace(/^#+\s*/, '').slice(0, 200) || childRel;
+				const title = effectiveTitle(body, childRel);
 				indexNote(childRel, title, body);
 			} catch {
 				// Skip unreadable files - they'll surface again on a later scan.
