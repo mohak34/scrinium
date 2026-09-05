@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { parseFrontmatter, stripFrontmatter } from '$lib/editor/frontmatter';
+	import { parseFrontmatter, stripFrontmatter, propDisplayRows } from '$lib/editor/frontmatter';
 
 	interface Props {
 		content: string;
@@ -18,6 +18,12 @@
 	const priority = $derived(
 		fm && typeof fm['priority'] === 'string' && fm['priority'].trim() ? fm['priority'].trim() : null
 	);
+	// Every other key as a quiet read-only row; editing lives in the in-doc
+	// box, so this card grows no save path.
+	const extra = $derived.by(() => {
+		if (!fm) return [];
+		return propDisplayRows(fm).filter((r) => r.key !== 'status' && r.key !== 'priority');
+	});
 
 	function pill(value: string): string {
 		const v = value.toLowerCase();
@@ -55,6 +61,12 @@
 			</span>
 			<span class="val">{words.toLocaleString()}</span>
 		</div>
+		{#each extra as r (r.key)}
+			<div class="row">
+				<span class="label" title={r.key}>{r.key}</span>
+				<span class="val" title={r.display}>{r.display}</span>
+			</div>
+		{/each}
 	</div>
 </section>
 
@@ -109,6 +121,11 @@
 	.val {
 		color: var(--on-surface);
 		font-variant-numeric: tabular-nums;
+		max-width: 62%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		text-align: right;
 	}
 	.pill {
 		font-size: var(--font-ui-micro);
