@@ -49,12 +49,14 @@ export const baseTheme = EditorView.theme(
 			fontSize: '15px',
 			fontFamily: 'system-ui, sans-serif',
 			backgroundColor: 'var(--background)',
-			color: 'var(--on-surface)'
+			// Body copy sits one step dimmer; headings stay full white so
+			// the hierarchy reads without size shouting (workbench look).
+			color: 'var(--on-surface-variant)'
 		},
 		'.cm-content': {
 			fontFamily: 'system-ui, sans-serif',
 			padding: '2rem 1.5rem',
-			lineHeight: '1.65'
+			lineHeight: '1.75'
 		},
 		'.cm-line': { padding: '0 2px' },
 		'&.cm-focused': { outline: 'none' },
@@ -74,9 +76,9 @@ export const baseTheme = EditorView.theme(
 		'.cm-cursor': { borderLeftColor: 'var(--on-surface)' },
 		'.cm-selectionBackground': { backgroundColor: 'var(--selection-bg) !important' },
 
-'.cm-heading-1': { fontSize: '1.7em', fontWeight: '700', color: 'var(--on-surface)' },
-		'.cm-heading-2': { fontSize: '1.4em', fontWeight: '700', color: 'var(--on-surface)' },
-		'.cm-heading-3': { fontSize: '1.2em', fontWeight: '600', color: 'var(--on-surface)' },
+'.cm-heading-1': { fontSize: '1.6em', fontWeight: '700', letterSpacing: '-0.01em', color: 'var(--on-surface)' },
+		'.cm-heading-2': { fontSize: '1.15em', fontWeight: '700', color: 'var(--on-surface)' },
+		'.cm-heading-3': { fontSize: '1em', fontWeight: '600', color: 'var(--on-surface)' },
 		'.cm-heading-4': { fontSize: '1.05em', fontWeight: '600', color: 'var(--on-surface)' },
 		'.cm-heading-5': { fontSize: '0.95em', fontWeight: '600', color: 'var(--on-surface-variant)' },
 		'.cm-heading-6': {
@@ -92,7 +94,7 @@ export const baseTheme = EditorView.theme(
 		'.cm-bullet': { color: 'var(--on-surface-variant)' },
 		'.cm-inline-code': {
 			fontFamily: "var(--font-mono)",
-			background: 'var(--surface-container-high)',
+			background: 'var(--surface-container-low)',
 			color: 'var(--on-surface)',
 			padding: '0.1em 0.35em',
 			borderRadius: '4px',
@@ -164,7 +166,7 @@ export const baseTheme = EditorView.theme(
 			inset: '1px auto auto 2px'
 		},
 		'.cm-codeblock-line': {
-			backgroundColor: 'var(--surface-container)',
+			backgroundColor: 'var(--surface-container-low)',
 			borderLeft: '1px solid var(--border-default)',
 			borderRight: '1px solid var(--border-default)'
 		},
@@ -184,10 +186,10 @@ export const baseTheme = EditorView.theme(
 			// unmeasured margins shift every line below the widget. The old
 			// 0.75rem margin is folded into padding so spacing is measured.
 			margin: '0',
-			padding: '1.5rem 1rem',
-			backgroundColor: 'var(--surface-container)',
+			padding: '1.25rem 1rem',
+			backgroundColor: 'var(--surface-container-low)',
 			border: '1px solid var(--border-default)',
-			borderRadius: '6px',
+			borderRadius: '8px',
 			overflowX: 'auto'
 		},
 		'.cm-math-source': {
@@ -196,27 +198,30 @@ export const baseTheme = EditorView.theme(
 			padding: '0 0.15em'
 		},
 		'.cm-math-source-block': {
-			backgroundColor: 'var(--surface-container)',
+			backgroundColor: 'var(--surface-container-low)',
 			borderLeft: '1px solid var(--border-default)',
 			borderRight: '1px solid var(--border-default)'
 		},
 		// Callouts: per-line backgrounds form the box (line decorations, so
-		// no height-map risk). Accent per type via CSS vars, corners rounded
-		// on first/last lines only.
+		// no height-map risk). Workbench box: flat tint, full border, left
+		// accent, square left corners, round right ones.
 		'.cm-callout': {
-			backgroundColor: 'var(--callout-bg)',
+			backgroundColor: 'var(--surface-container-low)',
 			borderLeft: '3px solid var(--callout-accent)',
+			borderRight: '1px solid var(--border-default)',
 			paddingLeft: '0.7em',
 			paddingRight: '0.7em'
 		},
 		'.cm-callout-first': {
 			paddingTop: '0.55em',
-			borderTopLeftRadius: '6px',
+			borderTop: '1px solid var(--border-default)',
+			borderTopLeftRadius: '0',
 			borderTopRightRadius: '6px'
 		},
 		'.cm-callout-last': {
 			paddingBottom: '0.55em',
-			borderBottomLeftRadius: '6px',
+			borderBottom: '1px solid var(--border-default)',
+			borderBottomLeftRadius: '0',
 			borderBottomRightRadius: '6px'
 		},
 		'.cm-callout-body': {
