@@ -29,6 +29,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 	let saving = $state(false);
 	let editing = $state<{ key: string; field: 'key' | 'value' } | null>(null);
 	let editValue = $state('');
+	let editCustom = $state(false);
 	let menuEl = $state<HTMLDivElement>();
 
 	function takeFocus(el: HTMLInputElement) {
@@ -118,6 +119,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 			editValue = key;
 		}
 		editing = { key, field };
+		editCustom = false;
 	}
 
 	async function commitEdit(key: string, field: 'key' | 'value') {
@@ -300,18 +302,38 @@ import { renameKey } from '$lib/editor/frontmatter';
 			/>
 		{/snippet}
 		{#snippet valueInput(key: string)}
-			<input
-				class="in"
-				use:takeFocus
-				bind:value={editValue}
-				disabled={saving}
-				onfocus={(e) => e.currentTarget.select()}
-				onblur={() => void commitEdit(key, 'value')}
-				onkeydown={(e) => {
-					if (e.key === 'Enter') void commitEdit(key, 'value');
-					if (e.key === 'Escape') editing = null;
-				}}
-			/>
+			{#if (key === 'status' || key === 'priority') && !editCustom}
+				<div class="menu presets">
+					{#each PRESETS[key] as p (p)}
+						<button
+							class="menu-item"
+							onclick={() => {
+								editValue = p;
+								void commitEdit(key, 'value');
+							}}
+						>
+							<span class="pill {pill(p)}">{p}</span>
+						</button>
+					{/each}
+					<button class="menu-item" onclick={() => (editCustom = true)}>
+						<span class="material-symbols-outlined">edit</span>
+						Custom…
+					</button>
+				</div>
+			{:else}
+				<input
+					class="in"
+					use:takeFocus
+					bind:value={editValue}
+					disabled={saving}
+					onfocus={(e) => e.currentTarget.select()}
+					onblur={() => void commitEdit(key, 'value')}
+					onkeydown={(e) => {
+						if (e.key === 'Enter') void commitEdit(key, 'value');
+						if (e.key === 'Escape') editing = null;
+					}}
+				/>
+			{/if}
 		{/snippet}
 		{#snippet editableLabel(key: string, text: string)}
 			<span
@@ -329,7 +351,11 @@ import { renameKey } from '$lib/editor/frontmatter';
 			</span>
 		{/snippet}
 		{#if status}
-			<div class="row">
+			<div
+				class="row{editing?.key === 'status' && editing.field === 'value' && !editCustom
+					? ' menu-open'
+					: ''}"
+			>
 				{#if editing?.key === 'status' && editing.field === 'key'}
 					{@render keyInput('status')}
 				{:else}
@@ -356,7 +382,11 @@ import { renameKey } from '$lib/editor/frontmatter';
 			</div>
 		{/if}
 		{#if priority}
-			<div class="row">
+			<div
+				class="row{editing?.key === 'priority' && editing.field === 'value' && !editCustom
+					? ' menu-open'
+					: ''}"
+			>
 				{#if editing?.key === 'priority' && editing.field === 'key'}
 					{@render keyInput('priority')}
 				{:else}
@@ -455,6 +485,14 @@ import { renameKey } from '$lib/editor/frontmatter';
 	.row:first-child {
 		border-top: none;
 		padding-top: 0;
+	}
+	/* Preset picking stacks full-width; the label hides while choosing. */
+	.row.menu-open {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	.row.menu-open .label {
+		display: none;
 	}
 	.label {
 		display: flex;
