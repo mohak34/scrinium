@@ -107,7 +107,7 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
-		font-size: var(--font-ui-micro);
+		font-size: var(--font-ui-small);
 	}
 	.label {
 		display: flex;
