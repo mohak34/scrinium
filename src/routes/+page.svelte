@@ -40,7 +40,7 @@
 			const content = await loadNote(path);
 			if ($activePath === path) {
 				currentContent = content;
-				editorRef?.setDoc(content);
+				editorRef?.setDoc(content, true);
 			}
 		})();
 	});
