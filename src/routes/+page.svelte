@@ -245,8 +245,8 @@
 	{#if $activePath && !rightCollapsed}
 		<aside class="rightbar" aria-label="Right sidebar">
 			<FileInfo content={currentContent} />
-			<Backlinks onSelect={openNote} onClose={toggleRightCollapse} />
 			<Tags content={currentContent} />
+			<Backlinks onSelect={openNote} onClose={toggleRightCollapse} />
 			<Outline content={currentContent} onJump={(line) => editorRef?.gotoLine(line)} />
 		</aside>
 	{/if}
