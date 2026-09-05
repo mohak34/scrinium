@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { parseFrontmatter, stripFrontmatter, propDisplayRows } from '$lib/editor/frontmatter';
 	import { activePath, updateFrontmatter } from '$lib/stores/vault';
+import { uniqueTagNames } from '$lib/editor/tags';
 import { renameKey } from '$lib/editor/frontmatter';
 
 	interface Props {
@@ -54,14 +55,19 @@ import { renameKey } from '$lib/editor/frontmatter';
 		try {
 			const ok = await updateFrontmatter(path, (doc) => {
 				if (kind === 'tags') {
+					// Tags already inline as `#tag` need no second home in
+					// the key; the section shows the union either way.
+					const inline = new Set(uniqueTagNames(content));
 					const prev = Array.isArray(doc.get(key))
 						? (doc.get(key) as unknown[]).map(String)
 						: [];
 					const next = value
 						.split(',')
 						.map((s) => s.trim().replace(/^#+/, ''))
-						.filter(Boolean);
-					doc.set(key, [...new Set([...prev, ...next])]);
+						.filter(Boolean)
+						.filter((t) => !inline.has(t));
+					const merged = [...new Set([...prev, ...next])];
+					if (merged.length !== prev.length) doc.set(key, merged);
 				} else {
 					doc.set(key, value);
 				}
