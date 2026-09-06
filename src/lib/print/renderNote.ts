@@ -41,6 +41,24 @@ function esc(s: string): string {
 		.replace(/"/g, '&quot;');
 }
 
+/** Ranges of stash tokens (`SCRINIUMPRINTnX`) in the given text. */
+function tokenRanges(t: string): Array<{ from: number; to: number }> {
+	const out: Array<{ from: number; to: number }> = [];
+	const re = /SCRINIUMPRINT\d+X/g;
+	re.lastIndex = 0;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(t)) !== null) out.push({ from: m.index, to: m.index + m[0].length });
+	return out;
+}
+
+function overlaps(
+	from: number,
+	to: number,
+	ranges: Array<{ from: number; to: number }>
+): boolean {
+	return ranges.some((r) => from < r.to && r.from < to);
+}
+
 function katexBlock(source: string): string {
 	try {
 		return `<div class="print-math">${katex.renderToString(source, { throwOnError: false, displayMode: true })}</div>`;
@@ -222,10 +240,17 @@ export function renderNoteToHtml(src: string, notePath: string): string {
 
 	// 4b. Wikilinks after math+code so those claim first (Iverson `$[[P]]$`,
 	// code spans). Stashed like everything else for a clean restore.
+	//
+	// Overlap guard reads the stash tokens in the CURRENT text. The `spans`
+	// offsets above are in original-src coordinates and go stale the moment
+	// tokens of different lengths are spliced in - testing current offsets
+	// against them silently drops matches later in the note that happen to
+	// overlap (bottom-of-note wikilinks/tags rendering raw).
+	const wikiTokens = tokenRanges(text);
 	const wikiState = EditorState.create({ doc: text, extensions: [markdownLanguage()] });
 	const wikiSpans: Span[] = [];
 	for (const w of findWikilinksInText(text)) {
-		if (claimed(w.from, w.to)) {
+		if (overlaps(w.from, w.to, wikiTokens)) {
 			continue;
 		}
 		const inner = syntaxTree(wikiState).resolveInner(Math.min(w.from, text.length), 0);
@@ -253,10 +278,12 @@ export function renderNoteToHtml(src: string, notePath: string): string {
 
 	// 4b. Tags: same stash trick, same code guard. Tag bodies are
 	// grammar-safe (letters/digits/`_`/`-`/`/`), so no escaping needed.
+	// Same current-text token guard as wikilinks (see above).
+	const tagTokens = tokenRanges(text);
 	const tagState = EditorState.create({ doc: text, extensions: [markdownLanguage()] });
 	const tagSpans: Span[] = [];
 	for (const t of findTagsInText(text)) {
-		if (claimed(t.from, t.to)) {
+		if (overlaps(t.from, t.to, tagTokens)) {
 			continue;
 		}
 		const inner = syntaxTree(tagState).resolveInner(Math.min(t.from, text.length), 0);
