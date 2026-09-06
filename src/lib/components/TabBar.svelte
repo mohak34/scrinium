@@ -39,14 +39,10 @@
 		const p = activePath;
 		if (!p) return [];
 		return [
-			{ label: 'Share…', action: () => (shareOpen = true) },
+			{ label: pinned ? 'Unpin' : 'Pin', action: () => p && togglePin(p) },
 			{ label: 'Rename', action: () => renameRequest.set({ path: p }) },
 			{ label: 'Copy path', action: () => copyPath(p) },
 			{ label: 'Download .md', action: () => void downloadNote(p).catch(() => {}) },
-			{
-				label: 'Print / PDF',
-				action: () => goto(`/print?note=${encodeURIComponent(p)}`)
-			},
 			{ label: 'Move to trash', danger: true, action: () => void deletePath(p) }
 		];
 	});
@@ -109,29 +105,19 @@
 			</span>
 			<button
 				class="ibtn"
-				class:pinned
-				disabled={!activePath}
-				title={pinned ? 'Unpin' : 'Pin'}
-				onclick={() => activePath && togglePin(activePath)}
-			>
-				<span class="material-symbols-outlined">push_pin</span>
-			</button>
-			<button
-				class="ibtn"
-				class:copied
-				disabled={!activePath}
-				title={copied ? 'Copied' : 'Copy path'}
-				onclick={() => activePath && copyPath(activePath)}
-			>
-				<span class="material-symbols-outlined">{copied ? 'check' : 'content_copy'}</span>
-			</button>
-			<button
-				class="ibtn"
 				disabled={!activePath}
 				title="Share note"
 				onclick={() => (shareOpen = true)}
 			>
 				<span class="material-symbols-outlined">ios_share</span>
+			</button>
+			<button
+				class="ibtn"
+				disabled={!activePath}
+				title="Print / PDF"
+				onclick={() => activePath && goto(`/print?note=${encodeURIComponent(activePath)}`)}
+			>
+				<span class="material-symbols-outlined">print</span>
 			</button>
 			<button
 				class="ibtn"
@@ -300,9 +286,5 @@
 	.ibtn:disabled {
 		opacity: 0.35;
 		cursor: default;
-	}
-	.ibtn.pinned,
-	.ibtn.copied {
-		color: var(--primary);
 	}
 </style>
