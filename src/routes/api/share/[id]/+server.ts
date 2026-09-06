@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
+import { stat } from 'node:fs/promises';
 import type { RequestHandler } from './$types';
-import { readNote } from '$lib/server/vault';
+import { readNote, safeResolve } from '$lib/server/vault';
 import { effectiveTitle } from '$lib/editor/frontmatter';
 import { getShareSecret, mintProofToken, verifySharePassword } from '$lib/server/shares';
 
@@ -20,11 +21,18 @@ async function payload(id: string, password: string | null) {
 	} catch {
 		throw error(410, 'This note no longer exists');
 	}
+	// File mtime for the viewer's "updated …" line. Best-effort: a note
+	// deleted between the read and the stat just reports no timestamp.
+	let updatedAt: number | null = null;
+	try {
+		updatedAt = (await stat(safeResolve(secret.note_path))).mtimeMs;
+	} catch {}
 	return {
 		id: secret.id,
 		title: effectiveTitle(markdown, secret.note_path),
 		markdown,
 		notePath: secret.note_path.split('/').pop() ?? secret.note_path,
+		updatedAt,
 		hasPassword: !!secret.password_hash,
 		// Proof token for loading the note's images without putting the
 		// password in <img> URLs. Open shares pass none.
