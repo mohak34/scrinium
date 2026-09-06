@@ -117,7 +117,7 @@
 				title="Print / PDF"
 				onclick={() => activePath && goto(`/print?note=${encodeURIComponent(activePath)}`)}
 			>
-				<span class="material-symbols-outlined">print</span>
+				<span class="material-symbols-outlined">picture_as_pdf</span>
 			</button>
 			<button
 				class="ibtn"
