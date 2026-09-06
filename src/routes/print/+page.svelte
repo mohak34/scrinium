@@ -184,6 +184,11 @@
 		text-align: center;
 		margin: 0.9rem 0;
 		overflow-x: auto;
+		/* Same phantom-scrollbar guard as the shared view: KaTeX struts
+		overhang the line box, and overflow-x: auto computes overflow-y to
+		auto. Hidden kills the bar; padding keeps descender ink visible. */
+		overflow-y: hidden;
+		padding: 0.25em 0;
 		break-inside: avoid;
 	}
 	.paper :global(.print-math) :global(.katex-display) {
