@@ -4,7 +4,8 @@
 	import { Compartment, Prec } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
-import { headingFoldRange } from './folding';
+import { headingFoldRange, listFoldRange } from './folding';
+import { findCallouts } from './callouts';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
 	import {
@@ -257,9 +258,20 @@ import { headingFoldRange } from './folding';
 				// Heading folding: gutter chevrons plus keyboard, ranges from
 				// folding.ts (ATX only, fences and frontmatter excluded).
 				foldGutter({ openText: '▾', closedText: '▸' }),
-				foldService.of((state, lineStart) =>
-					headingFoldRange(state.doc.toString(), state.doc.lineAt(lineStart).number)
-				),
+				foldService.of((state, lineStart) => {
+					const doc = state.doc.toString();
+					const lineNo = state.doc.lineAt(lineStart).number;
+					const fold = headingFoldRange(doc, lineNo) ?? listFoldRange(doc, lineNo);
+					if (fold) return fold;
+					// Callout bodies fold from a `-`/`+` header; single-line
+					// callouts have nothing to fold.
+					for (const c of findCallouts(state)) {
+						if (c.firstLine === lineNo && c.fold !== '' && c.lastLine > c.firstLine) {
+							return { from: state.doc.line(c.firstLine).to, to: state.doc.line(c.lastLine).to };
+						}
+					}
+					return null;
+				}),
 				// Snippet triggers run before indent; both fall through when the
 				// cursor is not on a trigger in math. Completion's own Enter
 				// (highest precedence) still wins when its panel is open.
