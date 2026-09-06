@@ -150,9 +150,12 @@
 	{:else if payload}
 		<header class="bar">
 			<span class="doc">{payload.notePath}</span>
-			<span class="via" title={payload.updatedAt ? new Date(payload.updatedAt).toLocaleString() : undefined}>
-				shared read-only{#if payload.updatedAt} · updated {timeAgo(payload.updatedAt)}{/if}
-			</span>
+			<span class="tag">read-only</span>
+			{#if payload.updatedAt}
+				<span class="time" title={new Date(payload.updatedAt).toLocaleString()}>
+					updated {timeAgo(payload.updatedAt)}
+				</span>
+			{/if}
 		</header>
 		<article class="paper">{@html html}</article>
 	{/if}
@@ -234,20 +237,30 @@
 		width: 100%;
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 10px 16px;
+		gap: 8px;
+		padding: 8px 16px;
 		border-bottom: 1px solid #222;
 		font-size: 0.8rem;
 	}
 	.doc {
-		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		color: #bbb;
+		color: #fff;
+		font-weight: 600;
 	}
-	.via {
-		color: #666;
+	.tag {
+		color: #888;
+		border: 1px solid #333;
+		border-radius: 999px;
+		padding: 0 8px;
+		white-space: nowrap;
+	}
+	.time {
+		margin-left: auto;
+		color: #888;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 	.paper {
 		background: #fff;
