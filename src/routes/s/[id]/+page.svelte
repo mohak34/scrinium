@@ -21,6 +21,13 @@
 	let password = $state('');
 	let busy = $state(false);
 
+	// Reader zoom on the paper. CSS `zoom` scales text, KaTeX and images
+	// together; print CSS pins it back to 100% so PDFs always come out sane.
+	const MIN_ZOOM = 50;
+	const MAX_ZOOM = 200;
+	const ZOOM_STEP = 10;
+	let zoom = $state(100);
+
 	// renderNoteToHtml points relative images at the auth-gated /api/assets.
 	// Repoint them at this share's gated asset endpoint; password shares
 	// attach the proof token from the unlock, never the password itself.
@@ -151,13 +158,42 @@
 		<header class="bar">
 			<span class="doc">{payload.notePath}</span>
 			<span class="tag">read-only</span>
+			<span class="tools">
+				<button
+					class="tbtn"
+					title="Download / print PDF"
+					onclick={() => window.print()}
+				>
+					<span class="material-symbols-outlined">picture_as_pdf</span>
+				</button>
+				<span class="zoom-sep"></span>
+				<button
+					class="tbtn"
+					title="Zoom out"
+					disabled={zoom <= MIN_ZOOM}
+					onclick={() => (zoom = Math.max(MIN_ZOOM, zoom - ZOOM_STEP))}
+				>
+					<span class="material-symbols-outlined">remove</span>
+				</button>
+				<button class="pct" title="Reset zoom" onclick={() => (zoom = 100)}>
+					{zoom}%
+				</button>
+				<button
+					class="tbtn"
+					title="Zoom in"
+					disabled={zoom >= MAX_ZOOM}
+					onclick={() => (zoom = Math.min(MAX_ZOOM, zoom + ZOOM_STEP))}
+				>
+					<span class="material-symbols-outlined">add</span>
+				</button>
+			</span>
 			{#if payload.updatedAt}
 				<span class="time" title={new Date(payload.updatedAt).toLocaleString()}>
 					updated {timeAgo(payload.updatedAt)}
 				</span>
 			{/if}
 		</header>
-		<article class="paper">{@html html}</article>
+		<article class="paper" style:zoom={`${zoom}%`}>{@html html}</article>
 	{/if}
 </div>
 
@@ -237,6 +273,7 @@
 		width: 100%;
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 8px;
 		padding: 8px 16px;
 		border-bottom: 1px solid #222;
@@ -257,10 +294,61 @@
 		white-space: nowrap;
 	}
 	.time {
-		margin-left: auto;
 		color: #888;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
+	}
+	.tools {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+	.tbtn {
+		width: 26px;
+		height: 26px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: none;
+		background: none;
+		color: #888;
+		border-radius: 6px;
+		cursor: pointer;
+		padding: 0;
+	}
+	.tbtn .material-symbols-outlined {
+		font-size: 17px;
+	}
+	.tbtn:hover:not(:disabled) {
+		background: #1a1a1a;
+		color: #eee;
+	}
+	.tbtn:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+	.pct {
+		min-width: 48px;
+		background: none;
+		border: none;
+		color: #888;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums;
+		text-align: center;
+		cursor: pointer;
+		padding: 4px 2px;
+		border-radius: 6px;
+	}
+	.pct:hover {
+		background: #1a1a1a;
+		color: #eee;
+	}
+	.zoom-sep {
+		width: 1px;
+		height: 16px;
+		background: #333;
+		margin: 0 4px;
 	}
 	.paper {
 		background: #fff;
@@ -381,5 +469,36 @@
 	}
 	.paper :global(.callout-body > :last-child) {
 		margin-bottom: 0;
+	}
+
+	/* PDF via the browser dialog: drop the dark shell and header, pin zoom
+	so the output is always full-size regardless of the reader's setting. */
+	@media print {
+		:global(html),
+		:global(body) {
+			height: auto !important;
+			overflow: visible !important;
+			background: #fff !important;
+		}
+		.shared {
+			height: auto;
+			overflow: visible;
+			background: #fff;
+			display: block;
+		}
+		.bar {
+			display: none;
+		}
+		.paper {
+			margin: 0;
+			width: auto;
+			max-width: none;
+			border-radius: 0;
+			zoom: 1 !important;
+		}
+		.paper :global(a) {
+			text-decoration: none;
+			color: inherit;
+		}
 	}
 </style>
