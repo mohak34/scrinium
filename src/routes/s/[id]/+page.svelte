@@ -41,9 +41,8 @@
 		}
 	});
 
-	async function load(pw: string | null) {
-		const qs = pw ? `?password=${encodeURIComponent(pw)}` : '';
-		const res = await fetch(`/api/share/${encodeURIComponent(id)}${qs}`);
+	async function load() {
+		const res = await fetch(`/api/share/${encodeURIComponent(id)}`);
 		if (res.status === 401) {
 			status = 'locked';
 			return;
@@ -95,7 +94,7 @@
 			message = 'This link is invalid or was revoked.';
 			return;
 		}
-		void load(null);
+		void load();
 	});
 </script>
 

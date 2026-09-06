@@ -43,12 +43,13 @@ async function respond(id: string, password: string | null) {
 	}
 }
 
-// GET /api/share/<id>[?password=...] -> payload, or 401 when locked.
-export const GET: RequestHandler = async ({ params, url, request }) => {
+// GET /api/share/<id> -> payload for open shares, 401 { needsPassword }
+// for locked ones. Passwords are never accepted here: they travel in the
+// POST body (or the x-share-password header), never in the URL where they
+// would land in logs and browser history.
+export const GET: RequestHandler = async ({ params, request }) => {
 	if (!params.id) throw error(400, 'Invalid id');
-	const fromQuery = url.searchParams.get('password');
-	const fromHeader = request.headers.get('x-share-password');
-	return respond(params.id, fromQuery ?? fromHeader);
+	return respond(params.id, request.headers.get('x-share-password'));
 };
 
 // POST /api/share/<id> { password } -> payload, or 401 { needsPassword }.
