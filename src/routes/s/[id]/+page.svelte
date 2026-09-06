@@ -10,6 +10,7 @@
 		title: string;
 		markdown: string;
 		notePath: string;
+		updatedAt: number | null;
 		hasPassword: boolean;
 		proof: string;
 	}
@@ -30,6 +31,19 @@
 			new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^"\\s<>]+)`, 'g'),
 			(_, rest: string) => `${prefix}${rest}${suffix}`
 		);
+	}
+
+	// "just now", "3h ago", "2d ago" - absolute date past a week.
+	function timeAgo(mtimeMs: number): string {
+		const secs = Math.max(0, Math.floor((Date.now() - mtimeMs) / 1000));
+		if (secs < 60) return 'just now';
+		const mins = Math.floor(secs / 60);
+		if (mins < 60) return `${mins}m ago`;
+		const hours = Math.floor(mins / 60);
+		if (hours < 24) return `${hours}h ago`;
+		const days = Math.floor(hours / 24);
+		if (days < 7) return `${days}d ago`;
+		return new Date(mtimeMs).toLocaleDateString();
 	}
 
 	const html = $derived.by(() => {
@@ -136,7 +150,9 @@
 	{:else if payload}
 		<header class="bar">
 			<span class="doc">{payload.notePath}</span>
-			<span class="via">shared read-only</span>
+			<span class="via" title={payload.updatedAt ? new Date(payload.updatedAt).toLocaleString() : undefined}>
+				shared read-only{#if payload.updatedAt} · updated {timeAgo(payload.updatedAt)}{/if}
+			</span>
 		</header>
 		<article class="paper">{@html html}</article>
 	{/if}
