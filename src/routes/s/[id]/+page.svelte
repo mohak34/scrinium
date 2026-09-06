@@ -145,7 +145,9 @@
 
 <style>
 	.shared {
-		min-height: 100vh;
+		/* Definite height (not min-height): the app shell pins body to
+		overflow hidden, so only a fixed-height box here can scroll. */
+		height: 100vh;
 		overflow-y: auto;
 		background: #000;
 		color: #eee;
@@ -310,6 +312,12 @@
 		text-align: center;
 		margin: 0.9rem 0;
 		overflow-x: auto;
+		/* KaTeX struts overhang the line box by a few px, and overflow-x:
+		auto computes overflow-y to auto too - every block grew a phantom
+		vertical scrollbar. Hidden kills it; the padding keeps real
+		descender ink visible instead of clipped. */
+		overflow-y: hidden;
+		padding: 0.25em 0;
 	}
 	.paper :global(.print-math) :global(.katex-display) {
 		margin: 0;
