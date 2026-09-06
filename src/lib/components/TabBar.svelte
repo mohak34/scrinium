@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { renameRequest } from '$lib/stores/actions';
 	import ContextMenu from './ContextMenu.svelte';
+	import ShareModal from './ShareModal.svelte';
 
 	interface Props {
 		activePath: string | null;
@@ -13,6 +14,7 @@
 	let { activePath, onActivate, sidebarCollapsed, onToggleSidebar }: Props = $props();
 
 	let menu = $state<{ x: number; y: number } | null>(null);
+	let shareOpen = $state(false);
 	let copied = $state(false);
 	let copyTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -37,6 +39,7 @@
 		const p = activePath;
 		if (!p) return [];
 		return [
+			{ label: 'Share…', action: () => (shareOpen = true) },
 			{ label: 'Rename', action: () => renameRequest.set({ path: p }) },
 			{ label: 'Copy path', action: () => copyPath(p) },
 			{ label: 'Download .md', action: () => void downloadNote(p).catch(() => {}) },
@@ -125,6 +128,14 @@
 			<button
 				class="ibtn"
 				disabled={!activePath}
+				title="Share note"
+				onclick={() => (shareOpen = true)}
+			>
+				<span class="material-symbols-outlined">ios_share</span>
+			</button>
+			<button
+				class="ibtn"
+				disabled={!activePath}
 				title="Note actions"
 				onclick={(e) => activePath && (menu = { x: e.clientX, y: e.clientY })}
 			>
@@ -136,6 +147,10 @@
 
 {#if menu}
 	<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
+{/if}
+
+{#if shareOpen && activePath}
+	<ShareModal onClose={() => (shareOpen = false)} />
 {/if}
 
 <style>
