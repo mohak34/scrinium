@@ -163,7 +163,9 @@ State channels you will touch:
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
   move/list/restore/purge backed by `.trash/index.json`), db.ts (sqlite cache
-  + api_tokens table), auth.ts (better-auth, Google, allowlist), indexer.ts,
+  + api_tokens table), shares.ts (public share links: random id → live vault
+  path, optional scrypt password hash; rename/delete follow the file),
+  auth.ts (better-auth, Google, allowlist), indexer.ts,
   mobileAuth.ts (Google ID-token verification + API-token issue/verify).
 - `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
   tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,
@@ -174,7 +176,10 @@ State channels you will touch:
   mobile tokens + editor prefs), `/trash` (grouped restore/purge page),
   api/{auth,notes,tree,search,assets,attachments,tokens,trash,backlinks}. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
-  and `GET /api/notes/manifest` (metadata-only delta sync listing).
+  and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
+  authed `GET/POST /api/shares` + `DELETE /api/shares/[id]`, public
+  `GET/POST /api/share/[id]` (+ `/assets/...` for images) and the `/s/[id]`
+  viewer (ShareModal.svelte manages links from the tab bar).
 
 ## Auth & access
 
@@ -192,6 +197,9 @@ State channels you will touch:
   settings page via `GET/DELETE /api/tokens`.
 - Auth gates a shared vault: today all allowlisted users see the same files.
   Per-user vaults are a feature to build, not a config switch.
+- Public routes (`/s`, `/api/share`) are allowlisted in `hooks.server.ts`
+  with segment-boundary matching — a naive `startsWith` would let
+  `/api/share` publicize `/api/shares` and `/s` open `/settings`.
 
 ## Verification
 

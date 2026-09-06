@@ -37,6 +37,9 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
 - **A small editor chrome** — file tree, tabs, search, command palette,
   settings page (editor prefs stay local; manage mobile API tokens there).
 - **Attachment preview** — view images in an in-app overlay.
+- **Share links** — per-note public read-only links (`/s/…`) with optional
+  password protection; manage them from the tab bar Share button. Links show
+  the note's live content and die when revoked or the note is deleted.
 - **Thin by design** — one process, one small sqlite cache, no graph view, no
   plugin marketplace, no bloat. The architecture stays open to a
   desktop or mobile client later without a rewrite.

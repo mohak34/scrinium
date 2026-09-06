@@ -10,6 +10,7 @@ import {
 	deleteNoteIndexByPrefix,
 	renameNoteIndex
 } from '$lib/server/db';
+import { deleteSharesByPrefix, renameShares } from '$lib/server/shares';
 
 // Auth is already enforced in src/hooks.server.ts for everything under /api
 // except /api/auth itself - see that file for the actual gate.
@@ -47,6 +48,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	await renamePath(params.path, body.newPath);
 	renameNoteMeta(params.path, body.newPath);
 	renameNoteIndex(params.path, body.newPath);
+	renameShares(params.path, body.newPath);
 	return new Response(null, { status: 204 });
 };
 
@@ -55,5 +57,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	await moveToTrash(params.path);
 	deleteNoteMetaByPrefix(params.path);
 	deleteNoteIndexByPrefix(params.path);
+	deleteSharesByPrefix(params.path);
 	return new Response(null, { status: 204 });
 };

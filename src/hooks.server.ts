@@ -4,10 +4,14 @@ import { auth } from '$lib/server/auth';
 import { emailForBearerToken } from '$lib/server/mobileAuth';
 import { env } from '$env/dynamic/private';
 
-const PUBLIC_PATHS = ['/login', '/api/auth'];
+const PUBLIC_PATHS = ['/login', '/api/auth', '/s', '/api/share'];
 
 export const handle: Handle = async ({ event, resolve }) => {
-	const isPublic = PUBLIC_PATHS.some((p) => event.url.pathname.startsWith(p));
+	// Segment-boundary match: '/api/share' must not accidentally publicize
+	// '/api/shares', and '/s' must not open '/settings' or '/search'.
+	const isPublic = PUBLIC_PATHS.some(
+		(p) => event.url.pathname === p || event.url.pathname.startsWith(p + '/')
+	);
 
 	const isHub =
 		event.request.method === 'GET' &&
