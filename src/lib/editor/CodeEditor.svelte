@@ -238,6 +238,19 @@ import { findCallouts } from './callouts';
 				// insert-mode helpers below (Enter/Tab/Space bail out via
 				// inVimNormal anyway). The status panel is the mode indicator.
 				vimCompartment.of(initialSettings.editor.vimMotions ? vim({ status: true }) : []),
+				// Recolor vim's normal-mode block cursor (default #ff9696) to
+				// the theme primary. Prec.highest plus the later position beats
+				// vim's own theme; the class only exists in vim normal/visual
+				// mode so this is inert when vim is off.
+				Prec.highest(
+					EditorView.theme({
+						'.cm-fat-cursor': { backgroundColor: 'var(--primary)' },
+						'&:not(.cm-focused) .cm-fat-cursor': {
+							background: 'none',
+							outline: 'solid 1px var(--primary)'
+						}
+					})
+				),
 				history(),
 				keymap.of([
 					{ key: 'Mod-b', run: toggleWrap('**') },
