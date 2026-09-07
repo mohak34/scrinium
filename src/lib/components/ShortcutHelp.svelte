@@ -11,6 +11,15 @@
 
 	const sections: { title: string; rows: Row[] }[] = [
 		{
+			title: 'File tree',
+			rows: [
+				{ keys: 'j k / arrows', desc: 'Move between entries' },
+				{ keys: 'l', desc: 'Expand folder / first child' },
+				{ keys: 'h', desc: 'Collapse folder / parent folder' },
+				{ keys: 'Enter', desc: 'Open note / toggle folder' }
+			]
+		},
+		{
 			title: 'General',
 			rows: [
 				{ keys: 'Ctrl/⌘ K', desc: 'Command palette' },

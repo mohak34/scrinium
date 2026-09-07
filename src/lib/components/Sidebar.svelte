@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import { settings } from '$lib/stores/settings';
 	import FileTree from './FileTree.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import SearchBox from './SearchBox.svelte';
@@ -18,6 +20,8 @@
 		expandDir,
 		renameDir,
 		parentDirOf,
+		toggleDir,
+		collapsedDirs,
 		dragPath,
 		dragKind,
 		dropRoot,
@@ -38,6 +42,7 @@
 	let addMenu = $state<{ x: number; y: number } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ path: string } | null>(null);
+	let treeEl = $state<HTMLDivElement>();
 
 	// The command palette signals "create a note/folder here" through the shared
 	// createRequest store; hand it over to the inline create inputs.
@@ -136,6 +141,50 @@
 
 	function onEntryContextMenu(entry: VaultEntry, x: number, y: number) {
 		menu = { x, y, entry };
+	}
+
+	// Keyboard-first tree navigation. Arrows always work; h/j/k/l are vim
+	// motions gated behind the vim setting. Only active when focus sits on
+	// a tree entry, never inside rename/create inputs.
+	function treeKey(e: KeyboardEvent) {
+		const target = e.target as HTMLElement | null;
+		if (target?.closest?.('input, textarea')) return;
+		const entryEl = target?.closest?.('[data-tree-entry]') as HTMLElement | null;
+		if (!entryEl || !treeEl) return;
+		const vimOn = get(settings).editor.vimMotions;
+		const entries = Array.from(treeEl.querySelectorAll<HTMLElement>('[data-tree-entry]')).filter(
+			(el) => el.tabIndex >= 0
+		);
+		const idx = entries.indexOf(entryEl);
+		if (idx === -1) return;
+		const path = entryEl.dataset.path ?? '';
+		const isDir = entryEl.dataset.type === 'directory';
+		if (e.key === 'ArrowDown' || (vimOn && e.key === 'j')) {
+			e.preventDefault();
+			entries[(idx + 1) % entries.length]?.focus();
+		} else if (e.key === 'ArrowUp' || (vimOn && e.key === 'k')) {
+			e.preventDefault();
+			entries[(idx - 1 + entries.length) % entries.length]?.focus();
+		} else if (vimOn && e.key === 'l') {
+			e.preventDefault();
+			if (isDir && get(collapsedDirs).has(path)) toggleDir(path);
+			else if (isDir) {
+				// An expanded dir's first child renders directly below it.
+				const next = entries[idx + 1];
+				if (next && (next.dataset.path ?? '').startsWith(path + '/')) next.focus();
+			}
+		} else if (vimOn && e.key === 'h') {
+			e.preventDefault();
+			if (isDir && !get(collapsedDirs).has(path)) toggleDir(path);
+			else {
+				const parent = parentDirOf(path);
+				if (parent) {
+					treeEl
+						.querySelector<HTMLElement>(`[data-tree-entry][data-path="${CSS.escape(parent)}"]`)
+						?.focus();
+				}
+			}
+		}
 	}
 
 	async function onMove(path: string, toDir: string | null) {
@@ -238,7 +287,11 @@
 	<div
 		class="tree"
 		class:drop-root={$dropRoot}
-		role="group"
+		role="tree"
+		aria-label="Vault files"
+		tabindex="-1"
+		bind:this={treeEl}
+		onkeydown={treeKey}
 		ondragover={rootDragOver}
 		ondragleave={() => dropRoot.set(false)}
 		ondrop={rootDrop}

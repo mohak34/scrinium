@@ -162,6 +162,9 @@ const display = $derived(sortPinnedFirst(entries));
 						class:drop-target={$dropDir === entry.path}
 						role="button"
 						tabindex="0"
+						data-tree-entry
+						data-path={entry.path}
+						data-type="directory"
 						draggable="true"
 						onclick={() => toggleDir(entry.path)}
 						onkeydown={(e) => {
@@ -222,6 +225,9 @@ const display = $derived(sortPinnedFirst(entries));
 					class:active={$activePath === entry.path}
 					class:pinned={$pinnedPaths.includes(entry.path)}
 					class:dragging={$dragPath === entry.path}
+					data-tree-entry
+					data-path={entry.path}
+					data-type="file"
 					draggable="true"
 					onclick={() => onSelect(entry.path)}
 					oncontextmenu={(e) => {
@@ -256,6 +262,9 @@ const display = $derived(sortPinnedFirst(entries));
 					title={entry.name}
 					role="button"
 					tabindex={viewable ? 0 : -1}
+					data-tree-entry
+					data-path={entry.path}
+					data-type="file"
 					onclick={viewable ? () => onOpenAsset(entry.path) : undefined}
 					onkeydown={
 						viewable
