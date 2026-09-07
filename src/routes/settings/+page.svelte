@@ -256,8 +256,8 @@
 						<div class="row-text">
 							<span class="label">Vim motions</span>
 							<span class="hint">
-								Keyboard-first control: editor vim motions (hjkl, w/b, dd/yy/p),
-								<kbd>/</kbd> search, <kbd>[</kbd> <kbd>]</kbd> tabs,
+								Keyboard-first control: editor vim motions, tree j/k/h/l, Space
+								leader commands, <kbd>/</kbd> search, <kbd>[</kbd> <kbd>]</kbd> tabs,
 								<kbd>?</kbd> help. Vim keys only act outside text inputs, so they never clash with
 								browser shortcuts.
 							</span>

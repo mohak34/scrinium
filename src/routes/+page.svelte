@@ -17,11 +17,13 @@
 		scheduleSave,
 		flushSave,
 		openTab,
+		closeTab,
+		togglePin,
 		scheduleTitleSync,
 		externalContentUpdate
 	} from '$lib/stores/vault';
 	import { settings } from '$lib/stores/settings';
-	import { focusSearchRequest } from '$lib/stores/actions';
+	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
 	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
 
 	let editorRef = $state<CodeEditor>();
@@ -68,6 +70,8 @@
 	let resizing = $state(false);
 	let paletteOpen = $state(false);
 	let helpOpen = $state(false);
+	let leaderPending = $state(false);
+	let leaderTimer: ReturnType<typeof setTimeout> | undefined;
 	let imagePreview = $state<string | null>(null);
 	let zoom = $state(100);
 
@@ -92,21 +96,44 @@
 				helpOpen = false;
 				return;
 			}
-			if (
-				get(settings).editor.vimMotions &&
-				!e.metaKey &&
-				!e.ctrlKey &&
-				!e.altKey &&
-				(e.key === '?' || e.key === '/' || e.key === '[' || e.key === ']')
-			) {
+			if (leaderPending) {
+				clearLeader();
+				// A modifier combo aborts the leader and falls through to the
+				// normal handling below; Esc just cancels.
+				if (e.metaKey || e.ctrlKey || e.altKey || e.key === 'Escape') return;
 				const t = e.target as HTMLElement | null;
 				const typing = !!t?.closest?.(
 					'input, textarea, select, [contenteditable="true"], .cm-content, .cm-editor'
 				);
 				if (!typing && !paletteOpen && !imagePreview && !helpOpen) {
 					e.preventDefault();
+					runLeader(e.key);
+				}
+				return;
+			}
+			if (
+				get(settings).editor.vimMotions &&
+				!e.metaKey &&
+				!e.ctrlKey &&
+				!e.altKey &&
+				(e.key === '?' ||
+					e.key === '/' ||
+					e.key === '[' ||
+					e.key === ']' ||
+					e.key === ' ')
+			) {
+				const t = e.target as HTMLElement | null;
+				const typing = !!t?.closest?.(
+					'input, textarea, select, [contenteditable="true"], .cm-content, .cm-editor'
+				);
+				// Space keeps its native behaviour on controls (buttons use
+				// it to activate); the leader only starts from dead areas.
+				const onControl = e.key === ' ' && !!t?.closest?.('button, a, [role="button"]');
+				if (!typing && !onControl && !paletteOpen && !imagePreview && !helpOpen) {
+					e.preventDefault();
 					if (e.key === '?') helpOpen = true;
 					else if (e.key === '/') focusSearch();
+					else if (e.key === ' ') startLeader();
 					else stepTab(e.key === ']' ? 1 : -1);
 					return;
 				}
@@ -178,6 +205,65 @@
 		const idx = cur ? tabs.indexOf(cur) : -1;
 		const next = tabs[(idx + dir + tabs.length) % tabs.length] ?? tabs[0];
 		if (next && next !== cur) void openNote(next);
+	}
+
+	// Space leader: two-key app commands (Space then a letter). Times out
+	// after a second so a stray Space never leaves the app armed.
+	function startLeader() {
+		leaderPending = true;
+		clearTimeout(leaderTimer);
+		leaderTimer = setTimeout(() => (leaderPending = false), 1000);
+	}
+
+	function clearLeader() {
+		leaderPending = false;
+		clearTimeout(leaderTimer);
+	}
+
+	// Ask the sidebar for an inline create input. The request value persists
+	// until the sidebar consumes it, so this works while collapsed too.
+	function newEntry(kind: 'note' | 'folder') {
+		if (collapsed) toggleCollapse();
+		createRequest.set({ parent: null, kind });
+	}
+
+	function runLeader(key: string) {
+		switch (key) {
+			case ' ':
+			case 'p':
+				paletteOpen = true;
+				break;
+			case 'n':
+				newEntry('note');
+				break;
+			case 'N':
+				newEntry('folder');
+				break;
+			case 's':
+				toggleCollapse();
+				break;
+			case 'r':
+				toggleRightCollapse();
+				break;
+			case 'e': {
+				const path = get(activePath);
+				if (path) editorRef?.focus();
+				break;
+			}
+			case 'f':
+				focusSearch();
+				break;
+			case 'x': {
+				const path = get(activePath);
+				if (path) closeTab(path);
+				break;
+			}
+			case 'P': {
+				const path = get(activePath);
+				if (path) togglePin(path);
+				break;
+			}
+		}
 	}
 
 	// Drag the sidebar's right edge to resize. Double-click resets to the
@@ -318,6 +404,10 @@
 	<ShortcutHelp onClose={() => (helpOpen = false)} />
 {/if}
 
+{#if leaderPending}
+	<div class="leader" role="status">Space…</div>
+{/if}
+
 {#if imagePreview}
 	<div class="img-overlay" role="presentation">
 		<div class="zoom-controls">
@@ -424,6 +514,20 @@
 		justify-content: center;
 		color: var(--outline);
 		font-size: var(--font-ui-small);
+	}
+	.leader {
+		position: fixed;
+		left: 12px;
+		bottom: 12px;
+		z-index: 940;
+		background: var(--surface-container);
+		border: 1px solid var(--border-raised);
+		border-radius: var(--radius);
+		box-shadow: var(--shadow-pop);
+		color: var(--on-surface-variant);
+		font-family: var(--font-mono);
+		font-size: var(--font-ui-small);
+		padding: 4px 10px;
 	}
 	.img-overlay {
 		position: fixed;

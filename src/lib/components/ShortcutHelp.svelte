@@ -20,6 +20,18 @@
 			]
 		},
 		{
+			title: 'Leader (Space, then a key)',
+			rows: [
+				{ keys: 'Space p', desc: 'Command palette' },
+				{ keys: 'Space n / N', desc: 'New note / new folder' },
+				{ keys: 'Space e', desc: 'Focus editor' },
+				{ keys: 'Space f', desc: 'Focus note search' },
+				{ keys: 'Space s / r', desc: 'Toggle left / right sidebar' },
+				{ keys: 'Space x', desc: 'Close current tab' },
+				{ keys: 'Space P', desc: 'Pin / unpin current note' }
+			]
+		},
+		{
 			title: 'General',
 			rows: [
 				{ keys: 'Ctrl/⌘ K', desc: 'Command palette' },
