@@ -154,7 +154,10 @@ State channels you will touch:
   CodeEditor.svelte (editor view; editor settings are reconfigurable via
   CodeMirror `Compartment`s; Tab indents via `indentWithTab`; math blocks
   reveal source when the cursor is on an adjacent line so arrows never
-  have to cross hidden lines),
+  have to cross hidden lines; vim motions via `@replit/codemirror-vim` in
+  a `Compartment` gated by `settings.editor.vimMotions` - insert-mode
+  helpers bail out in normal mode via `inVimNormal`, editor Esc drops to
+  normal mode and only normal-mode Esc enters preview),
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),

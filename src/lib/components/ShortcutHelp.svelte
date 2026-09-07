@@ -35,7 +35,22 @@
 			rows: [
 				{ keys: 'Ctrl/⌘ F', desc: 'Find in note' },
 				{ keys: 'Ctrl/⌘ B / I', desc: 'Bold / italic' },
-				{ keys: 'Esc', desc: 'Full preview' }
+				{ keys: 'Esc', desc: 'Normal mode, then full preview' }
+			]
+		},
+		{
+			title: 'Editor vim motions',
+			rows: [
+				{ keys: 'h j k l', desc: 'Move' },
+				{ keys: 'i / a', desc: 'Insert before / after cursor' },
+				{ keys: 'w b e', desc: 'Word forward / back / end' },
+				{ keys: '0 $', desc: 'Line start / end' },
+				{ keys: 'gg G', desc: 'Top / bottom of note' },
+				{ keys: 'o O', desc: 'New line below / above' },
+				{ keys: 'x dd', desc: 'Delete char / line' },
+				{ keys: 'yy p', desc: 'Yank line / put' },
+				{ keys: 'u', desc: 'Undo' },
+				{ keys: 'v', desc: 'Visual mode' }
 			]
 		}
 	];
