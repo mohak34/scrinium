@@ -111,6 +111,10 @@
 		settings.update((s) => ({ ...s, editor: { ...s.editor, wordWrap: !s.editor.wordWrap } }));
 	}
 
+	function toggleVim() {
+		settings.update((s) => ({ ...s, editor: { ...s.editor, vimMotions: !s.editor.vimMotions } }));
+	}
+
 	function resetSettings() {
 		if (!confirm('Reset all settings to defaults?')) return;
 		settings.reset();
@@ -246,6 +250,18 @@
 							<span class="hint">Wrap long lines instead of scrolling sideways.</span>
 						</div>
 						<input type="checkbox" checked={editorSettings.wordWrap} onchange={toggleWrap} />
+						<span class="switch"></span>
+					</label>
+					<label class="row toggle-row">
+						<div class="row-text">
+							<span class="label">Vim motions</span>
+							<span class="hint">
+								Keyboard-first navigation: <kbd>/</kbd> search, <kbd>[</kbd> <kbd>]</kbd> tabs,
+								<kbd>?</kbd> help. Vim keys only act outside text inputs, so they never clash with
+								browser shortcuts.
+							</span>
+						</div>
+						<input type="checkbox" checked={editorSettings.vimMotions} onchange={toggleVim} />
 						<span class="switch"></span>
 					</label>
 					<div class="row">
@@ -427,7 +443,7 @@
 							<span class="label">Shortcuts</span>
 							<span class="hint">
 								<kbd>Ctrl/Cmd K</kbd> palette · <kbd>Ctrl/Cmd F</kbd> find · <kbd>Esc</kbd> full
-								preview · <kbd>Ctrl/Cmd B</kbd> bold
+								preview · <kbd>Ctrl/Cmd B</kbd> bold · <kbd>?</kbd> all shortcuts
 							</span>
 						</div>
 					</div>
