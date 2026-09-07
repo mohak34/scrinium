@@ -4,6 +4,9 @@ export interface EditorSettings {
 	fontSize: number; // px
 	showLineNumbers: boolean;
 	wordWrap: boolean;
+	// Vim-style keyboard navigation: single-key shortcuts that only fire
+	// outside text inputs, so they never clash with browser bindings.
+	vimMotions: boolean;
 }
 
 // Where pasted images land, Obsidian-style:
@@ -31,7 +34,8 @@ export const DEFAULT_SETTINGS: Settings = {
 	editor: {
 		fontSize: 15,
 		showLineNumbers: true,
-		wordWrap: true
+		wordWrap: true,
+		vimMotions: true
 	},
 	attachments: {
 		location: 'vault',
@@ -88,7 +92,11 @@ function loadSettings(): Settings {
 				wordWrap:
 					typeof parsed.editor?.wordWrap === 'boolean'
 						? parsed.editor.wordWrap
-						: DEFAULT_SETTINGS.editor.wordWrap
+						: DEFAULT_SETTINGS.editor.wordWrap,
+				vimMotions:
+					typeof parsed.editor?.vimMotions === 'boolean'
+						? parsed.editor.vimMotions
+						: DEFAULT_SETTINGS.editor.vimMotions
 			},
 			attachments: {
 				location: loadAttachmentLocation(parsed.attachments?.location),

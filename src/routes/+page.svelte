@@ -13,12 +13,16 @@
 		activePath,
 		loadTree,
 		loadNote,
+		openTabs,
 		scheduleSave,
 		flushSave,
 		openTab,
 		scheduleTitleSync,
 		externalContentUpdate
 	} from '$lib/stores/vault';
+	import { settings } from '$lib/stores/settings';
+	import { focusSearchRequest } from '$lib/stores/actions';
+	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
 
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
@@ -63,6 +67,7 @@
 	let sidebarWidth = $state(260);
 	let resizing = $state(false);
 	let paletteOpen = $state(false);
+	let helpOpen = $state(false);
 	let imagePreview = $state<string | null>(null);
 	let zoom = $state(100);
 
@@ -80,6 +85,32 @@
 		loadTree();
 
 		const key = (e: KeyboardEvent) => {
+			// Vim-style keys (? help, / search, [ ] tabs). Plain keys with no
+			// modifiers never clash with browser shortcuts, and they only
+			// fire outside text inputs so typing is never hijacked.
+			if (e.key === 'Escape' && helpOpen) {
+				helpOpen = false;
+				return;
+			}
+			if (
+				get(settings).editor.vimMotions &&
+				!e.metaKey &&
+				!e.ctrlKey &&
+				!e.altKey &&
+				(e.key === '?' || e.key === '/' || e.key === '[' || e.key === ']')
+			) {
+				const t = e.target as HTMLElement | null;
+				const typing = !!t?.closest?.(
+					'input, textarea, select, [contenteditable="true"], .cm-content, .cm-editor'
+				);
+				if (!typing && !paletteOpen && !imagePreview && !helpOpen) {
+					e.preventDefault();
+					if (e.key === '?') helpOpen = true;
+					else if (e.key === '/') focusSearch();
+					else stepTab(e.key === ']' ? 1 : -1);
+					return;
+				}
+			}
 			// App-wide find: CodeMirror only sees keys while its editor has
 			// focus, so a bare Mod+F anywhere else would hit the browser's
 			// native find. Route it to the editor's search panel instead when
@@ -126,6 +157,27 @@
 	function toggleRightCollapse() {
 		rightCollapsed = !rightCollapsed;
 		localStorage.setItem('scrinium:rightCollapsed', rightCollapsed ? '1' : '0');
+	}
+
+	// Focus the sidebar search box. If the sidebar is collapsed the tree
+	// remounts, so bump the focus request again once it exists.
+	function focusSearch() {
+		if (collapsed) {
+			toggleCollapse();
+			setTimeout(() => focusSearchRequest.update((n) => n + 1), 80);
+		} else {
+			focusSearchRequest.update((n) => n + 1);
+		}
+	}
+
+	// Cycle open tabs; wraps around. No browser binding uses plain [ ].
+	function stepTab(dir: 1 | -1) {
+		const tabs = get(openTabs);
+		if (!tabs.length) return;
+		const cur = get(activePath);
+		const idx = cur ? tabs.indexOf(cur) : -1;
+		const next = tabs[(idx + dir + tabs.length) % tabs.length] ?? tabs[0];
+		if (next && next !== cur) void openNote(next);
 	}
 
 	// Drag the sidebar's right edge to resize. Double-click resets to the
@@ -260,6 +312,10 @@
 		onToggleRightSidebar={toggleRightCollapse}
 		onCommand={(cmd) => editorRef?.runCommand(cmd)}
 	/>
+{/if}
+
+{#if helpOpen}
+	<ShortcutHelp onClose={() => (helpOpen = false)} />
 {/if}
 
 {#if imagePreview}
