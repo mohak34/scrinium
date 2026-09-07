@@ -13,7 +13,9 @@
 	let loading = $state(false);
 	let pending = $state(false);
 	let open = $state(false);
+	let selected = $state(0);
 	let inputEl = $state<HTMLInputElement>();
+	let resultsEl = $state<HTMLDivElement>();
 
 	// The command palette's "Open search" command requests focus here.
 	// The rail Tags panel requests a tag search the same way.
@@ -73,6 +75,7 @@
 	function pick(path: string) {
 		query = '';
 		results = [];
+		selected = 0;
 		onSelect(path);
 		inputEl?.blur();
 	}
@@ -80,8 +83,32 @@
 	function close() {
 		query = '';
 		results = [];
+		selected = 0;
 		inputEl?.blur();
 	}
+
+	function onKeyDown(e: KeyboardEvent) {
+		if (e.key === 'Escape') close();
+		else if (e.key === 'ArrowDown' && results.length) {
+			e.preventDefault();
+			selected = (selected + 1) % results.length;
+		} else if (e.key === 'ArrowUp' && results.length) {
+			e.preventDefault();
+			selected = (selected - 1 + results.length) % results.length;
+		} else if (e.key === 'Enter' && results.length) {
+			pick(results[Math.min(selected, results.length - 1)]?.path ?? results[0].path);
+		}
+	}
+
+	// New results reset the cursor; moving it keeps the row in view.
+	$effect(() => {
+		query;
+		selected = 0;
+	});
+	$effect(() => {
+		selected;
+		resultsEl?.querySelector('.row.selected')?.scrollIntoView({ block: 'nearest' });
+	});
 </script>
 
 <div class="searchbox">
@@ -94,14 +121,11 @@
 			bind:value={query}
 			onfocus={() => (open = true)}
 			onblur={() => setTimeout(() => (open = false), 150)}
-			onkeydown={(e) => {
-				if (e.key === 'Escape') close();
-				if (e.key === 'Enter' && results.length) pick(results[0].path);
-			}}
+			onkeydown={onKeyDown}
 		/>
 	</div>
 	{#if open && query.trim()}
-		<div class="results">
+		<div class="results" bind:this={resultsEl}>
 			{#if loading}
 				<div class="row muted">Searching…</div>
 			{:else if results.length === 0}
@@ -109,8 +133,13 @@
 					<div class="row muted">No results</div>
 				{/if}
 			{:else}
-				{#each results as r (r.path)}
-					<button class="row" onmousedown={() => pick(r.path)}>
+				{#each results as r, i (r.path)}
+					<button
+						class="row"
+						class:selected={i === selected}
+						onmousedown={() => pick(r.path)}
+						onmouseenter={() => (selected = i)}
+					>
 						<span class="title">{r.title || r.path}</span>
 						<span class="path">{r.path}</span>
 						{#if r.snippet}
@@ -186,7 +215,8 @@
 		border-radius: var(--radius);
 		cursor: pointer;
 	}
-	.row:hover {
+	.row:hover,
+	.row.selected {
 		background: var(--surface-container-high);
 	}
 	.row.muted {
