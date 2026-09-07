@@ -7,6 +7,7 @@ import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
 import { headingFoldRange, listFoldRange } from './folding';
 import { findCallouts } from './callouts';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+	import { vim, getCM } from '@replit/codemirror-vim';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
 	import {
 	openSearchPanel,
@@ -42,11 +43,21 @@ import { findCallouts } from './callouts';
 	const lineNumbersCompartment = new Compartment();
 	const wrapCompartment = new Compartment();
 	const fontSizeCompartment = new Compartment();
+	const vimCompartment = new Compartment();
 
 	function themeForFontSize(size: number) {
 		return EditorView.theme({
 			'&': { fontSize: `${size}px` }
 		});
+	}
+
+	// True when vim motions are on and the editor is in normal (or visual)
+	// mode. Insert-mode helpers (list continuation, math snippets, Tab
+	// indent) bail out in that case so vim owns the key.
+	function inVimNormal(view: EditorView): boolean {
+		if (!get(settings).editor.vimMotions) return false;
+		const vimState = getCM(view)?.state.vim;
+		return !!vimState && !vimState.insertMode;
 	}
 
 	// Named editor commands, callable from outside the component (the command
@@ -223,6 +234,10 @@ import { findCallouts } from './callouts';
 			doc: value,
 			parent: container,
 			extensions: [
+				// Vim motions go first so normal-mode keys win over the
+				// insert-mode helpers below (Enter/Tab/Space bail out via
+				// inVimNormal anyway). The status panel is the mode indicator.
+				vimCompartment.of(initialSettings.editor.vimMotions ? vim({ status: true }) : []),
 				history(),
 				keymap.of([
 					{ key: 'Mod-b', run: toggleWrap('**') },
@@ -254,7 +269,11 @@ import { findCallouts } from './callouts';
 					}
 				]),
 				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap]),
-				keymap.of([indentWithTab]),
+				// Tab indents in insert mode; in vim normal mode the key is
+				// left alone so vim owns it.
+				keymap.of([
+					{ key: 'Tab', run: (view) => (inVimNormal(view) ? false : (indentWithTab.run?.(view) ?? false)) }
+				]),
 				// Heading folding: gutter chevrons plus keyboard, ranges from
 				// folding.ts (ATX only, fences and frontmatter excluded).
 				foldGutter({ openText: '▾', closedText: '▸' }),
@@ -277,7 +296,10 @@ import { findCallouts } from './callouts';
 				// (highest precedence) still wins when its panel is open.
 				Prec.high(
 					keymap.of([
-						{ key: 'Enter', run: insertListNewline },
+						{
+							key: 'Enter',
+							run: (view) => (inVimNormal(view) ? false : insertListNewline(view))
+						},
 						// With a completion panel open (math `\` or `[[`),
 						// Tab cycles suggestions and Enter accepts; otherwise
 						// both fall through to snippet/indent behaviour.
@@ -299,8 +321,8 @@ import { findCallouts } from './callouts';
 								return false;
 							}
 						},
-						{ key: 'Tab', run: expandMathSnippet },
-						{ key: ' ', run: expandMathFraction }
+						{ key: 'Tab', run: (view) => (inVimNormal(view) ? false : expandMathSnippet(view)) },
+						{ key: ' ', run: (view) => (inVimNormal(view) ? false : expandMathFraction(view)) }
 					])
 				),
 				search({ top: true }),
@@ -326,6 +348,14 @@ import { findCallouts } from './callouts';
 								closeCompletion(view);
 								e.preventDefault();
 								return true;
+							}
+							// With vim motions on, Esc in insert/visual mode drops
+							// to normal mode inside the vim extension (focus is
+							// kept); only normal-mode Esc enters full preview.
+							// Returning false lets vim claim the key.
+							if (get(settings).editor.vimMotions) {
+								const vimState = getCM(view)?.state.vim;
+								if (vimState && (vimState.insertMode || vimState.visualMode)) return false;
 							}
 							// Full preview: render the whole note, stop the cursor
 							// blinking. Click back into the editor to resume editing.
@@ -385,7 +415,8 @@ import { findCallouts } from './callouts';
 				effects: [
 					fontSizeCompartment.reconfigure(themeForFontSize(s.editor.fontSize)),
 					lineNumbersCompartment.reconfigure(s.editor.showLineNumbers ? lineNumbers() : []),
-					wrapCompartment.reconfigure(s.editor.wordWrap ? EditorView.lineWrapping : [])
+					wrapCompartment.reconfigure(s.editor.wordWrap ? EditorView.lineWrapping : []),
+					vimCompartment.reconfigure(s.editor.vimMotions ? vim({ status: true }) : [])
 				]
 			});
 		});
