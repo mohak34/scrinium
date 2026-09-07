@@ -454,6 +454,14 @@ import { findCallouts } from './callouts';
 		view.focus();
 	}
 
+	// Keyboard focus from the Space leader: leave full preview first so the
+	// cursor lands back in the text instead of a blurred preview.
+	export function focus() {
+		if (!view) return;
+		if (isPreviewMode()) setPreviewMode(view, false);
+		view.focus();
+	}
+
 	// Keep the editor in sync whenever the parent's value changes, so the doc
 	// can never go stale even if setDoc's timing races the editor mount.
 	$effect(() => {
