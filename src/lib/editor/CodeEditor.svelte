@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
-	import { Compartment, Prec } from '@codemirror/state';
+	import { Compartment, Prec, type SelectionRange } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
 import { headingFoldRange, listFoldRange } from './folding';
@@ -22,6 +22,7 @@ import { findCallouts } from './callouts';
 	import { notePathsFromTree } from './wikilinks';
 	import { tree } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
+	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE } from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
 
@@ -37,6 +38,14 @@ import { findCallouts } from './callouts';
 	// re-run once onMount assigns it - plain let silently skipped them.
 	let view = $state<EditorView | undefined>(undefined);
 	let suppressChange = false;
+
+	// Yank-flash bookkeeping (vim only, see onVimDialog): the last non-empty
+	// selection for visual yanks, and the pre-op cursor line for `yy`-style
+	// operator yanks. A collapse update always clears the stash, which is
+	// safe because the yank notice fires before the collapse dispatch.
+	let lastYankSel: SelectionRange | null = null;
+	let prevCursorLine = 1;
+	let yankTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Compartments so settings (font size, gutters, wrapping) can be reconfigured
 	// without recreating the whole editor.
@@ -145,6 +154,34 @@ import { findCallouts } from './callouts';
 		COMMANDS[name]?.(view);
 	}
 
+	// Yank flash: every vim yank posts a "<N> lines yanked" notice into the
+	// status panel, announced on the facade's "dialog" signal. Visual yanks
+	// reuse their exact (still stashed) selection; operator yanks (`yy`,
+	// `yG`, ...) cover N lines down from the pre-op cursor line.
+	function onVimDialog() {
+		if (!view || !get(settings).editor.vimMotions) return;
+		const text = view.dom.querySelector('.cm-vim-panel')?.textContent;
+		const m = text ? YANK_NOTICE.exec(text) : null;
+		if (!m) return;
+		const count = Math.max(1, parseInt(m[1], 10));
+		const headLine = view.state.doc.lineAt(view.state.selection.main.head).number;
+		let from: number;
+		let to: number;
+		if (lastYankSel) {
+			from = view.state.doc.lineAt(Math.min(lastYankSel.anchor, lastYankSel.head)).number;
+			to = view.state.doc.lineAt(Math.max(lastYankSel.anchor, lastYankSel.head)).number;
+			lastYankSel = null;
+		} else {
+			from = Math.min(prevCursorLine, headLine);
+			to = from + count - 1;
+		}
+		view.dispatch({ effects: addYankFlash.of({ from, to }) });
+		clearTimeout(yankTimer);
+		yankTimer = setTimeout(() => {
+			view?.dispatch({ effects: clearYankFlash.of() });
+		}, 900);
+	}
+
 	// Resolve relative image URLs against the folder of the open note.
 	$effect(() => {
 		if (!view) return;
@@ -238,6 +275,19 @@ import { findCallouts } from './callouts';
 				// insert-mode helpers below (Enter/Tab/Space bail out via
 				// inVimNormal anyway). The status panel is the mode indicator.
 				vimCompartment.of(initialSettings.editor.vimMotions ? vim({ status: true }) : []),
+				// Visible selection in vim visual mode: the vim theme blanks
+				// native selection, so restore the theme selection color. The
+				// doubled class outranks vim's rule however the equal-
+				// precedence themes order; cm-vimMode only exists outside
+				// insert mode so insert behavior is untouched.
+				Prec.highest(
+					EditorView.theme({
+						'& .cm-vimMode.cm-vimMode .cm-line': {
+							'&::selection': { backgroundColor: 'var(--selection-bg) !important' },
+							'& ::selection': { backgroundColor: 'var(--selection-bg) !important' }
+						}
+					})
+				),
 				history(),
 				keymap.of([
 					{ key: 'Mod-b', run: toggleWrap('**') },
@@ -335,6 +385,8 @@ import { findCallouts } from './callouts';
 				tagCtxField,
 				livePreview,
 				mathBlockField,
+				yankFlashField,
+				yankFlashTheme,
 				baseTheme,
 				fontSizeCompartment.of(themeForFontSize(initialSettings.editor.fontSize)),
 				lineNumbersCompartment.of(initialSettings.editor.showLineNumbers ? lineNumbers() : []),
@@ -405,6 +457,15 @@ import { findCallouts } from './callouts';
 					if (update.docChanged && !suppressChange) {
 						onChange(update.state.doc.toString());
 					}
+					// Yank-flash bookkeeping: stash the last non-empty
+					// selection (visual yanks) and the cursor line. A collapse
+					// update clears the stash; the yank notice always fires
+					// first, so visual yanks still see their range.
+					if (get(settings).editor.vimMotions) {
+						const sel = update.state.selection.main;
+						lastYankSel = sel.empty ? null : sel;
+						prevCursorLine = update.state.doc.lineAt(sel.head).number;
+					}
 				})
 			]
 		});
@@ -420,6 +481,10 @@ import { findCallouts } from './callouts';
 				]
 			});
 		});
+
+		// Yank notices arrive on the vim facade's "dialog" signal. The facade
+		// exists once the vim plugin is constructed alongside the view.
+		getCM(view)?.on('dialog', onVimDialog);
 
 		return () => unsubscribe();
 	});
@@ -475,7 +540,10 @@ import { findCallouts } from './callouts';
 		}
 	});
 
-	onDestroy(() => view?.destroy());
+	onDestroy(() => {
+		clearTimeout(yankTimer);
+		view?.destroy();
+	});
 </script>
 
 <div class="editor-host" bind:this={container}></div>
