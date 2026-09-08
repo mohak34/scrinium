@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { env } from '$env/dynamic/private';
 import fs from 'node:fs';
 import path from 'node:path';
+import { titleScore } from './rank';
 
 const dbPath = env.DATABASE_PATH || './data/scrinium.db';
 
@@ -135,7 +136,9 @@ export function searchNotes(q: string): SearchResult[] {
 	// the FTS5 MATCH syntax. A trailing * turns a term into a prefix query, so
 	// partial words ("lis") still match whole tokens ("list"). Run both an exact
 	// query (preserves porter stemming of whole words) and a prefix query, then
-	// merge, keeping exact matches first.
+	// merge. Merged rows are re-ranked by titleScore: a title match ("Workbench"
+	// for "work") must beat a note that merely mentions the term, and the exact/
+	// prefix merge order alone must not decide. FTS rank only breaks ties.
 	const tokens = q
 		.split(/\s+/)
 		.map((t) => t.replace(/^\*+|\*+$|\s+/g, '').replace(/"/g, '""'))
@@ -144,18 +147,11 @@ export function searchNotes(q: string): SearchResult[] {
 	const exact = tokens.map((t) => `"${t}"`).join(' ');
 	const prefixed = tokens.map((t) => `"${t}"*`).join(' ');
 
-	const rows = db
-		.prepare(
-			`SELECT path, title, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
-			 FROM note_fts WHERE note_fts MATCH ? ORDER BY rank LIMIT 30`
-		)
-		.all(exact) as { path: string; title: string; snip: string | null }[];
-	const extra = db
-		.prepare(
-			`SELECT path, title, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
-			 FROM note_fts WHERE note_fts MATCH ? ORDER BY rank LIMIT 30`
-		)
-		.all(prefixed) as { path: string; title: string; snip: string | null }[];
+	type Row = { path: string; title: string; rank: number; snip: string | null };
+	const sel = `SELECT path, title, rank, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
+		 FROM note_fts WHERE note_fts MATCH ? ORDER BY rank LIMIT 30`;
+	const rows = db.prepare(sel).all(exact) as Row[];
+	const extra = db.prepare(sel).all(prefixed) as Row[];
 
 	const seen = new Set(rows.map((r) => r.path));
 	for (const r of extra) {
@@ -163,11 +159,17 @@ export function searchNotes(q: string): SearchResult[] {
 		rows.push(r);
 		seen.add(r.path);
 	}
-	return rows.slice(0, 30).map((r) => ({
-		path: r.path,
-		title: r.title,
-		snippet: r.snip ?? ''
-	}));
+	const query = q.trim().toLowerCase();
+	const toks = tokens.map((t) => t.toLowerCase());
+	return rows
+		.map((r) => ({ ...r, score: titleScore(r.title, r.path, query, toks) }))
+		.sort((a, b) => a.score - b.score || a.rank - b.rank)
+		.slice(0, 30)
+		.map((r) => ({
+			path: r.path,
+			title: r.title,
+			snippet: r.snip ?? ''
+		}));
 }
 
 export function listRecentNotes(limit = 15) {
