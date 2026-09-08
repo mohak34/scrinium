@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
-	import { Compartment, Prec, type SelectionRange } from '@codemirror/state';
+	import { Compartment, Prec } from '@codemirror/state';
 	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
 import { headingFoldRange, listFoldRange } from './folding';
@@ -39,11 +39,9 @@ import { findCallouts } from './callouts';
 	let view = $state<EditorView | undefined>(undefined);
 	let suppressChange = false;
 
-	// Yank-flash bookkeeping (vim only, see onVimDialog): the last non-empty
-	// selection for visual yanks, and the pre-op cursor line for `yy`-style
-	// operator yanks. A collapse update always clears the stash, which is
-	// safe because the yank notice fires before the collapse dispatch.
-	let lastYankSel: SelectionRange | null = null;
+	// Yank-flash bookkeeping (vim only, see onVimDialog): the cursor line of
+	// the latest update, so operator yanks (`yy`, `yG`, ...) can cover N
+	// lines from where the motion started.
 	let prevCursorLine = 1;
 	let yankTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -155,9 +153,13 @@ import { findCallouts } from './callouts';
 	}
 
 	// Yank flash: every vim yank posts a "<N> lines yanked" notice into the
-	// status panel, announced on the facade's "dialog" signal. Visual yanks
-	// reuse their exact (still stashed) selection; operator yanks (`yy`,
-	// `yG`, ...) cover N lines down from the pre-op cursor line.
+	// status panel, announced on the facade's "dialog" signal. The notice
+	// fires inside the yank operation, before any selection collapse
+	// dispatch, so the live selection is still the visual range for visual
+	// yanks; operator yanks (`yy`, `yG`, ...) see a collapsed cursor and
+	// cover N lines down from the pre-op cursor line instead. Reading live
+	// state (never a stashed range) keeps a stale selection from painting
+	// the wrong lines.
 	function onVimDialog() {
 		if (!view || !get(settings).editor.vimMotions) return;
 		// Read only the newest notice: an older one can still be mounted
@@ -167,19 +169,17 @@ import { findCallouts } from './callouts';
 		const m = text ? YANK_NOTICE.exec(text) : null;
 		if (!m) return;
 		const count = Math.max(1, parseInt(m[1], 10));
-		const headLine = view.state.doc.lineAt(view.state.selection.main.head).number;
+		const sel = view.state.selection.main;
 		let from: number;
 		let to: number;
-		if (lastYankSel) {
-			from = view.state.doc.lineAt(Math.min(lastYankSel.anchor, lastYankSel.head)).number;
-			to = view.state.doc.lineAt(Math.max(lastYankSel.anchor, lastYankSel.head)).number;
-			lastYankSel = null;
-		} else {
+		if (sel.empty) {
+			const headLine = view.state.doc.lineAt(sel.head).number;
 			from = Math.min(prevCursorLine, headLine);
 			to = from + count - 1;
+		} else {
+			from = view.state.doc.lineAt(Math.min(sel.anchor, sel.head)).number;
+			to = view.state.doc.lineAt(Math.max(sel.anchor, sel.head)).number;
 		}
-		// TEMP diagnosing the double-line flash: remove once identified.
-		console.debug('[yank-flash]', { from, to, count, headLine, prevCursorLine });
 		view.dispatch({ effects: addYankFlash.of({ from, to }) });
 		clearTimeout(yankTimer);
 		yankTimer = setTimeout(() => {
@@ -462,14 +462,10 @@ import { findCallouts } from './callouts';
 					if (update.docChanged && !suppressChange) {
 						onChange(update.state.doc.toString());
 					}
-					// Yank-flash bookkeeping: stash the last non-empty
-					// selection (visual yanks) and the cursor line. A collapse
-					// update clears the stash; the yank notice always fires
-					// first, so visual yanks still see their range.
+					// Yank-flash bookkeeping: the cursor line, so operator yanks
+					// can cover N lines from where the motion started.
 					if (get(settings).editor.vimMotions) {
-						const sel = update.state.selection.main;
-						lastYankSel = sel.empty ? null : sel;
-						prevCursorLine = update.state.doc.lineAt(sel.head).number;
+						prevCursorLine = update.state.doc.lineAt(update.state.selection.main.head).number;
 					}
 				})
 			]

@@ -165,8 +165,8 @@ State channels you will touch:
   mathComplete.ts (`\command` completion source, math regions only),
   mathSnippets.ts (Tab word/subscript and Space fraction triggers),
   yankFlash.ts (mini.nvim-style yank flash: line deco from the vim
-  "<N> lines yanked" status notice via the facade dialog signal; visual
-  yanks reuse the stashed selection, `yy` covers N lines at the cursor),
+  "<N> lines yanked" status notice via the facade dialog signal, read off
+  live selection state so a stale range can never paint),
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
   move/list/restore/purge backed by `.trash/index.json`), db.ts (sqlite cache
