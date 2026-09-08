@@ -177,8 +177,15 @@ import { findCallouts } from './callouts';
 			from = Math.min(prevCursorLine, headLine);
 			to = from + count - 1;
 		} else {
-			from = view.state.doc.lineAt(Math.min(sel.anchor, sel.head)).number;
-			to = view.state.doc.lineAt(Math.max(sel.anchor, sel.head)).number;
+			// A linewise yank selects [lineStart, nextLineStart): the range
+			// end sits exactly on the following line's start, which is a
+			// boundary, not a yanked line - step one back in that case.
+			const doc = view.state.doc;
+			const lo = Math.min(sel.anchor, sel.head);
+			const hi = Math.max(sel.anchor, sel.head);
+			const hiLine = doc.lineAt(hi);
+			from = doc.lineAt(lo).number;
+			to = hi > lo && hi === hiLine.from ? hiLine.number - 1 : hiLine.number;
 		}
 		view.dispatch({ effects: addYankFlash.of({ from, to }) });
 		clearTimeout(yankTimer);
