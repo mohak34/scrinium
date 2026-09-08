@@ -239,14 +239,17 @@ import { findCallouts } from './callouts';
 				// inVimNormal anyway). The status panel is the mode indicator.
 				vimCompartment.of(initialSettings.editor.vimMotions ? vim({ status: true }) : []),
 				// Recolor vim's normal-mode block cursor (default #ff9696) to
-				// the theme primary. The extra .cm-editor scope outranks
-				// vim's own rule regardless of style order; the class only
-				// exists in vim normal/visual mode so this is inert when
-				// vim is off.
+				// the theme primary. Two gotchas live here: EditorView.theme
+				// scopes every selector under a unique root class, so a plain
+				// `.cm-editor ...` descendant never matches the root itself -
+				// use `&&` for the root. And equal-precedence themes break
+				// ties in reverse extension order (earlier wins), so the bump
+				// to (0,3,0) is what beats vim's own rule. The class only
+				// exists in vim normal/visual mode so this is inert otherwise.
 				Prec.highest(
 					EditorView.theme({
-						'.cm-editor .cm-fat-cursor': { backgroundColor: 'var(--primary)' },
-						'.cm-editor:not(.cm-focused) .cm-fat-cursor': {
+						'&& .cm-fat-cursor': { backgroundColor: 'var(--primary)' },
+						'&&:not(.cm-focused) .cm-fat-cursor': {
 							background: 'none',
 							outline: 'solid 1px var(--primary)'
 						}
