@@ -22,7 +22,7 @@ import { findCallouts } from './callouts';
 	import { notePathsFromTree } from './wikilinks';
 	import { tree } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
-	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE } from './yankFlash';
+	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
 
@@ -160,7 +160,10 @@ import { findCallouts } from './callouts';
 	// `yG`, ...) cover N lines down from the pre-op cursor line.
 	function onVimDialog() {
 		if (!view || !get(settings).editor.vimMotions) return;
-		const text = view.dom.querySelector('.cm-vim-panel')?.textContent;
+		// Read only the newest notice: an older one can still be mounted
+		// within its 1500ms lifetime and would poison the line count.
+		const messages = view.dom.querySelectorAll('.cm-vim-panel .cm-vim-message');
+		const text = messages.length ? messages[messages.length - 1].textContent : null;
 		const m = text ? YANK_NOTICE.exec(text) : null;
 		if (!m) return;
 		const count = Math.max(1, parseInt(m[1], 10));
@@ -175,11 +178,13 @@ import { findCallouts } from './callouts';
 			from = Math.min(prevCursorLine, headLine);
 			to = from + count - 1;
 		}
+		// TEMP diagnosing the double-line flash: remove once identified.
+		console.debug('[yank-flash]', { from, to, count, headLine, prevCursorLine });
 		view.dispatch({ effects: addYankFlash.of({ from, to }) });
 		clearTimeout(yankTimer);
 		yankTimer = setTimeout(() => {
 			view?.dispatch({ effects: clearYankFlash.of() });
-		}, 900);
+		}, YANK_FLASH_MS);
 	}
 
 	// Resolve relative image URLs against the folder of the open note.
@@ -525,6 +530,16 @@ import { findCallouts } from './callouts';
 		if (!view) return;
 		if (isPreviewMode()) setPreviewMode(view, false);
 		view.focus();
+	}
+
+	// App-level Esc while the editor is blurred in full preview: unhide the
+	// marks and take focus back, so normal-mode Esc never strands keyboard
+	// flow on the mouse. Returns whether it handled anything.
+	export function exitPreview(): boolean {
+		if (!view || !isPreviewMode()) return false;
+		setPreviewMode(view, false);
+		view.focus();
+		return true;
 	}
 
 	// Keep the editor in sync whenever the parent's value changes, so the doc
