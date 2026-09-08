@@ -163,6 +163,9 @@
 				paletteOpen = false;
 			} else if (e.key === 'Escape' && imagePreview) {
 				imagePreview = null;
+			} else if (e.key === 'Escape' && (editorRef?.exitPreview() ?? false)) {
+				// Full preview was on with the editor blurred: marks are back
+				// and focus is in the editor. Empty body by design.
 			}
 		};
 		window.addEventListener('keydown', key);

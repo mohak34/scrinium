@@ -14,6 +14,9 @@ export const clearYankFlash = StateEffect.define<void>();
 // Matches the vim confirmation text ("1 lines yanked", "3 lines yanked").
 export const YANK_NOTICE = /(\d+) lines yanked/;
 
+// Flash lifetime. Halved from 900ms: the mark should confirm, not linger.
+export const YANK_FLASH_MS = 450;
+
 export const yankFlashField = StateField.define<DecorationSet>({
 	create: () => Decoration.none,
 	update: (set, tr) => {

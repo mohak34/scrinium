@@ -157,7 +157,8 @@ State channels you will touch:
   have to cross hidden lines; vim motions via `@replit/codemirror-vim` in
   a `Compartment` gated by `settings.editor.vimMotions` - insert-mode
   helpers bail out in normal mode via `inVimNormal`, editor Esc drops to
-  normal mode and only normal-mode Esc enters preview),
+  normal mode, normal-mode Esc enters preview, and app-level Esc exits
+  preview via `exitPreview` so keyboard flow never strands on the mouse),
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),
