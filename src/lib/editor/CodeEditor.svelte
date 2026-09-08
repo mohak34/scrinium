@@ -39,6 +39,22 @@ import { findCallouts } from './callouts';
 	let view = $state<EditorView | undefined>(undefined);
 	let suppressChange = false;
 
+	type VimChromeMode = 'normal' | 'insert' | 'visual' | 'visual-line' | 'visual-block' | 'replace';
+	const VIM_MODE_LABEL: Record<VimChromeMode, string> = {
+		normal: 'NORMAL',
+		insert: 'INSERT',
+		visual: 'VISUAL',
+		'visual-line': 'V-LINE',
+		'visual-block': 'V-BLOCK',
+		replace: 'REPLACE'
+	};
+	let vimOn = $state(false);
+	let vimMode = $state<VimChromeMode>('insert');
+	let toasts = $state<{ id: number; text: string }[]>([]);
+	let toastId = 0;
+	let cmdBar = $state<HTMLDivElement>();
+	let cmdOpen = $state(false);
+
 	// Yank-flash bookkeeping (vim only, see onVimDialog): the cursor line of
 	// the latest update, so operator yanks (`yy`, `yG`, ...) can cover N
 	// lines from where the motion started.
@@ -161,12 +177,28 @@ import { findCallouts } from './callouts';
 	// state (never a stashed range) keeps a stale selection from painting
 	// the wrong lines.
 	function onVimDialog() {
-		if (!view || !get(settings).editor.vimMotions) return;
-		// Read only the newest notice: an older one can still be mounted
-		// within its 1500ms lifetime and would poison the line count.
-		const messages = view.dom.querySelectorAll('.cm-vim-panel .cm-vim-message');
-		const text = messages.length ? messages[messages.length - 1].textContent : null;
-		const m = text ? YANK_NOTICE.exec(text) : null;
+		if (!view) return;
+		// Close signals carry no dialog; vim-off leaves a stale facade that
+		// never fires again, but guard anyway.
+		const dlg = get(settings).editor.vimMotions
+			? (getCM(view)?.state.dialog as HTMLElement | null | undefined)
+			: null;
+		if (!dlg) return;
+		if (dlg.querySelector('input')) {
+			// `/` search and `:` ex need a visible input. With no status bar
+			// the dialog is homeless, so host it in the command line. The
+			// adapter removes it on close, which the observer below sees.
+			if (dlg.parentElement !== cmdBar) cmdBar?.appendChild(dlg);
+			cmdOpen = true;
+			return;
+		}
+		// Confirmations and errors ("1 lines yanked", "No match found"):
+		// keep them out of the command line and toast the text instead.
+		if (dlg.parentElement === cmdBar) dlg.remove();
+		const msg = dlg.textContent?.trim();
+		if (!msg) return;
+		pushToast(msg);
+		const m = YANK_NOTICE.exec(msg);
 		if (!m) return;
 		const count = Math.max(1, parseInt(m[1], 10));
 		const sel = view.state.selection.main;
@@ -192,6 +224,25 @@ import { findCallouts } from './callouts';
 		yankTimer = setTimeout(() => {
 			view?.dispatch({ effects: clearYankFlash.of() });
 		}, YANK_FLASH_MS);
+	}
+
+	function pushToast(text: string) {
+		const id = ++toastId;
+		toasts = [...toasts.slice(-2), { id, text }];
+		setTimeout(() => {
+			toasts = toasts.filter((t) => t.id !== id);
+		}, 1600);
+	}
+
+	// Mode pill tracking, straight from vim's own mode-change signal. The
+	// visual sub-mode comes from live state (linewise vs block select).
+	function onVimMode(e: { mode: string }) {
+		if (e.mode === 'insert') vimMode = 'insert';
+		else if (e.mode === 'replace') vimMode = 'replace';
+		else if (e.mode === 'visual') {
+			const st = view ? getCM(view)?.state.vim : null;
+			vimMode = st?.visualLine ? 'visual-line' : st?.visualBlock ? 'visual-block' : 'visual';
+		} else vimMode = 'normal';
 	}
 
 	// Resolve relative image URLs against the folder of the open note.
@@ -285,8 +336,9 @@ import { findCallouts } from './callouts';
 			extensions: [
 				// Vim motions go first so normal-mode keys win over the
 				// insert-mode helpers below (Enter/Tab/Space bail out via
-				// inVimNormal anyway). The status panel is the mode indicator.
-				vimCompartment.of(initialSettings.editor.vimMotions ? vim({ status: true }) : []),
+				// inVimNormal anyway). No status bar: the mode pill, toasts
+				// and command line below replace it.
+				vimCompartment.of(initialSettings.editor.vimMotions ? vim() : []),
 				// Visible selection in vim visual mode: the vim theme blanks
 				// native selection, so restore the theme selection color. The
 				// doubled class outranks vim's rule however the equal-
@@ -485,16 +537,29 @@ import { findCallouts } from './callouts';
 					fontSizeCompartment.reconfigure(themeForFontSize(s.editor.fontSize)),
 					lineNumbersCompartment.reconfigure(s.editor.showLineNumbers ? lineNumbers() : []),
 					wrapCompartment.reconfigure(s.editor.wordWrap ? EditorView.lineWrapping : []),
-					vimCompartment.reconfigure(s.editor.vimMotions ? vim({ status: true }) : [])
+					vimCompartment.reconfigure(s.editor.vimMotions ? vim() : [])
 				]
 			});
+			vimOn = s.editor.vimMotions;
 		});
 
-		// Yank notices arrive on the vim facade's "dialog" signal. The facade
+		// Yank notices and `/`/`:` dialogs arrive on the vim facade's
+		// "dialog" signal; mode changes on "vim-mode-change". The facade
 		// exists once the vim plugin is constructed alongside the view.
 		getCM(view)?.on('dialog', onVimDialog);
+		getCM(view)?.on('vim-mode-change', onVimMode);
 
-		return () => unsubscribe();
+		// The adapter removes hosted dialogs on close; an empty command
+		// line hides itself.
+		const cmdObserver = new MutationObserver(() => {
+			cmdOpen = (cmdBar?.childElementCount ?? 0) > 0;
+		});
+		if (cmdBar) cmdObserver.observe(cmdBar, { childList: true });
+
+		return () => {
+			unsubscribe();
+			cmdObserver.disconnect();
+		};
 	});
 
 	// If the parent swaps to a different note, reset the doc without treating
@@ -564,11 +629,97 @@ import { findCallouts } from './callouts';
 	});
 </script>
 
-<div class="editor-host" bind:this={container}></div>
+<div class="editor-wrap">
+	<div class="editor-host" bind:this={container}></div>
+	{#if vimOn}
+		<div class="mode-pill mode-{vimMode}" role="status" title="Vim mode">
+			{VIM_MODE_LABEL[vimMode]}
+		</div>
+		<div class="toasts" aria-live="polite">
+			{#each toasts as t (t.id)}
+				<div class="toast">{t.text}</div>
+			{/each}
+		</div>
+	{/if}
+	<div class="cmdline" class:open={vimOn && cmdOpen} bind:this={cmdBar}></div>
+</div>
 
 <style>
+	.editor-wrap {
+		position: relative;
+		height: 100%;
+	}
 	.editor-host {
 		height: 100%;
 		overflow-y: auto;
+	}
+	.mode-pill {
+		position: absolute;
+		top: 8px;
+		right: 12px;
+		z-index: 30;
+		font-family: var(--font-mono);
+		font-size: var(--font-ui-micro);
+		letter-spacing: 0.08em;
+		color: var(--on-surface-variant);
+		background: var(--surface-container);
+		border: 1px solid var(--border-raised);
+		border-radius: var(--radius);
+		padding: 2px 8px;
+		pointer-events: none;
+	}
+	.mode-pill.mode-insert {
+		color: var(--on-primary);
+		background: var(--primary);
+		border-color: transparent;
+	}
+	.toasts {
+		position: absolute;
+		top: 40px;
+		right: 12px;
+		z-index: 30;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		align-items: flex-end;
+		pointer-events: none;
+	}
+	.toast {
+		font-family: var(--font-mono);
+		font-size: var(--font-ui-small);
+		color: var(--on-surface);
+		background: var(--surface-container);
+		border: 1px solid var(--border-raised);
+		border-radius: var(--radius);
+		box-shadow: var(--shadow-pop);
+		padding: 4px 10px;
+		max-width: 320px;
+	}
+	.cmdline {
+		display: none;
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 30;
+		background: var(--surface-container);
+		border-top: 1px solid var(--border-raised);
+		padding: 4px 12px;
+		font-family: var(--font-mono);
+		font-size: var(--font-ui-small);
+		color: var(--on-surface);
+	}
+	.cmdline.open {
+		display: block;
+	}
+	/* The input is injected by the vim extension, outside Svelte markup. */
+	.cmdline :global(input) {
+		width: 100%;
+		background: transparent;
+		border: none;
+		outline: none;
+		color: inherit;
+		font: inherit;
+		padding: 0;
 	}
 </style>

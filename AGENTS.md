@@ -158,7 +158,9 @@ State channels you will touch:
   a `Compartment` gated by `settings.editor.vimMotions` - insert-mode
   helpers bail out in normal mode via `inVimNormal`, editor Esc drops to
   normal mode, normal-mode Esc enters preview, and app-level Esc exits
-  preview via `exitPreview` so keyboard flow never strands on the mouse),
+  preview via `exitPreview` so keyboard flow never strands on the mouse;
+  no status bar - a mode pill, notice toasts and a `/`+`:` command line
+  are Svelte chrome driven by vim's dialog/mode-change signals),
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),
