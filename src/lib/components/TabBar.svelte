@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { openTabs, closeTab, saveStatus, pinnedPaths, togglePin, deletePath, downloadNote } from '$lib/stores/vault';
+	import { settings } from '$lib/stores/settings';
+	import { vimMode, VIM_MODE_LABEL } from '$lib/stores/vim';
 	import { goto } from '$app/navigation';
 	import { renameRequest } from '$lib/stores/actions';
 	import ContextMenu from './ContextMenu.svelte';
@@ -95,6 +97,9 @@
 
 	<div class="end">
 		{#if activePath}
+			{#if $settings.editor.vimMotions}
+				<span class="mode mode-{$vimMode}" title="Vim mode">{VIM_MODE_LABEL[$vimMode]}</span>
+			{/if}
 			<span class="status" class:error={$saveStatus === 'error'} title="Save status">
 				<span
 					class="sdot"
@@ -246,6 +251,22 @@
 		font-size: var(--font-ui-micro);
 		margin-right: 6px;
 		white-space: nowrap;
+	}
+	.mode {
+		font-family: var(--font-mono);
+		font-size: var(--font-ui-micro);
+		letter-spacing: 0.08em;
+		color: var(--on-surface-variant);
+		border: 1px solid var(--border-raised);
+		border-radius: var(--radius);
+		padding: 1px 7px;
+		margin-right: 8px;
+		white-space: nowrap;
+	}
+	.mode-insert {
+		color: var(--on-primary);
+		background: var(--primary);
+		border-color: transparent;
 	}
 	.status.error {
 		color: var(--error);

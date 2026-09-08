@@ -22,6 +22,7 @@ import { findCallouts } from './callouts';
 	import { notePathsFromTree } from './wikilinks';
 	import { tree } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
+	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
 	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
@@ -38,18 +39,7 @@ import { findCallouts } from './callouts';
 	// re-run once onMount assigns it - plain let silently skipped them.
 	let view = $state<EditorView | undefined>(undefined);
 	let suppressChange = false;
-
-	type VimChromeMode = 'normal' | 'insert' | 'visual' | 'visual-line' | 'visual-block' | 'replace';
-	const VIM_MODE_LABEL: Record<VimChromeMode, string> = {
-		normal: 'NORMAL',
-		insert: 'INSERT',
-		visual: 'VISUAL',
-		'visual-line': 'V-LINE',
-		'visual-block': 'V-BLOCK',
-		replace: 'REPLACE'
-	};
 	let vimOn = $state(false);
-	let vimMode = $state<VimChromeMode>('insert');
 	let toasts = $state<{ id: number; text: string }[]>([]);
 	let toastId = 0;
 	let cmdBar = $state<HTMLDivElement>();
@@ -234,15 +224,28 @@ import { findCallouts } from './callouts';
 		}, 1600);
 	}
 
-	// Mode pill tracking, straight from vim's own mode-change signal. The
-	// visual sub-mode comes from live state (linewise vs block select).
+	// Mode tracking, straight from vim's own mode-change signal. The visual
+	// sub-mode comes from live state (linewise vs block select).
 	function onVimMode(e: { mode: string }) {
-		if (e.mode === 'insert') vimMode = 'insert';
-		else if (e.mode === 'replace') vimMode = 'replace';
+		if (e.mode === 'insert') vimMode.set('insert');
+		else if (e.mode === 'replace') vimMode.set('replace');
 		else if (e.mode === 'visual') {
 			const st = view ? getCM(view)?.state.vim : null;
-			vimMode = st?.visualLine ? 'visual-line' : st?.visualBlock ? 'visual-block' : 'visual';
-		} else vimMode = 'normal';
+			vimMode.set(st?.visualLine ? 'visual-line' : st?.visualBlock ? 'visual-block' : 'visual');
+		} else vimMode.set('normal');
+	}
+
+	// Re-read the live mode: signals only fire on transitions, so a note
+	// switch (same view, persisted vim state) would otherwise leave a stale
+	// readout - e.g. INSERT shown while vim stayed normal.
+	function syncVimMode() {
+		if (!view) return;
+		const st = getCM(view)?.state.vim;
+		if (!st) return;
+		let next: VimChromeMode = 'normal';
+		if (st.insertMode) next = 'insert';
+		else if (st.visualMode) next = st.visualLine ? 'visual-line' : st.visualBlock ? 'visual-block' : 'visual';
+		vimMode.set(next);
 	}
 
 	// Resolve relative image URLs against the folder of the open note.
@@ -541,6 +544,7 @@ import { findCallouts } from './callouts';
 				]
 			});
 			vimOn = s.editor.vimMotions;
+			syncVimMode();
 		});
 
 		// Yank notices and `/`/`:` dialogs arrive on the vim facade's
@@ -548,6 +552,7 @@ import { findCallouts } from './callouts';
 		// exists once the vim plugin is constructed alongside the view.
 		getCM(view)?.on('dialog', onVimDialog);
 		getCM(view)?.on('vim-mode-change', onVimMode);
+		syncVimMode();
 
 		// The adapter removes hosted dialogs on close; an empty command
 		// line hides itself.
@@ -577,6 +582,8 @@ import { findCallouts } from './callouts';
 		// Note switches also take focus so typing starts immediately.
 		if (resetCursor) view.focus();
 		suppressChange = false;
+		// Same view, persisted vim state: re-read the mode for the readout.
+		syncVimMode();
 	}
 
 	// Jump the cursor to a 1-based line (outline navigation): place the
@@ -632,9 +639,6 @@ import { findCallouts } from './callouts';
 <div class="editor-wrap">
 	<div class="editor-host" bind:this={container}></div>
 	{#if vimOn}
-		<div class="mode-pill mode-{vimMode}" role="status" title="Vim mode">
-			{VIM_MODE_LABEL[vimMode]}
-		</div>
 		<div class="toasts" aria-live="polite">
 			{#each toasts as t (t.id)}
 				<div class="toast">{t.text}</div>
@@ -653,29 +657,9 @@ import { findCallouts } from './callouts';
 		height: 100%;
 		overflow-y: auto;
 	}
-	.mode-pill {
-		position: absolute;
-		top: 8px;
-		right: 12px;
-		z-index: 30;
-		font-family: var(--font-mono);
-		font-size: var(--font-ui-micro);
-		letter-spacing: 0.08em;
-		color: var(--on-surface-variant);
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius);
-		padding: 2px 8px;
-		pointer-events: none;
-	}
-	.mode-pill.mode-insert {
-		color: var(--on-primary);
-		background: var(--primary);
-		border-color: transparent;
-	}
 	.toasts {
 		position: absolute;
-		top: 40px;
+		top: 8px;
 		right: 12px;
 		z-index: 30;
 		display: flex;
