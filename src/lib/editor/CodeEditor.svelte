@@ -184,7 +184,9 @@ import { findCallouts } from './callouts';
 		}
 		// Confirmations and errors ("1 lines yanked", "No match found"):
 		// keep them out of the command line and toast the text instead.
-		if (dlg.parentElement === cmdBar) dlg.remove();
+		// Removing the node also keeps vim's own bottom panel permanently
+		// empty (hidden via :empty), since it renders for every dialog.
+		dlg.remove();
 		const msg = dlg.textContent?.trim();
 		if (!msg) return;
 		pushToast(msg);
