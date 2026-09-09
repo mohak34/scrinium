@@ -60,6 +60,11 @@ export const baseTheme = EditorView.theme(
 		},
 		'.cm-line': { padding: '0 2px' },
 		'&.cm-focused': { outline: 'none' },
+		// Vim's bottom panel renders for every dialog even with the status
+		// bar off. All dialogs are re-homed into Svelte chrome (command line
+		// for inputs, toasts for notices), so the panel is always empty -
+		// keep it hidden.
+		'.cm-vim-panel:empty': { display: 'none' },
 		'.cm-gutters': {
 			backgroundColor: 'var(--background)',
 			color: '#3f424d',
