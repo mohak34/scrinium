@@ -119,7 +119,7 @@ export const baseTheme = EditorView.theme(
 		'.cm-bullet': { color: 'var(--on-surface-variant)' },
 		'.cm-inline-code': {
 			fontFamily: "var(--font-mono)",
-			background: 'var(--surface-container-low)',
+			background: '#141414',
 			color: 'var(--on-surface)',
 			padding: '0.1em 0.35em',
 			borderRadius: '4px',
@@ -191,7 +191,7 @@ export const baseTheme = EditorView.theme(
 			inset: '1px auto auto 2px'
 		},
 		'.cm-codeblock-line': {
-			backgroundColor: 'var(--surface-container-low)',
+			backgroundColor: '#141414',
 			borderLeft: '1px solid var(--border-default)',
 			borderRight: '1px solid var(--border-default)'
 		},
@@ -230,7 +230,7 @@ export const baseTheme = EditorView.theme(
 		// Plain quotes: the workbench box without callout chrome. Line
 		// decorations, so no height-map risk, same as callouts.
 		'.cm-quote': {
-			backgroundColor: 'var(--surface-container-low)',
+			backgroundColor: '#141414',
 			borderLeft: '3px solid #648aff',
 			borderRight: '1px solid var(--border-default)',
 			paddingLeft: '0.7em',
@@ -250,7 +250,7 @@ export const baseTheme = EditorView.theme(
 		// no height-map risk). Workbench box: flat tint, full border, left
 		// accent, square left corners, round right ones.
 		'.cm-callout': {
-			backgroundColor: 'var(--surface-container-low)',
+			backgroundColor: '#141414',
 			borderLeft: '3px solid var(--callout-accent)',
 			borderRight: '1px solid var(--border-default)',
 			paddingLeft: '0.7em',
