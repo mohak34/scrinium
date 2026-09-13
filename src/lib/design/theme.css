@@ -1,5 +1,5 @@
 :root {
-	--background: #121318;
+	--background: #0a0a0a;
 	--surface: #121318;
 	--surface-dim: #121318;
 	--surface-bright: #38393e;
@@ -89,7 +89,7 @@
 --label-caps-spacing: 0.05em;
 
 	--shadow-pop: 0 4px 12px rgba(0 0 0 0.4);
-	--selection-bg: #3b4a7a;
+	--selection-bg: #111111;
 	--overlay-dim: rgba(0 0 0 0.2);
 	--overlay: rgba(0, 0, 0, 0.2);
 	--sb-thumb: #2a2d38;

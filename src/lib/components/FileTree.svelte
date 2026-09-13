@@ -390,7 +390,7 @@ const display = $derived(sortPinnedFirst(entries));
 		color: var(--on-surface);
 	}
 	.file.active {
-		background: #242840;
+		background: #111111;
 		color: var(--on-surface);
 		font-size: var(--font-ui-medium);
 	}
