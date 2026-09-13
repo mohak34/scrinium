@@ -1,5 +1,6 @@
 :root {
 	--background: #0a0a0a;
+	--sidebar-bg: #030303;
 	--surface: #121318;
 	--surface-dim: #121318;
 	--surface-bright: #38393e;
@@ -45,9 +46,9 @@
 	--on-tertiary-fixed: #311300;
 	--on-tertiary-fixed-variant: #723600;
 
-	--border-default: #2a2d38;
-	--border-raised: #2f323d;
-	--border-strong: #3a3d48;
+	--border-default: #1a1a1a;
+	--border-raised: #202020;
+	--border-strong: #262626;
 
 	--radius-sm: 0.125rem;
 	--radius-default: 0.25rem;
