@@ -154,7 +154,7 @@
 	.count {
 		font-size: var(--font-ui-small);
 		color: var(--on-surface);
-		background: var(--background);
+		background: var(--sidebar-bg);
 		border-radius: var(--radius);
 		padding: 1px 8px;
 	}
@@ -170,7 +170,7 @@
 		gap: 0.5rem;
 	}
 	li {
-		background: var(--background);
+		background: var(--sidebar-bg);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius-lg);
 	}

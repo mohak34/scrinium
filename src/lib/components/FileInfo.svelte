@@ -573,7 +573,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 		font-size: 15px;
 	}
 	.menu-item.on {
-		background: var(--background);
+		background: var(--sidebar-bg);
 		color: var(--on-surface);
 	}
 	.menu-item.on .material-symbols-outlined {
@@ -593,7 +593,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 		font-family: var(--font-ui);
 		font-size: var(--font-ui-small);
 		color: var(--on-surface);
-		background: var(--background);
+		background: var(--sidebar-bg);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius);
 		padding: 3px 6px;
@@ -608,7 +608,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 	.pill {
 		font-size: var(--font-ui-micro);
 		color: var(--on-surface-variant);
-		background: var(--background);
+		background: var(--sidebar-bg);
 		border: 1px solid var(--border-default);
 		border-radius: 999px;
 		padding: 0 8px;
