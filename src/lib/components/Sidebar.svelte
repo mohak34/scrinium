@@ -344,7 +344,7 @@
 	aside {
 		width: 100%;
 		flex-shrink: 0;
-		background: #15161c;
+		background: var(--sidebar-bg);
 		border-right: 1px solid var(--border-default);
 		display: flex;
 		flex-direction: column;
