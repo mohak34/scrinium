@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
+
+	let { children } = $props();
 
 	const tabs = [
 		{ href: '/tasks', label: 'Agenda' },
@@ -12,6 +15,8 @@
 		if (href === '/tasks') return cur === '/tasks';
 		return cur.startsWith(href);
 	}
+
+	const current = $derived(page.url.pathname.startsWith('/tasks/kanban') ? 'kanban' : 'tasks');
 </script>
 
 <div class="page">
@@ -20,7 +25,7 @@
 			<button class="icon-btn" onclick={() => goto('/')} title="Back to vault (Esc)">
 				<span class="material-symbols-outlined">arrow_back</span>
 			</button>
-			<span class="title">Tasks</span>
+			<WorkspaceSwitcher current={current} label="Tasks" />
 			<nav class="tabs" aria-label="Tasks views">
 				{#each tabs as t (t.href)}
 					<button
@@ -37,7 +42,7 @@
 	</header>
 
 	<div class="scroll">
-		<slot />
+		{@render children()}
 	</div>
 </div>
 
@@ -66,13 +71,6 @@
 		align-items: center;
 		gap: 12px;
 		min-width: 0;
-	}
-	.title {
-		font-size: var(--font-editor-title-size);
-		line-height: var(--font-editor-title-lh);
-		font-weight: var(--font-editor-title-weight);
-		letter-spacing: var(--font-editor-title-tracking);
-		color: var(--on-surface);
 	}
 	.tabs {
 		display: flex;
