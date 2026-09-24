@@ -311,6 +311,10 @@
 		/>
 	</div>
 	<div class="footer">
+		<button class="footer-item" onclick={() => goto('/tasks')}>
+			<span class="material-symbols-outlined">task</span>
+			<span>Tasks</span>
+		</button>
 		<button class="footer-item" onclick={() => goto('/trash')}>
 			<span class="material-symbols-outlined">delete</span>
 			<span>Trash</span>

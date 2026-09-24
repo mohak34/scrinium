@@ -177,3 +177,109 @@ export function listRecentNotes(limit = 15) {
 		.prepare(`SELECT path, title FROM note_meta ORDER BY updated_at DESC LIMIT ?`)
 		.all(limit) as { path: string; title: string }[];
 }
+
+// Standalone tasks section (separate from note checklists). Due dates are
+// first-class columns, not parsed from text. gcal_event_id is a placeholder
+// for the later Calendar sync phase - no sync logic reads it yet.
+db.exec(`
+	CREATE TABLE IF NOT EXISTS tasks (
+		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		detail TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'todo',
+		due_at INTEGER,
+		remind_min INTEGER,
+		note_path TEXT,
+		position REAL NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		gcal_event_id TEXT
+	);
+`);
+
+export type TaskStatus = 'todo' | 'doing' | 'done';
+
+export interface TaskRow {
+	id: string;
+	title: string;
+	detail: string;
+	status: TaskStatus;
+	due_at: number | null;
+	remind_min: number | null;
+	note_path: string | null;
+	position: number;
+	created_at: number;
+	updated_at: number;
+	gcal_event_id: string | null;
+}
+
+export function listTasks(): TaskRow[] {
+	return db
+		.prepare(`SELECT * FROM tasks ORDER BY position ASC, created_at ASC`)
+		.all() as TaskRow[];
+}
+
+export function getTask(id: string): TaskRow | undefined {
+	return db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as TaskRow | undefined;
+}
+
+export interface NewTask {
+	id: string;
+	title: string;
+	detail?: string;
+	status?: TaskStatus;
+	due_at?: number | null;
+	remind_min?: number | null;
+	note_path?: string | null;
+	position?: number;
+}
+
+export function insertTask(t: NewTask): TaskRow {
+	const now = Date.now();
+	db.prepare(
+		`INSERT INTO tasks (id, title, detail, status, due_at, remind_min, note_path, position, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	).run(
+		t.id,
+		t.title,
+		t.detail ?? '',
+		t.status ?? 'todo',
+		t.due_at ?? null,
+		t.remind_min ?? null,
+		t.note_path ?? null,
+		t.position ?? now,
+		now,
+		now
+	);
+	return getTask(t.id)!;
+}
+
+export type TaskPatch = Partial<
+	Pick<TaskRow, 'title' | 'detail' | 'status' | 'due_at' | 'remind_min' | 'note_path' | 'position' | 'gcal_event_id'>
+>;
+
+export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
+	const cur = getTask(id);
+	if (!cur) return undefined;
+	const next = { ...cur, ...patch, updated_at: Date.now() };
+	db.prepare(
+		`UPDATE tasks SET title = ?, detail = ?, status = ?, due_at = ?, remind_min = ?,
+		 note_path = ?, position = ?, updated_at = ?, gcal_event_id = ? WHERE id = ?`
+	).run(
+		next.title,
+		next.detail,
+		next.status,
+		next.due_at,
+		next.remind_min,
+		next.note_path,
+		next.position,
+		next.updated_at,
+		next.gcal_event_id,
+		id
+	);
+	return getTask(id);
+}
+
+export function deleteTask(id: string) {
+	db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+}
