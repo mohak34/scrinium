@@ -30,6 +30,7 @@
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
+	import WorkspaceSwitcher from './WorkspaceSwitcher.svelte';
 
 	interface Props {
 		onSelect: (path: string) => void;
@@ -265,7 +266,7 @@
 	}}
 >
 	<div class="header">
-		<span class="brand">Scrinium</span>
+		<WorkspaceSwitcher current="notes" label="Scrinium" />
 		<div class="header-actions">
 			<button
 				class="icon-btn"
@@ -361,13 +362,6 @@
 		height: 48px;
 		padding: 0 var(--gutter);
 		flex-shrink: 0;
-	}
-	.brand {
-		font-size: var(--font-editor-title-size);
-		line-height: var(--font-editor-title-lh);
-		font-weight: var(--font-editor-title-weight);
-		letter-spacing: var(--font-editor-title-tracking);
-		color: var(--on-surface);
 	}
 	.header-actions {
 		display: flex;
