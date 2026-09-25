@@ -196,6 +196,7 @@ db.exec(`
 		parent_id TEXT,
 		due_at INTEGER,
 		remind_at INTEGER,
+		notified_at INTEGER,
 		position REAL NOT NULL DEFAULT 0,
 		created_at INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL,
@@ -218,6 +219,7 @@ db.exec(`
 	const names = new Set(cols.map((c) => c.name));
 	if (!names.has('priority')) db.exec(`ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'none'`);
 	if (!names.has('parent_id')) db.exec(`ALTER TABLE tasks ADD COLUMN parent_id TEXT`);
+	if (!names.has('notified_at')) db.exec(`ALTER TABLE tasks ADD COLUMN notified_at INTEGER`);
 	if (!names.has('remind_at')) {
 		db.exec(`ALTER TABLE tasks ADD COLUMN remind_at INTEGER`);
 		// remind_min (minutes before due) becomes an absolute timestamp.
@@ -253,6 +255,7 @@ export interface TaskRow {
 	parent_id: string | null;
 	due_at: number | null;
 	remind_at: number | null;
+	notified_at: number | null;
 	link_count: number;
 	position: number;
 	created_at: number;
@@ -315,9 +318,11 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 	const cur = getTask(id);
 	if (!cur) return undefined;
 	const next = { ...cur, ...patch, updated_at: Date.now() };
+	// A changed (or cleared) reminder re-arms: a new time must fire again.
+	if ('remind_at' in patch && patch.remind_at !== cur.remind_at) next.notified_at = null;
 	db.prepare(
 		`UPDATE tasks SET title = ?, detail = ?, status = ?, priority = ?, parent_id = ?,
-		 due_at = ?, remind_at = ?,
+		 due_at = ?, remind_at = ?, notified_at = ?,
 		 position = ?, updated_at = ?, gcal_event_id = ? WHERE id = ?`
 	).run(
 		next.title,
@@ -327,6 +332,7 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 		next.parent_id,
 		next.due_at,
 		next.remind_at,
+		next.notified_at,
 		next.position,
 		next.updated_at,
 		next.gcal_event_id,
@@ -343,8 +349,7 @@ export function deleteTask(id: string) {
 	db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
 }
 
-export function listTaskLinks(taskId: string): string[] {
-	const rows = db
+export function listTaskLinks(taskId: string): string[] {	const rows = db
 		.prepare(`SELECT note_path FROM task_links WHERE task_id = ? ORDER BY created_at ASC`)
 		.all(taskId) as { note_path: string }[];
 	return rows.map((r) => r.note_path);
@@ -360,4 +365,22 @@ export function addTaskLink(taskId: string, notePath: string): string[] {
 export function removeTaskLink(taskId: string, notePath: string): string[] {
 	db.prepare(`DELETE FROM task_links WHERE task_id = ? AND note_path = ?`).run(taskId, notePath);
 	return listTaskLinks(taskId);
+}
+
+// Reminders that are due and haven't fired. Done tasks never fire, and a
+// fired reminder only re-arms when remind_at itself changes (see updateTask).
+export function listDueReminders(now: number): TaskRow[] {
+	return db
+		.prepare(
+			`SELECT ${TASK_COLS} FROM tasks
+			 WHERE remind_at IS NOT NULL AND remind_at <= ? AND notified_at IS NULL AND status != 'done'
+			 ORDER BY remind_at ASC`
+		)
+		.all(now) as TaskRow[];
+}
+
+export function markRemindersNotified(ids: string[], now: number) {
+	if (ids.length === 0) return;
+	const stmt = db.prepare(`UPDATE tasks SET notified_at = ? WHERE id = ? AND notified_at IS NULL`);
+	for (const id of ids) stmt.run(now, id);
 }
