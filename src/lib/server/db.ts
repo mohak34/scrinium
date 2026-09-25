@@ -181,12 +181,17 @@ export function listRecentNotes(limit = 15) {
 // Standalone tasks section (separate from note checklists). Due dates are
 // first-class columns, not parsed from text. gcal_event_id is a placeholder
 // for the later Calendar sync phase - no sync logic reads it yet.
+// priority is none|low|medium|high|urgent. parent_id nests a task as a
+// subtask of another (one level in the UI; deeper nesting is stored but the
+// drawer only renders direct children). note_path links a single vault note.
 db.exec(`
 	CREATE TABLE IF NOT EXISTS tasks (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL,
 		detail TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'todo',
+		priority TEXT NOT NULL DEFAULT 'none',
+		parent_id TEXT,
 		due_at INTEGER,
 		remind_min INTEGER,
 		note_path TEXT,
@@ -197,13 +202,25 @@ db.exec(`
 	);
 `);
 
+// Older DBs were created before priority/parent_id existed - add them.
+{
+	const cols = db.prepare(`PRAGMA table_info(tasks)`).all() as { name: string }[];
+	const names = new Set(cols.map((c) => c.name));
+	if (!names.has('priority')) db.exec(`ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'none'`);
+	if (!names.has('parent_id')) db.exec(`ALTER TABLE tasks ADD COLUMN parent_id TEXT`);
+}
+
 export type TaskStatus = 'todo' | 'doing' | 'done';
+
+export type TaskPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent';
 
 export interface TaskRow {
 	id: string;
 	title: string;
 	detail: string;
 	status: TaskStatus;
+	priority: TaskPriority;
+	parent_id: string | null;
 	due_at: number | null;
 	remind_min: number | null;
 	note_path: string | null;
@@ -228,6 +245,8 @@ export interface NewTask {
 	title: string;
 	detail?: string;
 	status?: TaskStatus;
+	priority?: TaskPriority;
+	parent_id?: string | null;
 	due_at?: number | null;
 	remind_min?: number | null;
 	note_path?: string | null;
@@ -237,13 +256,15 @@ export interface NewTask {
 export function insertTask(t: NewTask): TaskRow {
 	const now = Date.now();
 	db.prepare(
-		`INSERT INTO tasks (id, title, detail, status, due_at, remind_min, note_path, position, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		`INSERT INTO tasks (id, title, detail, status, priority, parent_id, due_at, remind_min, note_path, position, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		t.id,
 		t.title,
 		t.detail ?? '',
 		t.status ?? 'todo',
+		t.priority ?? 'none',
+		t.parent_id ?? null,
 		t.due_at ?? null,
 		t.remind_min ?? null,
 		t.note_path ?? null,
@@ -255,7 +276,7 @@ export function insertTask(t: NewTask): TaskRow {
 }
 
 export type TaskPatch = Partial<
-	Pick<TaskRow, 'title' | 'detail' | 'status' | 'due_at' | 'remind_min' | 'note_path' | 'position' | 'gcal_event_id'>
+	Pick<TaskRow, 'title' | 'detail' | 'status' | 'priority' | 'parent_id' | 'due_at' | 'remind_min' | 'note_path' | 'position' | 'gcal_event_id'>
 >;
 
 export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
@@ -263,12 +284,15 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 	if (!cur) return undefined;
 	const next = { ...cur, ...patch, updated_at: Date.now() };
 	db.prepare(
-		`UPDATE tasks SET title = ?, detail = ?, status = ?, due_at = ?, remind_min = ?,
+		`UPDATE tasks SET title = ?, detail = ?, status = ?, priority = ?, parent_id = ?,
+		 due_at = ?, remind_min = ?,
 		 note_path = ?, position = ?, updated_at = ?, gcal_event_id = ? WHERE id = ?`
 	).run(
 		next.title,
 		next.detail,
 		next.status,
+		next.priority,
+		next.parent_id,
 		next.due_at,
 		next.remind_min,
 		next.note_path,
@@ -281,5 +305,8 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 }
 
 export function deleteTask(id: string) {
+	// Subtasks belong to their parent - remove the whole subtree.
+	const kids = db.prepare(`SELECT id FROM tasks WHERE parent_id = ?`).all(id) as { id: string }[];
+	for (const k of kids) deleteTask(k.id);
 	db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
 }

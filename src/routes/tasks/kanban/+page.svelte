@@ -6,6 +6,9 @@
 		createTask,
 		updateTask,
 		deleteTask,
+		openTask,
+		topLevel,
+		childrenOf,
 		isOverdue,
 		isDueToday,
 		dueLabel,
@@ -36,15 +39,25 @@
 	const cols = $derived.by(() =>
 		COLS.map((c) => ({
 			...c,
-			rows: $tasks.filter((t) => t.status === c.key).sort((a, b) => a.position - b.position)
+			rows: topLevel($tasks)
+				.filter((t) => t.status === c.key)
+				.sort((a, b) => a.position - b.position)
 		}))
 	);
 
-	const openCount = $derived($tasks.filter((t) => t.status !== 'done').length);
-	const overdueCount = $derived($tasks.filter(isOverdue).length);
+	const openCount = $derived(topLevel($tasks).filter((t) => t.status !== 'done').length);
+	const overdueCount = $derived(topLevel($tasks).filter(isOverdue).length);
 	const dueTodayCount = $derived(
-		$tasks.filter((t) => t.status !== 'done' && isDueToday(t)).length
+		topLevel($tasks).filter((t) => t.status !== 'done' && isDueToday(t)).length
 	);
+
+	// Clicking a card opens the detail drawer; drags and controls are exempt.
+	function cardClick(t: Task, e: MouseEvent) {
+		if (dragId) return;
+		const el = e.target as HTMLElement;
+		if (el.closest('input,select,button,textarea,a')) return;
+		openTask(t.id);
+	}
 
 	async function handleAdd() {
 		const title = newTitle.trim();
@@ -98,7 +111,7 @@
 		const moving = $tasks.find((t) => t.id === id);
 		if (!moving) return;
 		// Order within the target column excluding the dragged card.
-		const rows = $tasks
+		const rows = topLevel($tasks)
 			.filter((t) => t.status === col && t.id !== id)
 			.sort((a, b) => a.position - b.position);
 		let idx = rows.length;
@@ -125,7 +138,7 @@
 	}
 
 	async function shiftOrder(t: Task, dir: 1 | -1) {
-		const rows = $tasks
+		const rows = topLevel($tasks)
 			.filter((x) => x.status === t.status)
 			.sort((a, b) => a.position - b.position);
 		const i = rows.findIndex((x) => x.id === t.id);
@@ -191,7 +204,7 @@
 				</div>
 				<div class="cards">
 					{#each col.rows as t (t.id)}
-						<article
+						<div
 							class="card {t.status}"
 							class:dragging={dragId === t.id}
 							class:insert={overId === t.id && dragId && dragId !== t.id}
@@ -199,6 +212,14 @@
 							ondragstart={(e) => onDragStart(t, e)}
 							ondragend={onDragEnd}
 							ondragover={(e) => onCardOver(t.id, e)}
+							onclick={(e) => cardClick(t, e)}
+							role="button"
+							tabindex="0"
+							aria-label="Open task details"
+							onkeydown={(e) => {
+								if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('card'))
+									openTask(t.id);
+							}}
 						>
 							<input
 								class="t-in"
@@ -230,6 +251,26 @@
 										<span class="material-symbols-outlined mini">notifications</span>
 									</span>
 								{/if}
+								{#if t.priority !== 'none'}
+									<span class="pri pri-{t.priority}">{t.priority}</span>
+								{/if}
+								{#if childrenOf($tasks, t.id).length > 0}
+									<span
+										class="sub-c"
+										title="{childrenOf($tasks, t.id).filter((s) => s.status === 'done').length} of {childrenOf($tasks, t.id).length} subtasks done"
+									>
+										<span class="material-symbols-outlined mini">account_tree</span>
+										{childrenOf($tasks, t.id).filter((s) => s.status === 'done').length}/{childrenOf(
+											$tasks,
+											t.id
+										).length}
+									</span>
+								{/if}
+								{#if t.note_path}
+									<span class="linked" title="Linked note: {t.note_path}">
+										<span class="material-symbols-outlined mini">description</span>
+									</span>
+								{/if}
 								<span class="ops">
 									<button class="op" title="Move left" onclick={() => void shiftColumn(t, -1)}>
 										<span class="material-symbols-outlined mini">chevron_left</span>
@@ -254,7 +295,7 @@
 									</button>
 								</span>
 							</div>
-						</article>
+						</div>
 					{/each}
 					{#if col.rows.length === 0}
 						<div class="drop-hint">Drop here</div>
@@ -536,6 +577,29 @@
 	}
 	.rem {
 		display: inline-flex;
+		color: var(--outline-variant);
+	}
+	.pri {
+		text-transform: capitalize;
+	}
+	.pri-urgent {
+		color: var(--error);
+		font-weight: var(--font-ui-medium-weight);
+	}
+	.pri-high {
+		color: var(--tertiary);
+	}
+	.pri-medium {
+		color: var(--primary);
+	}
+	.pri-low {
+		color: var(--outline);
+	}
+	.sub-c,
+	.linked {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
 		color: var(--outline-variant);
 	}
 	.mini {

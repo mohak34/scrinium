@@ -2,11 +2,23 @@ import { writable, get } from 'svelte/store';
 
 export type TaskStatus = 'todo' | 'doing' | 'done';
 
+export type TaskPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent';
+
+export const PRIORITIES: { key: TaskPriority; label: string }[] = [
+	{ key: 'none', label: 'No priority' },
+	{ key: 'low', label: 'Low' },
+	{ key: 'medium', label: 'Medium' },
+	{ key: 'high', label: 'High' },
+	{ key: 'urgent', label: 'Urgent' }
+];
+
 export interface Task {
 	id: string;
 	title: string;
 	detail: string;
 	status: TaskStatus;
+	priority: TaskPriority;
+	parent_id: string | null;
 	due_at: number | null;
 	remind_min: number | null;
 	note_path: string | null;
@@ -20,17 +32,42 @@ export interface NewTaskInput {
 	title: string;
 	detail?: string;
 	status?: TaskStatus;
+	priority?: TaskPriority;
+	parent_id?: string | null;
 	due_at?: number | null;
 	remind_min?: number | null;
 	note_path?: string | null;
 }
 
 export type TaskUpdate = Partial<
-	Pick<Task, 'title' | 'detail' | 'status' | 'due_at' | 'remind_min' | 'note_path' | 'position'>
+	Pick<Task, 'title' | 'detail' | 'status' | 'priority' | 'parent_id' | 'due_at' | 'remind_min' | 'note_path' | 'position'>
 >;
 
 export const tasks = writable<Task[]>([]);
 export const tasksLoading = writable(false);
+
+// Id of the task open in the detail drawer, null when closed. Lives here so
+// agenda, kanban and the layout-level drawer share one source of truth.
+export const openTaskId = writable<string | null>(null);
+
+export function openTask(id: string) {
+	openTaskId.set(id);
+}
+
+export function closeTask() {
+	openTaskId.set(null);
+}
+
+/** Top-level tasks only - subtasks live inside the drawer. */
+export function topLevel(all: Task[]): Task[] {
+	return all.filter((t) => t.parent_id == null);
+}
+
+export function childrenOf(all: Task[], id: string): Task[] {
+	return all
+		.filter((t) => t.parent_id === id)
+		.sort((a, b) => a.position - b.position || a.created_at - b.created_at);
+}
 
 export async function loadTasks(): Promise<Task[]> {
 	tasksLoading.set(true);
@@ -79,7 +116,20 @@ export async function updateTask(id: string, patch: TaskUpdate): Promise<Task | 
 
 export async function deleteTask(id: string): Promise<boolean> {
 	const before = get(tasks);
-	tasks.update((all) => all.filter((t) => t.id !== id));
+	// Optimistic: drop the whole subtree so drawer subtasks vanish at once.
+	const doomed = new Set<string>([id]);
+	let grew = true;
+	while (grew) {
+		grew = false;
+		for (const t of get(tasks)) {
+			if (t.parent_id && doomed.has(t.parent_id) && !doomed.has(t.id)) {
+				doomed.add(t.id);
+				grew = true;
+			}
+		}
+	}
+	tasks.update((all) => all.filter((t) => !doomed.has(t.id)));
+	if (doomed.has(get(openTaskId) ?? '')) closeTask();
 	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
 		method: 'DELETE',
 		credentials: 'include'
