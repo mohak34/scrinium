@@ -8,7 +8,8 @@
 
 	const tabs = [
 		{ href: '/tasks', label: 'Agenda' },
-		{ href: '/tasks/kanban', label: 'Kanban' }
+		{ href: '/tasks/kanban', label: 'Kanban' },
+		{ href: '/tasks/calendar', label: 'Calendar' }
 	];
 
 	function isActive(href: string): boolean {
