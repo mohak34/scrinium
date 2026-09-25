@@ -7,6 +7,7 @@
 		updateTask,
 		deleteTask,
 		isOverdue,
+		isDueToday,
 		dueLabel,
 		parseDueInput,
 		type Task,
@@ -37,6 +38,12 @@
 			...c,
 			rows: $tasks.filter((t) => t.status === c.key).sort((a, b) => a.position - b.position)
 		}))
+	);
+
+	const openCount = $derived($tasks.filter((t) => t.status !== 'done').length);
+	const overdueCount = $derived($tasks.filter(isOverdue).length);
+	const dueTodayCount = $derived(
+		$tasks.filter((t) => t.status !== 'done' && isDueToday(t)).length
 	);
 
 	async function handleAdd() {
@@ -132,23 +139,35 @@
 
 <div class="content">
 	<div class="addrow">
+		<span class="material-symbols-outlined add-icon">add</span>
 		<input
-			class="text-input title-in"
+			class="title-in"
 			placeholder="New task, Enter to add"
 			bind:value={newTitle}
+			aria-label="New task title"
 			onkeydown={(e) => {
 				if (e.key === 'Enter') void handleAdd();
 			}}
 		/>
-		<select class="text-input sel" bind:value={newCol} aria-label="Column">
+		<select class="ctl sel" bind:value={newCol} aria-label="Column">
 			<option value="todo">Todo</option>
 			<option value="doing">Doing</option>
 			<option value="done">Done</option>
 		</select>
-		<input class="text-input date-in" type="date" bind:value={newDue} aria-label="Due date" />
-		<button class="btn primary" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
+		<input class="ctl date-in" type="date" bind:value={newDue} aria-label="Due date" />
+		<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
 			{adding ? 'Adding…' : 'Add'}
 		</button>
+	</div>
+
+	<div class="stats" aria-label="Task summary">
+		<span class="stat"><strong>{openCount}</strong> open</span>
+		{#if overdueCount > 0}
+			<span class="stat over"><strong>{overdueCount}</strong> overdue</span>
+		{/if}
+		{#if dueTodayCount > 0}
+			<span class="stat today"><strong>{dueTodayCount}</strong> due today</span>
+		{/if}
 	</div>
 
 	<div class="board">
@@ -161,14 +180,19 @@
 				aria-label={col.label}
 			>
 				<div class="chead">
-					<span class="dot" class:todo={col.key === 'todo'} class:doing={col.key === 'doing'} class:done={col.key === 'done'}></span>
+					<span
+						class="dot"
+						class:todo={col.key === 'todo'}
+						class:doing={col.key === 'doing'}
+						class:done={col.key === 'done'}
+					></span>
 					<span class="clabel">{col.label}</span>
 					<span class="ccount">{col.rows.length}</span>
 				</div>
 				<div class="cards">
 					{#each col.rows as t (t.id)}
 						<article
-							class="card"
+							class="card {t.status}"
 							class:dragging={dragId === t.id}
 							class:insert={overId === t.id && dragId && dragId !== t.id}
 							draggable="true"
@@ -192,7 +216,12 @@
 								<div class="detail">{t.detail}</div>
 							{/if}
 							<div class="meta">
-								<span class="due" class:overdue={isOverdue(t)} class:done={t.status === 'done'}>
+								<span
+									class="due"
+									class:overdue={isOverdue(t)}
+									class:today={isDueToday(t) && t.status !== 'done'}
+									class:done={t.status === 'done'}
+								>
 									<span class="material-symbols-outlined mini">event</span>
 									{dueLabel(t.due_at)}
 								</span>
@@ -238,68 +267,109 @@
 
 <style>
 	.content {
-		max-width: 1100px;
+		max-width: 1160px;
 		margin: 0 auto;
 		width: 100%;
-		padding: 16px var(--gutter) 48px;
+		padding: 20px var(--gutter) 56px;
 	}
+
+	/* Quick add reads as one command bar. */
 	.addrow {
 		display: flex;
+		align-items: center;
 		gap: 8px;
-		margin-bottom: 14px;
-	}
-	.text-input {
-		height: 30px;
-		padding: 0 8px;
-		background: var(--background);
+		background: var(--surface-container-lowest);
 		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		outline: none;
+		border-radius: var(--radius-lg);
+		padding: 6px 6px 6px 10px;
+		margin-bottom: 10px;
 	}
-	.text-input:focus {
+	.addrow:focus-within {
 		border-color: var(--primary);
+	}
+	.add-icon {
+		font-size: 18px;
+		color: var(--outline);
+		flex-shrink: 0;
 	}
 	.title-in {
 		flex: 1;
 		min-width: 0;
-	}
-	.date-in {
-		width: 132px;
-		flex-shrink: 0;
-		color-scheme: dark;
-	}
-	.sel {
-		width: 96px;
-		flex-shrink: 0;
-	}
-	.btn {
-		height: 30px;
-		padding: 0 12px;
 		background: none;
+		border: none;
+		outline: none;
+		color: var(--on-surface);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-medium);
+		height: 30px;
+	}
+	.title-in::placeholder {
+		color: var(--outline-variant);
+	}
+	.ctl {
+		height: 30px;
+		padding: 0 8px;
+		background: var(--surface-container-low);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius);
 		color: var(--on-surface-variant);
 		font-family: var(--font-ui);
 		font-size: var(--font-ui-small);
+		outline: none;
+		flex-shrink: 0;
+	}
+	.ctl:focus {
+		border-color: var(--primary);
+	}
+	.sel {
+		width: 92px;
+	}
+	.date-in {
+		width: 128px;
+		color-scheme: dark;
+	}
+	.add-btn {
+		height: 30px;
+		padding: 0 14px;
+		background: var(--primary);
+		border: 1px solid var(--primary);
+		border-radius: var(--radius);
+		color: var(--on-primary);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-small);
+		font-weight: var(--font-ui-medium-weight);
 		cursor: pointer;
 		white-space: nowrap;
+		flex-shrink: 0;
 	}
-	.btn:hover:not(:disabled) {
-		background: var(--surface-container-low);
-		color: var(--on-surface);
+	.add-btn:hover:not(:disabled) {
+		filter: brightness(1.08);
 	}
-	.btn:disabled {
-		opacity: 0.5;
+	.add-btn:disabled {
+		opacity: 0.45;
 		cursor: default;
 	}
-	.btn.primary {
-		background: var(--primary);
-		border-color: var(--primary);
-		color: var(--on-primary);
+
+	/* One quiet summary line. Numbers carry it. */
+	.stats {
+		display: flex;
+		gap: 14px;
+		margin: 0 2px 14px;
+		font-size: var(--font-ui-micro);
+		color: var(--outline);
+		font-variant-numeric: tabular-nums;
 	}
+	.stat strong {
+		color: var(--on-surface-variant);
+		font-weight: var(--font-ui-medium-weight);
+	}
+	.stat.over strong {
+		color: var(--error);
+	}
+	.stat.today strong {
+		color: var(--tertiary);
+	}
+
 	.board {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -311,30 +381,34 @@
 			grid-template-columns: 1fr;
 		}
 	}
+
 	.col {
 		background: var(--surface-container-lowest);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius-lg);
-		min-height: 200px;
+		min-height: 220px;
 		display: flex;
 		flex-direction: column;
+		transition: border-color 0.12s ease;
 	}
 	.col.over {
 		border-color: var(--primary);
+		background: var(--surface-container-low);
 	}
 	.chead {
 		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 10px 12px;
+		align-items: baseline;
+		gap: 7px;
+		padding: 11px 12px 9px;
 		border-bottom: 1px solid var(--border-default);
 	}
 	.dot {
-		width: 8px;
-		height: 8px;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
 		background: var(--outline);
 		flex-shrink: 0;
+		align-self: center;
 	}
 	.dot.todo {
 		background: var(--secondary);
@@ -352,31 +426,64 @@
 	}
 	.ccount {
 		margin-left: auto;
+		min-width: 22px;
+		text-align: center;
 		font-size: var(--font-ui-micro);
-		color: var(--outline);
+		color: var(--on-surface-variant);
+		background: var(--surface-container-high);
+		border-radius: var(--radius-full);
+		padding: 1px 7px;
 		font-variant-numeric: tabular-nums;
+		flex-shrink: 0;
 	}
 	.cards {
-		padding: 8px;
+		padding: 10px;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
 	}
+
+	/* The spine is the one memorable device: state readable at a glance. */
 	.card {
+		position: relative;
 		background: var(--surface-container-low);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius-md);
-		padding: 8px 10px;
+		padding: 9px 10px 8px 13px;
 		cursor: grab;
+		overflow: hidden;
+		transition: border-color 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+	}
+	.card::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 3px;
+		background: var(--secondary);
+	}
+	.card.doing::before {
+		background: var(--tertiary);
+	}
+	.card.done::before {
+		background: var(--success);
+	}
+	.card:hover {
+		border-color: var(--border-strong);
 	}
 	.card:active {
 		cursor: grabbing;
 	}
 	.card.dragging {
-		opacity: 0.4;
+		opacity: 0.35;
 	}
 	.card.insert {
 		box-shadow: 0 -2px 0 var(--primary);
+	}
+	.card.done .t-in {
+		color: var(--outline);
+		text-decoration: line-through;
 	}
 	.t-in {
 		background: none;
@@ -386,37 +493,50 @@
 		font-family: var(--font-ui);
 		font-size: var(--font-ui-small);
 		font-weight: var(--font-ui-medium-weight);
+		line-height: 1.45;
 		padding: 0;
 		width: 100%;
 		cursor: text;
+		border-radius: 2px;
+	}
+	.t-in:focus-visible {
+		outline: 1px solid var(--primary);
+		outline-offset: 2px;
 	}
 	.detail {
-		margin-top: 2px;
+		margin-top: 3px;
 		font-size: var(--font-ui-micro);
+		line-height: 1.5;
 		color: var(--outline);
 		white-space: pre-wrap;
 	}
 	.meta {
-		margin-top: 6px;
+		margin-top: 7px;
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 9px;
 		font-size: var(--font-ui-micro);
 		color: var(--outline);
+		font-variant-numeric: tabular-nums;
 	}
 	.due {
 		display: inline-flex;
 		align-items: center;
-		gap: 3px;
+		gap: 4px;
 	}
 	.due.overdue {
 		color: var(--error);
+		font-weight: var(--font-ui-medium-weight);
+	}
+	.due.today {
+		color: var(--tertiary);
 	}
 	.due.done {
 		opacity: 0.6;
 	}
 	.rem {
 		display: inline-flex;
+		color: var(--outline-variant);
 	}
 	.mini {
 		font-size: 14px;
@@ -424,10 +544,10 @@
 	.ops {
 		margin-left: auto;
 		display: flex;
-		gap: 0;
 		opacity: 0;
 	}
-	.card:hover .ops {
+	.card:hover .ops,
+	.card:focus-within .ops {
 		opacity: 1;
 	}
 	.op {
@@ -447,13 +567,34 @@
 		background: var(--surface-container-high);
 		color: var(--on-surface);
 	}
+	.op:focus-visible {
+		outline: 1px solid var(--primary);
+		opacity: 1;
+	}
 	.op.del:hover {
 		color: var(--error);
 	}
 	.drop-hint {
-		padding: 16px;
+		margin: 2px;
+		padding: 18px;
 		text-align: center;
 		color: var(--outline-variant);
 		font-size: var(--font-ui-micro);
+		border: 1px dashed var(--border-strong);
+		border-radius: var(--radius-md);
+	}
+
+	button:focus-visible,
+	input:focus-visible,
+	select:focus-visible {
+		outline: 1px solid var(--primary);
+		outline-offset: 1px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.col,
+		.card {
+			transition: none;
+		}
 	}
 </style>
