@@ -3,6 +3,7 @@
 	import '@fontsource-variable/inter';
 	import '@material-symbols/font-400';
 	import '$lib/design/theme.css';
+	import ReminderToasts from '$lib/components/ReminderToasts.svelte';
 
 	let { children } = $props();
 
@@ -27,3 +28,4 @@
 </svelte:head>
 
 {@render children()}
+<ReminderToasts />

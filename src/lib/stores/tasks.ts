@@ -21,6 +21,7 @@ export interface Task {
 	parent_id: string | null;
 	due_at: number | null;
 	remind_at: number | null;
+	notified_at: number | null;
 	link_count: number;
 	position: number;
 	created_at: number;
