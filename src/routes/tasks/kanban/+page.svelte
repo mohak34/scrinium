@@ -313,7 +313,7 @@
 
 <style>
 	.content {
-		max-width: 1160px;
+		max-width: 1600px;
 		margin: 0 auto;
 		width: 100%;
 		padding: 20px var(--gutter) 56px;
