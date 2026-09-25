@@ -111,22 +111,25 @@
 
 <div class="content">
 	<div class="addrow">
+		<span class="material-symbols-outlined add-icon">add</span>
 		<input
-			class="text-input title-in"
+			class="title-in"
 			placeholder="New task, pick a due date, Enter to add"
 			bind:value={newTitle}
+			aria-label="New task title"
 			onkeydown={(e) => {
 				if (e.key === 'Enter') void handleAdd();
 			}}
 		/>
-		<input class="text-input date-in" type="date" bind:value={newDue} aria-label="Due date" />
-		<button class="btn primary" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
+		<input class="ctl date-in" type="date" bind:value={newDue} aria-label="Due date" />
+		<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
 			{adding ? 'Adding…' : 'Add'}
 		</button>
 	</div>
 
 	<div class="toolbar">
-		<input class="text-input search" placeholder="Filter tasks" bind:value={query} />
+		<span class="material-symbols-outlined search-icon">search</span>
+		<input class="search" placeholder="Filter tasks" bind:value={query} aria-label="Filter tasks" />
 		<label class="check">
 			<input type="checkbox" bind:checked={hideDone} />
 			Hide done
@@ -135,9 +138,14 @@
 	</div>
 
 	{#if $tasks.length === 0}
-		<div class="empty">No tasks yet. Add the first one above.</div>
+		<div class="empty">
+			<span class="material-symbols-outlined empty-icon">task</span>
+			<p>No tasks yet. Add the first one above.</p>
+		</div>
 	{:else if visible.length === 0}
-		<div class="empty">Nothing matches the filter.</div>
+		<div class="empty">
+			<p>Nothing matches the filter.</p>
+		</div>
 	{:else}
 		{#each groups as group (group.key)}
 			<section class="group">
@@ -146,7 +154,7 @@
 					<span class="gcount">{group.rows.length}</span>
 				</div>
 				{#each group.rows as t (t.id)}
-					<div class="row" class:done={t.status === 'done'} class:over={isOverdue(t)}>
+					<div class="row {t.status}" class:done={t.status === 'done'} class:over={isOverdue(t)}>
 						<button
 							class="status"
 							title="Cycle status"
@@ -166,7 +174,11 @@
 								}}
 							/>
 							<div class="sub">
-								<span class="due" class:overdue={isOverdue(t)}>
+								<span
+									class="due"
+									class:overdue={isOverdue(t)}
+									class:today={isDueToday(t) && t.status !== 'done'}
+								>
 									<span class="material-symbols-outlined mini">event</span>
 									{dueLabel(t.due_at)}
 								</span>
@@ -176,13 +188,13 @@
 										{t.remind_min >= 60 ? `${t.remind_min / 60}h` : `${t.remind_min}m`}
 									</span>
 								{/if}
-								{#if t.status !== 'todo'}
-									<span class="st">{t.status}</span>
+								{#if t.status === 'doing'}
+									<span class="st doing">doing</span>
 								{/if}
 							</div>
 						</div>
 						<input
-							class="text-input date-in row-date"
+							class="ctl row-date"
 							type="date"
 							value={dueInputValue(t.due_at)}
 							aria-label="Due date"
@@ -190,7 +202,7 @@
 								void updateTask(t.id, { due_at: parseDueInput((e.target as HTMLInputElement).value) })}
 						/>
 						<select
-							class="text-input sel"
+							class="ctl sel"
 							value={t.remind_min == null ? '' : String(t.remind_min)}
 							aria-label="Reminder"
 							onchange={(e) => {
@@ -203,7 +215,7 @@
 							{/each}
 						</select>
 						<select
-							class="text-input sel"
+							class="ctl sel"
 							value={t.status}
 							aria-label="Status"
 							onchange={(e) =>
@@ -225,72 +237,107 @@
 
 <style>
 	.content {
-		max-width: 760px;
+		max-width: 780px;
 		margin: 0 auto;
 		width: 100%;
-		padding: 16px var(--gutter) 48px;
+		padding: 20px var(--gutter) 56px;
 	}
+
 	.addrow {
 		display: flex;
-		gap: 8px;
-		margin-bottom: 12px;
-	}
-	.toolbar {
-		display: flex;
 		align-items: center;
-		gap: 12px;
-		margin-bottom: 8px;
-	}
-	.text-input {
-		height: 30px;
-		padding: 0 8px;
-		background: var(--background);
+		gap: 8px;
+		background: var(--surface-container-lowest);
 		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		outline: none;
+		border-radius: var(--radius-lg);
+		padding: 6px 6px 6px 10px;
+		margin-bottom: 10px;
 	}
-	.text-input:focus {
+	.addrow:focus-within {
 		border-color: var(--primary);
+	}
+	.add-icon {
+		font-size: 18px;
+		color: var(--outline);
+		flex-shrink: 0;
 	}
 	.title-in {
 		flex: 1;
 		min-width: 0;
-	}
-	.date-in {
-		width: 132px;
-		flex-shrink: 0;
-		color-scheme: dark;
-	}
-	.search {
-		width: 200px;
-	}
-	.btn {
-		height: 30px;
-		padding: 0 12px;
 		background: none;
+		border: none;
+		outline: none;
+		color: var(--on-surface);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-medium);
+		height: 30px;
+	}
+	.title-in::placeholder {
+		color: var(--outline-variant);
+	}
+	.ctl {
+		height: 30px;
+		padding: 0 8px;
+		background: var(--surface-container-low);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius);
 		color: var(--on-surface-variant);
 		font-family: var(--font-ui);
 		font-size: var(--font-ui-small);
+		outline: none;
+		flex-shrink: 0;
+	}
+	.ctl:focus {
+		border-color: var(--primary);
+	}
+	.date-in {
+		width: 132px;
+		color-scheme: dark;
+	}
+	.add-btn {
+		height: 30px;
+		padding: 0 14px;
+		background: var(--primary);
+		border: 1px solid var(--primary);
+		border-radius: var(--radius);
+		color: var(--on-primary);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-small);
+		font-weight: var(--font-ui-medium-weight);
 		cursor: pointer;
 		white-space: nowrap;
+		flex-shrink: 0;
 	}
-	.btn:hover:not(:disabled) {
-		background: var(--surface-container-low);
-		color: var(--on-surface);
+	.add-btn:hover:not(:disabled) {
+		filter: brightness(1.08);
 	}
-	.btn:disabled {
-		opacity: 0.5;
+	.add-btn:disabled {
+		opacity: 0.45;
 		cursor: default;
 	}
-	.btn.primary {
-		background: var(--primary);
-		border-color: var(--primary);
-		color: var(--on-primary);
+
+	.toolbar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 0 2px 6px;
+	}
+	.search-icon {
+		font-size: 16px;
+		color: var(--outline-variant);
+	}
+	.search {
+		width: 190px;
+		background: none;
+		border: none;
+		outline: none;
+		color: var(--on-surface);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-small);
+		height: 28px;
+	}
+	.search::placeholder {
+		color: var(--outline-variant);
 	}
 	.check {
 		display: flex;
@@ -310,14 +357,23 @@
 		color: var(--outline);
 		font-variant-numeric: tabular-nums;
 	}
+
 	.empty {
-		padding: 32px 0;
+		padding: 56px 0;
 		text-align: center;
 		color: var(--outline);
 		font-size: var(--font-ui-small);
 	}
+	.empty-icon {
+		font-size: 28px;
+		opacity: 0.5;
+	}
+	.empty p {
+		margin: 8px 0 0;
+	}
+
 	.group {
-		margin-bottom: 20px;
+		margin-bottom: 22px;
 	}
 	.ghead {
 		display: flex;
@@ -337,14 +393,34 @@
 	.gcount {
 		font-size: var(--font-label-caps);
 		color: var(--outline-variant);
+		font-variant-numeric: tabular-nums;
 	}
+
+	/* Rows carry the same spine language as kanban cards. */
 	.row {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 7px 6px;
+		padding: 8px 6px 8px 12px;
 		border-bottom: 1px solid var(--border-default);
 		border-radius: var(--radius);
+		overflow: hidden;
+	}
+	.row::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 3px;
+		background: transparent;
+	}
+	.row.doing::before {
+		background: var(--tertiary);
+	}
+	.row.over::before {
+		background: var(--error);
 	}
 	.row:hover {
 		background: var(--surface-container-low);
@@ -360,9 +436,16 @@
 		padding: 2px;
 		display: flex;
 		flex-shrink: 0;
+		border-radius: var(--radius);
 	}
 	.status:hover {
 		color: var(--primary);
+	}
+	.row.doing .status {
+		color: var(--tertiary);
+	}
+	.row.done .status {
+		color: var(--success);
 	}
 	.row.over .status {
 		color: var(--error);
@@ -381,11 +464,18 @@
 		color: var(--on-surface);
 		font-family: var(--font-ui);
 		font-size: var(--font-ui-small);
+		font-weight: var(--font-ui-medium-weight);
 		padding: 0;
 		width: 100%;
+		border-radius: 2px;
+	}
+	.t-in:focus-visible {
+		outline: 1px solid var(--primary);
+		outline-offset: 2px;
 	}
 	.row.done .t-in {
 		text-decoration: line-through;
+		font-weight: var(--font-ui-small-weight);
 	}
 	.sub {
 		display: flex;
@@ -393,22 +483,34 @@
 		gap: 10px;
 		font-size: var(--font-ui-micro);
 		color: var(--outline);
+		font-variant-numeric: tabular-nums;
 	}
-	.due,
-	.rem {
+	.due {
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
 	}
 	.due.overdue {
 		color: var(--error);
+		font-weight: var(--font-ui-medium-weight);
+	}
+	.due.today {
+		color: var(--tertiary);
+	}
+	.rem {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		color: var(--outline-variant);
 	}
 	.mini {
 		font-size: 13px;
 	}
 	.st {
 		text-transform: capitalize;
-		color: var(--outline-variant);
+	}
+	.st.doing {
+		color: var(--tertiary);
 	}
 	.row-date {
 		width: 126px;
@@ -436,5 +538,19 @@
 	.abtn.del:hover {
 		color: var(--error);
 		background: var(--surface-container-high);
+	}
+
+	button:focus-visible,
+	input:focus-visible,
+	select:focus-visible {
+		outline: 1px solid var(--primary);
+		outline-offset: 1px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.row,
+		.card {
+			transition: none;
+		}
 	}
 </style>
