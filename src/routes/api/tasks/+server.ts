@@ -24,11 +24,10 @@ function cleanDue(v: unknown): number | null {
 	return Number.isFinite(n) ? n : null;
 }
 
-function cleanRemind(v: unknown): number | null {
+function cleanStamp(v: unknown): number | null {
 	if (v == null || v === '') return null;
-	const n = typeof v === 'number' ? v : parseInt(String(v), 10);
-	if (!Number.isFinite(n) || n < 0 || n > 10080) return null;
-	return n;
+	const n = typeof v === 'number' ? v : NaN;
+	return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 export const GET: RequestHandler = async () => {
@@ -42,7 +41,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	const status = cleanStatus(body?.status);
 	if (body?.status !== undefined && !STATUSES.includes(body.status)) throw error(400, 'Bad status');
 	const detail = typeof body?.detail === 'string' ? body.detail.slice(0, 4000) : '';
-	const note_path = typeof body?.note_path === 'string' && body.note_path ? body.note_path : null;
 	const priority: TaskPriority =
 		typeof body?.priority === 'string' && (PRIORITIES as string[]).includes(body.priority)
 			? body.priority
@@ -60,8 +58,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		priority,
 		parent_id,
 		due_at: cleanDue(body?.due_at),
-		remind_min: cleanRemind(body?.remind_min),
-		note_path
+		remind_at: cleanStamp(body?.remind_at)
 	});
 	return json(row, { status: 201 });
 };

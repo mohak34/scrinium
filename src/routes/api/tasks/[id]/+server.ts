@@ -51,15 +51,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (body.due_at !== null && typeof body.due_at !== 'number') throw error(400, 'Bad due date');
 		patch.due_at = body.due_at;
 	}
-	if (body.remind_min !== undefined) {
-		if (body.remind_min !== null && typeof body.remind_min !== 'number')
+	if (body.remind_at !== undefined) {
+		if (body.remind_at !== null && typeof body.remind_at !== 'number')
 			throw error(400, 'Bad reminder');
-		patch.remind_min = body.remind_min;
-	}
-	if (body.note_path !== undefined) {
-		if (body.note_path !== null && typeof body.note_path !== 'string')
-			throw error(400, 'Bad note link');
-		patch.note_path = body.note_path || null;
+		patch.remind_at = body.remind_at;
 	}
 	if (body.position !== undefined) {
 		if (typeof body.position !== 'number' || !Number.isFinite(body.position))

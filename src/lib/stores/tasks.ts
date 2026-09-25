@@ -20,8 +20,8 @@ export interface Task {
 	priority: TaskPriority;
 	parent_id: string | null;
 	due_at: number | null;
-	remind_min: number | null;
-	note_path: string | null;
+	remind_at: number | null;
+	link_count: number;
 	position: number;
 	created_at: number;
 	updated_at: number;
@@ -35,12 +35,11 @@ export interface NewTaskInput {
 	priority?: TaskPriority;
 	parent_id?: string | null;
 	due_at?: number | null;
-	remind_min?: number | null;
-	note_path?: string | null;
+	remind_at?: number | null;
 }
 
 export type TaskUpdate = Partial<
-	Pick<Task, 'title' | 'detail' | 'status' | 'priority' | 'parent_id' | 'due_at' | 'remind_min' | 'note_path' | 'position'>
+	Pick<Task, 'title' | 'detail' | 'status' | 'priority' | 'parent_id' | 'due_at' | 'remind_at' | 'position'>
 >;
 
 export const tasks = writable<Task[]>([]);
@@ -162,9 +161,27 @@ export function isDueToday(t: Task): boolean {
 export function dueLabel(dueAt: number | null): string {
 	if (dueAt == null) return 'No date';
 	try {
-		return new Date(dueAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
+		const d = new Date(dueAt);
+		const date = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+		if (d.getHours() === 0 && d.getMinutes() === 0) return date;
+		return `${date}, ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 	} catch {
 		return 'No date';
+	}
+}
+
+/** Short stamp for absolute times (reminders): 'Sep 26, 9:00 AM'. */
+export function stampShort(ts: number | null): string {
+	if (ts == null) return 'No reminder';
+	try {
+		return new Date(ts).toLocaleString([], {
+			month: 'short',
+			day: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit'
+		});
+	} catch {
+		return 'No reminder';
 	}
 }
 
@@ -182,4 +199,72 @@ export function parseDueInput(v: string): number | null {
 	if (!v) return null;
 	const d = new Date(`${v}T00:00:00`);
 	return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
+/** Time-input value (HH:MM) for a due timestamp, '' when unset or midnight. */
+export function dueTimeValue(dueAt: number | null): string {
+	if (dueAt == null) return '';
+	const d = new Date(dueAt);
+	if (d.getHours() === 0 && d.getMinutes() === 0) return '';
+	const h = String(d.getHours()).padStart(2, '0');
+	const m = String(d.getMinutes()).padStart(2, '0');
+	return `${h}:${m}`;
+}
+
+/** Combine date + optional time inputs to a local timestamp. */
+export function combineDateTime(dateStr: string, timeStr: string): number | null {
+	if (!dateStr) return null;
+	const d = new Date(`${dateStr}T${timeStr || '00:00'}:00`);
+	return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
+/** datetime-local input value (YYYY-MM-DDTHH:MM) for a timestamp. */
+export function dateTimeInputValue(ts: number | null): string {
+	if (ts == null) return '';
+	const d = new Date(ts);
+	const p = (n: number) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Parse a datetime-local input value to a timestamp, null when cleared. */
+export function parseDateTimeInput(v: string): number | null {
+	if (!v) return null;
+	const d = new Date(v);
+	return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
+// --- Linked notes (many per task) ---
+
+export async function loadTaskLinks(id: string): Promise<string[]> {
+	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/links`, { credentials: 'include' });
+	if (!res.ok) return [];
+	return res.json();
+}
+
+export async function addTaskLink(id: string, notePath: string): Promise<string[]> {
+	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/links`, {
+		method: 'POST',
+		credentials: 'include',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ note_path: notePath })
+	});
+	if (!res.ok) return loadTaskLinks(id);
+	const rows = (await res.json()) as string[];
+	syncLinkCount(id, rows.length);
+	return rows;
+}
+
+export async function removeTaskLink(id: string, notePath: string): Promise<string[]> {
+	const res = await fetch(
+		`/api/tasks/${encodeURIComponent(id)}/links?note_path=${encodeURIComponent(notePath)}`,
+		{ method: 'DELETE', credentials: 'include' }
+	);
+	if (!res.ok) return loadTaskLinks(id);
+	const rows = (await res.json()) as string[];
+	syncLinkCount(id, rows.length);
+	return rows;
+}
+
+function syncLinkCount(id: string, count: number) {
+	tasks.update((all) => all.map((t) => (t.id === id ? { ...t, link_count: count } : t)));
 }

@@ -15,7 +15,10 @@
 		isDueToday,
 		dueLabel,
 		dueInputValue,
+		dueTimeValue,
+		combineDateTime,
 		parseDueInput,
+		stampShort,
 		type Task,
 		type TaskStatus
 	} from '$lib/stores/tasks';
@@ -25,15 +28,6 @@
 	let adding = $state(false);
 	let query = $state('');
 	let hideDone = $state(false);
-
-	const REMIND_OPTS = [
-		{ v: null, label: 'No reminder' },
-		{ v: 5, label: '5 min before' },
-		{ v: 15, label: '15 min before' },
-		{ v: 30, label: '30 min before' },
-		{ v: 60, label: '1 hour before' },
-		{ v: 1440, label: '1 day before' }
-	];
 
 	onMount(() => {
 		loadTasks();
@@ -205,10 +199,10 @@
 									<span class="material-symbols-outlined mini">event</span>
 									{dueLabel(t.due_at)}
 								</span>
-								{#if t.remind_min != null}
-									<span class="rem" title="Reminder set">
+								{#if t.remind_at != null}
+									<span class="rem" title="Reminds {stampShort(t.remind_at)}">
 										<span class="material-symbols-outlined mini">notifications</span>
-										{t.remind_min >= 60 ? `${t.remind_min / 60}h` : `${t.remind_min}m`}
+										{stampShort(t.remind_at)}
 									</span>
 								{/if}
 								{#if t.status === 'doing'}
@@ -226,9 +220,13 @@
 										).length}
 									</span>
 								{/if}
-								{#if t.note_path}
-									<span class="linked" title="Linked note: {t.note_path}">
+								{#if t.link_count > 0}
+									<span
+										class="linked"
+										title={t.link_count === 1 ? '1 linked note' : `${t.link_count} linked notes`}
+									>
 										<span class="material-symbols-outlined mini">description</span>
+										{t.link_count}
 									</span>
 								{/if}
 							</div>
@@ -239,21 +237,25 @@
 							value={dueInputValue(t.due_at)}
 							aria-label="Due date"
 							onchange={(e) =>
-								void updateTask(t.id, { due_at: parseDueInput((e.target as HTMLInputElement).value) })}
+								void updateTask(t.id, {
+									due_at: combineDateTime(
+										(e.target as HTMLInputElement).value,
+										dueTimeValue(t.due_at)
+									)
+								})}
 						/>
-						<select
-							class="ctl sel"
-							value={t.remind_min == null ? '' : String(t.remind_min)}
-							aria-label="Reminder"
-							onchange={(e) => {
-								const v = (e.target as HTMLSelectElement).value;
-								void updateTask(t.id, { remind_min: v === '' ? null : Number(v) });
-							}}
-						>
-							{#each REMIND_OPTS as o (o.label)}
-								<option value={o.v == null ? '' : String(o.v)}>{o.label}</option>
-							{/each}
-						</select>
+						<input
+							class="ctl row-time"
+							type="time"
+							value={dueTimeValue(t.due_at)}
+							aria-label="Due time"
+							disabled={t.due_at == null}
+							title={t.due_at == null ? 'Set a date first' : 'Due time'}
+							onchange={(e) =>
+								void updateTask(t.id, {
+									due_at: combineDateTime(dueInputValue(t.due_at), (e.target as HTMLInputElement).value)
+								})}
+						/>
 						<select
 							class="ctl sel"
 							value={t.status}
@@ -578,6 +580,12 @@
 	}
 	.row-date {
 		width: 126px;
+	}
+	.row-time {
+		width: 92px;
+	}
+	.row-time:disabled {
+		opacity: 0.4;
 	}
 	.sel {
 		width: 112px;
