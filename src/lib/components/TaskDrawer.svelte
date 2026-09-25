@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { get } from 'svelte/store';
 	import {
 		tasks,
 		openTaskId,
@@ -9,8 +10,14 @@
 		createTask,
 		deleteTask,
 		childrenOf,
+		loadTaskLinks,
+		addTaskLink,
+		removeTaskLink,
 		dueInputValue,
-		parseDueInput,
+		dueTimeValue,
+		combineDateTime,
+		dateTimeInputValue,
+		parseDateTimeInput,
 		PRIORITIES,
 		type Task,
 		type TaskPriority,
@@ -18,14 +25,54 @@
 	} from '$lib/stores/tasks';
 	import { tree, loadTree, openTab, type VaultEntry } from '$lib/stores/vault';
 
-	const REMIND_OPTS = [
-		{ v: null, label: 'No reminder' },
-		{ v: 5, label: '5 min before' },
-		{ v: 15, label: '15 min before' },
-		{ v: 30, label: '30 min before' },
-		{ v: 60, label: '1 hour before' },
-		{ v: 1440, label: '1 day before' }
+	const REMIND_QUICK = [
+		{ label: '15m before due', ms: 15 * 60000 },
+		{ label: '1h before due', ms: 60 * 60000 },
+		{ label: '1d before due', ms: 24 * 60 * 60000 }
 	];
+
+	// Width persists across sessions; drag the left edge to resize.
+	const DRAWER_DEFAULT = 480;
+	const DRAWER_MIN = 320;
+	const DRAWER_MAX = 760;
+	const WIDTH_KEY = 'scrinium:drawerWidth';
+	function loadWidth(): number {
+		if (typeof window === 'undefined') return DRAWER_DEFAULT;
+		const v = Number(localStorage.getItem(WIDTH_KEY));
+		return v >= DRAWER_MIN && v <= DRAWER_MAX ? v : DRAWER_DEFAULT;
+	}
+	let dw = $state(loadWidth());
+
+	function gripDown(e: PointerEvent) {
+		e.preventDefault();
+		const el = e.currentTarget as HTMLElement;
+		try {
+			el.setPointerCapture(e.pointerId);
+		} catch {}
+		const x0 = e.clientX;
+		const w0 = dw;
+		const move = (ev: PointerEvent) => {
+			dw = Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, Math.round(w0 + (x0 - ev.clientX))));
+		};
+		const up = () => {
+			el.removeEventListener('pointermove', move);
+			el.removeEventListener('pointerup', up);
+			el.removeEventListener('pointercancel', up);
+			try {
+				localStorage.setItem(WIDTH_KEY, String(dw));
+			} catch {}
+		};
+		el.addEventListener('pointermove', move);
+		el.addEventListener('pointerup', up);
+		el.addEventListener('pointercancel', up);
+	}
+
+	function gripReset() {
+		dw = DRAWER_DEFAULT;
+		try {
+			localStorage.setItem(WIDTH_KEY, String(dw));
+		} catch {}
+	}
 
 	const task = $derived($tasks.find((t) => t.id === $openTaskId) ?? null);
 	const parent = $derived(task?.parent_id ? ($tasks.find((t) => t.id === task.parent_id) ?? null) : null);
@@ -36,6 +83,7 @@
 	let titleDraft = $state('');
 	let detailDraft = $state('');
 	let syncedId: string | null = null;
+	let links = $state<string[]>([]);
 	$effect(() => {
 		if (task && task.id !== syncedId) {
 			syncedId = task.id;
@@ -43,15 +91,21 @@
 			detailDraft = task.detail;
 			linkQuery = '';
 			subDraft = '';
-			picking = task.note_path == null;
+			links = [];
+			const id = task.id;
+			void loadTaskLinks(id).then((r) => {
+				if (get(openTaskId) === id) links = r;
+			});
 		}
-		if (!task) syncedId = null;
+		if (!task) {
+			syncedId = null;
+			links = [];
+		}
 	});
 
 	let subDraft = $state('');
 	let addingSub = $state(false);
 	let linkQuery = $state('');
-	let picking = $state(false);
 
 	$effect(() => {
 		if ($openTaskId) {
@@ -78,10 +132,19 @@
 
 	const noteMatches = $derived.by(() => {
 		const q = linkQuery.trim().toLowerCase();
-		const all = flatNotes($tree);
+		const all = flatNotes($tree).filter((p) => !links.includes(p));
 		if (!q) return all.slice(0, 6);
 		return all.filter((p) => p.toLowerCase().includes(q)).slice(0, 6);
 	});
+
+	async function attachLink(t: Task, p: string) {
+		links = await addTaskLink(t.id, p);
+		linkQuery = '';
+	}
+
+	async function detachLink(t: Task, p: string) {
+		links = await removeTaskLink(t.id, p);
+	}
 
 	function shortId(id: string): string {
 		return `TASK-${id.replace(/-/g, '').slice(0, 4).toUpperCase()}`;
@@ -145,7 +208,16 @@
 </script>
 
 {#if task}
-	<aside class="drawer" aria-label="Task details">
+	<aside class="drawer" style="width: min({dw}px, 100vw)" aria-label="Task details">
+		<div
+			class="grip"
+			title="Drag to resize (double-click to reset)"
+			onpointerdown={gripDown}
+			ondblclick={gripReset}
+			role="separator"
+			aria-orientation="vertical"
+			aria-label="Resize panel"
+		></div>
 		<header class="dhead">
 			<span class="tid">{shortId(task.id)}</span>
 			<span class="created">Created {stamp(task.created_at)}</span>
@@ -213,7 +285,25 @@
 						aria-label="Due date"
 						onchange={(e) =>
 							void updateTask(task.id, {
-								due_at: parseDueInput((e.target as HTMLInputElement).value)
+								due_at: combineDateTime(
+									(e.target as HTMLInputElement).value,
+									dueTimeValue(task.due_at)
+								)
+							})}
+					/>
+					<input
+						class="ctl time"
+						type="time"
+						value={dueTimeValue(task.due_at)}
+						aria-label="Due time"
+						disabled={task.due_at == null}
+						title={task.due_at == null ? 'Set a date first' : 'Due time'}
+						onchange={(e) =>
+							void updateTask(task.id, {
+								due_at: combineDateTime(
+									dueInputValue(task.due_at),
+									(e.target as HTMLInputElement).value
+								)
 							})}
 					/>
 					{#if task.due_at != null}
@@ -229,69 +319,87 @@
 			</div>
 			<div class="field">
 				<span class="flabel">Reminder</span>
-				<select
-					class="ctl"
-					value={task.remind_min == null ? '' : String(task.remind_min)}
-					aria-label="Reminder"
-					onchange={(e) => {
-						const v = (e.target as HTMLSelectElement).value;
-						void updateTask(task.id, { remind_min: v === '' ? null : Number(v) });
-					}}
-				>
-					{#each REMIND_OPTS as o (o.label)}
-						<option value={o.v == null ? '' : String(o.v)}>{o.label}</option>
-					{/each}
-				</select>
+				<div class="due-row">
+					<input
+						class="ctl remind-in"
+						type="datetime-local"
+						value={dateTimeInputValue(task.remind_at)}
+						aria-label="Reminder date and time"
+						onchange={(e) =>
+							void updateTask(task.id, {
+								remind_at: parseDateTimeInput((e.target as HTMLInputElement).value)
+							})}
+					/>
+					{#if task.remind_at != null}
+						<button
+							class="icon"
+							title="Clear reminder"
+							onclick={() => void updateTask(task.id, { remind_at: null })}
+						>
+							<span class="material-symbols-outlined">backspace</span>
+						</button>
+					{/if}
+				</div>
 			</div>
+			{#if task.due_at != null}
+				<div class="field">
+					<span class="flabel"></span>
+					<div class="quick">
+						{#each REMIND_QUICK as q (q.label)}
+							<button
+								class="q-btn"
+								onclick={() => void updateTask(task.id, { remind_at: task.due_at! - q.ms })}
+							>
+								{q.label}
+							</button>
+						{/each}
+					</div>
+				</div>
+			{/if}
 		</div>
 
 		<section class="block">
 			<div class="bhead">
-				<span class="blabel">Linked note</span>
-				{#if task.note_path}
-					<button class="link-btn" onclick={() => (picking = !picking)}>
-						{picking ? 'Cancel' : 'Change'}
-					</button>
-				{/if}
+				<span class="blabel">Linked notes</span>
+				<span class="bcount">
+					{links.length === 0 ? 'none yet' : links.length === 1 ? '1 note' : `${links.length} notes`}
+				</span>
 			</div>
-			{#if task.note_path && !picking}
-				<div class="artifact">
-					<span class="material-symbols-outlined a-icon">description</span>
-					<div class="a-main">
-						<span class="a-name">{task.note_path.split('/').pop()}</span>
-						<span class="a-path">/{task.note_path}</span>
-					</div>
-					<button class="icon" title="Open note" onclick={() => openNote(task.note_path!)}>
-						<span class="material-symbols-outlined">arrow_outward</span>
-					</button>
-					<button
-						class="icon"
-						title="Unlink note"
-						onclick={() => void updateTask(task.id, { note_path: null })}
-					>
-						<span class="material-symbols-outlined">link_off</span>
-					</button>
-				</div>
-			{:else}
-				<input
-					class="ctl pick-search"
-					placeholder="Search vault notes to link"
-					bind:value={linkQuery}
-					aria-label="Search notes to link"
-				/>
+			{#if links.length > 0}
+				<ul class="linked-list">
+					{#each links as p (p)}
+						<li class="artifact">
+							<span class="material-symbols-outlined a-icon">description</span>
+							<div class="a-main">
+								<span class="a-name">{p.split('/').pop()}</span>
+								<span class="a-path">/{p}</span>
+							</div>
+							<button class="icon" title="Open note" onclick={() => openNote(p)}>
+								<span class="material-symbols-outlined">arrow_outward</span>
+							</button>
+							<button class="icon" title="Unlink note" onclick={() => void detachLink(task, p)}>
+								<span class="material-symbols-outlined">link_off</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			<input
+				class="ctl pick-search"
+				placeholder={links.length === 0
+					? 'Search vault notes to link'
+					: 'Link another note'}
+				bind:value={linkQuery}
+				aria-label="Search notes to link"
+			/>
+			{#if linkQuery.trim() !== '' || links.length === 0}
 				{#if noteMatches.length === 0}
 					<p class="pick-empty">No notes match.</p>
 				{:else}
 					<ul class="pick-list">
 						{#each noteMatches as p (p)}
 							<li>
-								<button
-									class="pick-row"
-									onclick={() => {
-										void updateTask(task.id, { note_path: p });
-										picking = false;
-									}}
-								>
+								<button class="pick-row" onclick={() => void attachLink(task, p)}>
 									<span class="material-symbols-outlined mini">description</span>
 									<span class="pick-name">{p.split('/').pop()}</span>
 									<span class="pick-path">/{p}</span>
@@ -378,7 +486,6 @@
 		top: 48px;
 		right: 0;
 		bottom: 0;
-		width: min(400px, 100vw);
 		background: var(--surface-container-lowest);
 		border-left: 1px solid var(--border-default);
 		box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
@@ -389,6 +496,19 @@
 		flex-direction: column;
 		gap: 14px;
 		animation: slide-in 0.14s ease;
+	}
+	.grip {
+		position: absolute;
+		left: -4px;
+		top: 0;
+		bottom: 0;
+		width: 9px;
+		cursor: ew-resize;
+		touch-action: none;
+	}
+	.grip:hover,
+	.grip:active {
+		background: color-mix(in srgb, var(--primary) 35%, transparent);
 	}
 	@keyframes slide-in {
 		from {
@@ -532,6 +652,31 @@
 	.due-row .ctl {
 		color-scheme: dark;
 	}
+	.due-row .time {
+		flex: 0 0 96px;
+	}
+	.due-row .remind-in {
+		flex: 1;
+	}
+	.quick {
+		flex: 1;
+		display: flex;
+		gap: 6px;
+	}
+	.q-btn {
+		background: none;
+		border: 1px solid var(--border-default);
+		border-radius: var(--radius-full);
+		color: var(--outline);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-micro);
+		padding: 3px 10px;
+		cursor: pointer;
+	}
+	.q-btn:hover {
+		color: var(--primary);
+		border-color: var(--primary);
+	}
 	.seg {
 		flex: 1;
 		display: flex;
@@ -595,14 +740,14 @@
 		color: var(--outline-variant);
 		font-variant-numeric: tabular-nums;
 	}
-	.link-btn {
-		margin-left: auto;
-		background: none;
-		border: none;
-		color: var(--primary);
-		font-size: var(--font-ui-micro);
-		cursor: pointer;
+
+	.linked-list {
+		list-style: none;
+		margin: 0;
 		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
 	}
 
 	.artifact {

@@ -13,6 +13,7 @@
 		isDueToday,
 		dueLabel,
 		parseDueInput,
+		stampShort,
 		type Task,
 		type TaskStatus
 	} from '$lib/stores/tasks';
@@ -246,8 +247,8 @@
 									<span class="material-symbols-outlined mini">event</span>
 									{dueLabel(t.due_at)}
 								</span>
-								{#if t.remind_min != null}
-									<span class="rem" title="Reminder set">
+								{#if t.remind_at != null}
+									<span class="rem" title="Reminds {stampShort(t.remind_at)}">
 										<span class="material-symbols-outlined mini">notifications</span>
 									</span>
 								{/if}
@@ -266,9 +267,13 @@
 										).length}
 									</span>
 								{/if}
-								{#if t.note_path}
-									<span class="linked" title="Linked note: {t.note_path}">
+								{#if t.link_count > 0}
+									<span
+										class="linked"
+										title={t.link_count === 1 ? '1 linked note' : `${t.link_count} linked notes`}
+									>
 										<span class="material-symbols-outlined mini">description</span>
+										{t.link_count}
 									</span>
 								{/if}
 								<span class="ops">
