@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import WorkspaceSwitcher from '$lib/components/WorkspaceSwitcher.svelte';
+	import TaskDrawer from '$lib/components/TaskDrawer.svelte';
 
 	let { children } = $props();
 
@@ -44,6 +45,7 @@
 	<div class="scroll">
 		{@render children()}
 	</div>
+	<TaskDrawer />
 </div>
 
 <style>

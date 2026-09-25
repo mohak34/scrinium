@@ -7,6 +7,9 @@
 		createTask,
 		updateTask,
 		deleteTask,
+		openTask,
+		topLevel,
+		childrenOf,
 		startOfToday,
 		isOverdue,
 		isDueToday,
@@ -43,7 +46,7 @@
 
 	const visible = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		return $tasks.filter((t) => {
+		return topLevel($tasks).filter((t) => {
 			if (hideDone && t.status === 'done') return false;
 			if (!q) return true;
 			return (
@@ -78,7 +81,15 @@
 		return out;
 	});
 
-	const openCount = $derived($tasks.filter((t) => t.status !== 'done').length);
+	const openCount = $derived(topLevel($tasks).filter((t) => t.status !== 'done').length);
+
+	// Clicking a row opens the detail drawer. Interactive controls stop the
+	// trip by matching the closest control, not by per-element handlers.
+	function rowClick(t: Task, e: MouseEvent) {
+		const el = e.target as HTMLElement;
+		if (el.closest('input,select,button,textarea,a')) return;
+		openTask(t.id);
+	}
 
 	async function handleAdd() {
 		const title = newTitle.trim();
@@ -154,7 +165,19 @@
 					<span class="gcount">{group.rows.length}</span>
 				</div>
 				{#each group.rows as t (t.id)}
-					<div class="row {t.status}" class:done={t.status === 'done'} class:over={isOverdue(t)}>
+					<div
+						class="row {t.status}"
+						class:done={t.status === 'done'}
+						class:over={isOverdue(t)}
+						onclick={(e) => rowClick(t, e)}
+						role="button"
+						tabindex="0"
+						aria-label="Open task details"
+						onkeydown={(e) => {
+							if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('row'))
+								openTask(t.id);
+						}}
+					>
 						<button
 							class="status"
 							title="Cycle status"
@@ -190,6 +213,23 @@
 								{/if}
 								{#if t.status === 'doing'}
 									<span class="st doing">doing</span>
+								{/if}
+								{#if t.priority !== 'none'}
+									<span class="pri pri-{t.priority}">{t.priority}</span>
+								{/if}
+								{#if childrenOf($tasks, t.id).length > 0}
+									<span class="sub-c" title="Subtasks">
+										<span class="material-symbols-outlined mini">account_tree</span>
+										{childrenOf($tasks, t.id).filter((s) => s.status === 'done').length}/{childrenOf(
+											$tasks,
+											t.id
+										).length}
+									</span>
+								{/if}
+								{#if t.note_path}
+									<span class="linked" title="Linked note: {t.note_path}">
+										<span class="material-symbols-outlined mini">description</span>
+									</span>
 								{/if}
 							</div>
 						</div>
@@ -406,6 +446,7 @@
 		border-bottom: 1px solid var(--border-default);
 		border-radius: var(--radius);
 		overflow: hidden;
+		cursor: pointer;
 	}
 	.row::before {
 		content: '';
@@ -511,6 +552,29 @@
 	}
 	.st.doing {
 		color: var(--tertiary);
+	}
+	.pri {
+		text-transform: capitalize;
+	}
+	.pri-urgent {
+		color: var(--error);
+		font-weight: var(--font-ui-medium-weight);
+	}
+	.pri-high {
+		color: var(--tertiary);
+	}
+	.pri-medium {
+		color: var(--primary);
+	}
+	.pri-low {
+		color: var(--outline);
+	}
+	.sub-c,
+	.linked {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		color: var(--outline-variant);
 	}
 	.row-date {
 		width: 126px;
