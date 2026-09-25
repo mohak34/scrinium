@@ -11,6 +11,16 @@
 		dueTimeValue,
 		type Task
 	} from '$lib/stores/tasks';
+	import { connectCalendar } from '$lib/auth-client';
+
+	// Google events as returned by GET /api/calendar/events (read-only).
+	interface GEvent {
+		id: string;
+		title: string;
+		start: number;
+		end: number;
+		allDay: boolean;
+	}
 
 	const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -18,6 +28,49 @@
 	let viewYear = $state(today.getFullYear());
 	let viewMonth = $state(today.getMonth());
 	let selected = $state(dayKey(today.getFullYear(), today.getMonth(), today.getDate()));
+	let gev = $state<GEvent[]>([]);
+	let needConnect = $state(false);
+
+	// Google overlay for the visible grid. Local tasks render regardless;
+	// a failed fetch just leaves the overlay empty.
+	$effect(() => {
+		const y = viewYear;
+		const m = viewMonth;
+		const [from, to] = gridRange(y, m);
+		let dead = false;
+		(async () => {
+			try {
+				const res = await fetch(`/api/calendar/events?from=${from}&to=${to}`, {
+					credentials: 'include'
+				});
+				if (!res.ok || dead) return;
+				const data = (await res.json()) as { events?: GEvent[]; needsConnect?: boolean };
+				gev = Array.isArray(data.events) ? data.events : [];
+				needConnect = data.needsConnect === true;
+			} catch {
+				// Offline or Google down - overlay stays empty.
+			}
+		})();
+		return () => {
+			dead = true;
+		};
+	});
+
+	function gridRange(y: number, m: number): [number, number] {
+		const first = new Date(y, m, 1);
+		const lead = (first.getDay() + 6) % 7;
+		const from = new Date(y, m, 1 - lead).getTime();
+		const to = new Date(y, m, 1 - lead + 42).getTime();
+		return [from, to];
+	}
+
+	function fmtTime(ts: number): string {
+		try {
+			return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		} catch {
+			return '';
+		}
+	}
 
 	onMount(() => {
 		loadTasks();
@@ -89,6 +142,21 @@
 		return [...list].sort((a, b) => (a.due_at ?? 0) - (b.due_at ?? 0));
 	});
 
+	const eventsByDay = $derived.by(() => {
+		const map = new Map<string, GEvent[]>();
+		for (const e of gev) {
+			const k = keyOf(e.start);
+			if (!map.has(k)) map.set(k, []);
+			map.get(k)!.push(e);
+		}
+		for (const list of map.values()) {
+			list.sort((a, b) => a.start - b.start);
+		}
+		return map;
+	});
+
+	const selectedEvents = $derived(eventsByDay.get(selected) ?? []);
+
 	const selectedLabel = $derived.by(() => {
 		const [y, m, d] = selected.split('-').map(Number);
 		try {
@@ -143,6 +211,11 @@
 			<span class="material-symbols-outlined">chevron_right</span>
 		</button>
 		<button class="today-btn" onclick={goToday}>Today</button>
+		{#if needConnect}
+			<button class="connect-btn" onclick={() => void connectCalendar()}>
+				Connect Google Calendar
+			</button>
+		{/if}
 		<span class="unsched" title="Open tasks without a due date">
 			{unscheduled} unscheduled
 		</span>
@@ -155,13 +228,14 @@
 		{#each cells as c (c.key)}
 			{@const list = byDay.get(c.key) ?? []}
 			{@const open = list.filter((t) => t.status !== 'done')}
+			{@const evs = eventsByDay.get(c.key) ?? []}
 			<button
 				class="day"
 				class:out={!c.inMonth}
 				class:today={c.key === todayKey}
 				class:sel={c.key === selected}
 				onclick={() => (selected = c.key)}
-				aria-label="{c.d} {monthLabel}, {open.length} open tasks"
+				aria-label="{c.d} {monthLabel}, {open.length} open tasks, {evs.length} events"
 			>
 				<span class="num">{c.d}</span>
 				{#if open.length > 0}
@@ -176,9 +250,18 @@
 							></span>
 						{/each}
 					</span>
-					{#if open.length > 4}
-						<span class="more">+{open.length - 4}</span>
-					{/if}
+				{/if}
+				{#if evs.length > 0}
+					<span class="evts" aria-hidden="true">
+						{#each evs.slice(0, 3) as e (e.id)}
+							<span class="evt" title={e.title}></span>
+						{/each}
+					</span>
+				{/if}
+				{#if open.length > 4 || evs.length > 3}
+					<span class="more">
+						+{(open.length > 4 ? open.length - 4 : 0) + (evs.length > 3 ? evs.length - 3 : 0)}
+					</span>
 				{/if}
 			</button>
 		{/each}
@@ -187,9 +270,18 @@
 	<section class="day-list" aria-label="Tasks on selected day">
 		<div class="dhead">
 			<span class="dlabel">{selectedLabel}</span>
-			<span class="dcount">{selectedTasks.length}</span>
+			<span class="dcount">{selectedTasks.length + selectedEvents.length}</span>
 		</div>
-		{#if selectedTasks.length === 0}
+		{#if selectedEvents.length > 0}
+			{#each selectedEvents as e (e.id)}
+				<div class="evrow" title="Google Calendar event (read-only)">
+					<span class="evtime">{e.allDay ? 'all day' : fmtTime(e.start)}</span>
+					<span class="evtitle">{e.title}</span>
+					<span class="evsrc">Google</span>
+				</div>
+			{/each}
+		{/if}
+		{#if selectedTasks.length === 0 && selectedEvents.length === 0}
 			<p class="empty">Nothing due this day.</p>
 		{:else}
 			{#each selectedTasks as t (t.id)}
@@ -300,6 +392,23 @@
 		color: var(--primary);
 		border-color: var(--primary);
 	}
+	.connect-btn {
+		margin-left: 8px;
+		height: 28px;
+		padding: 0 12px;
+		background: var(--primary);
+		border: 1px solid var(--primary);
+		border-radius: var(--radius-full);
+		color: var(--on-primary);
+		font-family: var(--font-ui);
+		font-size: var(--font-ui-small);
+		font-weight: var(--font-ui-medium-weight);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.connect-btn:hover {
+		filter: brightness(1.08);
+	}
 	.unsched {
 		margin-left: auto;
 		font-size: var(--font-ui-micro);
@@ -376,6 +485,17 @@
 		outline: 1px solid var(--error);
 		outline-offset: 1px;
 	}
+	.evts {
+		display: flex;
+		gap: 4px;
+		flex-wrap: wrap;
+	}
+	.evt {
+		width: 7px;
+		height: 7px;
+		border-radius: 2px;
+		border: 1px solid var(--primary);
+	}
 	.more {
 		font-size: var(--font-ui-micro);
 		color: var(--outline-variant);
@@ -410,6 +530,35 @@
 		font-size: var(--font-ui-small);
 		padding: 12px 2px;
 		margin: 0;
+	}
+
+	/* Google events are read-only visitors: quiet rows, no actions. */
+	.evrow {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		padding: 7px 6px;
+		border-bottom: 1px dashed var(--border-default);
+	}
+	.evtime {
+		min-width: 64px;
+		font-size: var(--font-ui-micro);
+		color: var(--primary);
+		font-variant-numeric: tabular-nums;
+	}
+	.evtitle {
+		flex: 1;
+		min-width: 0;
+		font-size: var(--font-ui-small);
+		color: var(--on-surface-variant);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.evsrc {
+		font-size: var(--font-ui-micro);
+		color: var(--outline-variant);
+		flex-shrink: 0;
 	}
 
 	.row {
