@@ -271,10 +271,12 @@ ssh ubuntu@tunnel.mohak.dev \
 
 **Schema (auth/DB) changes:** CI runs the migrate on every deploy
 (idempotent), so no extra step. The CLI imports `db.ts`, which writes task
-tables on startup; run it as the `scrinium` user that owns the database. To
-run it by hand:
+tables on startup; run the CLI as the `scrinium` user that owns the database.
+Pass `--yes` to both npx and the migration so neither waits for input. To run
+it by hand:
 ```bash
-sudo -u scrinium -H sh -c 'cd /opt/scrinium/app && npx --yes @better-auth/cli migrate'
+cd /opt/scrinium/app
+sudo -u scrinium -H npx --yes @better-auth/cli migrate --yes
 ```
 
 **Never** `rm -rf`, `chown`, or otherwise touch `vault/` and `data/` on the
