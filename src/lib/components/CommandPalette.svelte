@@ -50,6 +50,11 @@
 			run: () => onToggleRightSidebar()
 		},
 		{
+			label: 'Open tasks',
+			hint: 'Agenda and kanban board',
+			run: () => goto('/tasks')
+		},
+		{
 			label: 'Open trash',
 			hint: 'View and restore deleted notes',
 			run: () => goto('/trash')

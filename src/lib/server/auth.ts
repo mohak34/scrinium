@@ -27,7 +27,20 @@ export const auth = betterAuth({
 	socialProviders: {
 		google: {
 			clientId: env.GOOGLE_CLIENT_ID as string,
-			clientSecret: env.GOOGLE_CLIENT_SECRET as string
+			clientSecret: env.GOOGLE_CLIENT_SECRET as string,
+			// Calendar read-only so the tasks calendar can overlay events.
+			// accessType offline stores a refresh token for server-side calls.
+			// Anyone who consented before this scope existed must revoke the
+			// app grant once (Google account settings) and log in again -
+			// Google only issues the refresh token on a fresh consent.
+			scope: [
+				'openid',
+				'email',
+				'profile',
+				'https://www.googleapis.com/auth/calendar.readonly'
+			],
+			accessType: 'offline',
+			prompt: 'select_account'
 		}
 	},
 
