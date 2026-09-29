@@ -58,7 +58,7 @@ jobs:
             "$VPS_USER@$VPS_HOST" \
             'cd /opt/scrinium/app && \
              npm install --omit=dev --legacy-peer-deps && \
-             sudo -u scrinium -H sh -c "cd /opt/scrinium/app && npx --yes @better-auth/cli migrate" && \
+             sudo -u scrinium -H timeout 120s npx --yes @better-auth/cli migrate --yes && \
              sudo systemctl restart scrinium.service && \
              sleep 2 && \
              systemctl is-active scrinium.service'
