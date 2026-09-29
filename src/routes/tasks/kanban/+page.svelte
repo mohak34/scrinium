@@ -28,6 +28,7 @@
 	let newDue = $state('');
 	let newCol = $state<TaskStatus>('todo');
 	let adding = $state(false);
+	let addingTo = $state<TaskStatus | null>(null);
 
 	let dragId = $state<string | null>(null);
 	let overCol = $state<TaskStatus | null>(null);
@@ -69,10 +70,18 @@
 			if (row) {
 				newTitle = '';
 				newDue = '';
+				addingTo = null;
 			}
 		} finally {
 			adding = false;
 		}
+	}
+
+	function startAdd(col: TaskStatus) {
+		newCol = col;
+		newTitle = '';
+		newDue = '';
+		addingTo = col;
 	}
 
 	function onDragStart(t: Task, e: DragEvent) {
@@ -93,6 +102,7 @@
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 		overCol = col;
+		overId = null;
 	}
 
 	function onCardOver(id: string, e: DragEvent) {
@@ -105,6 +115,7 @@
 	async function onDrop(col: TaskStatus, e: DragEvent) {
 		e.preventDefault();
 		const id = dragId ?? e.dataTransfer?.getData('text/plain');
+		const targetId = overId;
 		dragId = null;
 		overCol = null;
 		overId = null;
@@ -116,8 +127,8 @@
 			.filter((t) => t.status === col && t.id !== id)
 			.sort((a, b) => a.position - b.position);
 		let idx = rows.length;
-		if (overId) {
-			const at = rows.findIndex((t) => t.id === overId);
+		if (targetId) {
+			const at = rows.findIndex((t) => t.id === targetId);
 			if (at !== -1) idx = at;
 		}
 		const prev = rows[idx - 1]?.position;
@@ -152,37 +163,20 @@
 </script>
 
 <div class="content">
-	<div class="addrow">
-		<span class="material-symbols-outlined add-icon">add</span>
-		<input
-			class="title-in"
-			placeholder="New task, Enter to add"
-			bind:value={newTitle}
-			aria-label="New task title"
-			onkeydown={(e) => {
-				if (e.key === 'Enter') void handleAdd();
-			}}
-		/>
-		<select class="ctl sel" bind:value={newCol} aria-label="Column">
-			<option value="todo">Todo</option>
-			<option value="doing">Doing</option>
-			<option value="done">Done</option>
-		</select>
-		<input class="ctl date-in" type="date" bind:value={newDue} aria-label="Due date" />
-		<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
-			{adding ? 'Adding…' : 'Add'}
-		</button>
+	<div class="page-heading">
+		<h1>Board</h1>
+		<span class="heading-count">{openCount} open</span>
 	</div>
-
-	<div class="stats" aria-label="Task summary">
-		<span class="stat"><strong>{openCount}</strong> open</span>
-		{#if overdueCount > 0}
-			<span class="stat over"><strong>{overdueCount}</strong> overdue</span>
-		{/if}
-		{#if dueTodayCount > 0}
-			<span class="stat today"><strong>{dueTodayCount}</strong> due today</span>
-		{/if}
-	</div>
+	{#if overdueCount > 0 || dueTodayCount > 0}
+		<div class="stats" aria-label="Task summary">
+			{#if overdueCount > 0}
+				<span class="stat over"><strong>{overdueCount}</strong> overdue</span>
+			{/if}
+			{#if dueTodayCount > 0}
+				<span class="stat today"><strong>{dueTodayCount}</strong> due today</span>
+			{/if}
+		</div>
+	{/if}
 
 	<div class="board">
 		{#each cols as col (col.key)}
@@ -194,12 +188,6 @@
 				aria-label={col.label}
 			>
 				<div class="chead">
-					<span
-						class="dot"
-						class:todo={col.key === 'todo'}
-						class:doing={col.key === 'doing'}
-						class:done={col.key === 'done'}
-					></span>
 					<span class="clabel">{col.label}</span>
 					<span class="ccount">{col.rows.length}</span>
 				</div>
@@ -216,7 +204,7 @@
 							onclick={(e) => cardClick(t, e)}
 							role="button"
 							tabindex="0"
-							aria-label="Open task details"
+							aria-label="Open {t.title} details"
 							onkeydown={(e) => {
 								if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('card'))
 									openTask(t.id);
@@ -303,7 +291,19 @@
 						</div>
 					{/each}
 					{#if col.rows.length === 0}
-						<div class="drop-hint">Drop here</div>
+						<div class="drop-hint">No tasks in {col.label.toLowerCase()}</div>
+					{/if}
+					{#if addingTo === col.key}
+						<div class="inline-add">
+							<input class="title-in" bind:value={newTitle} placeholder="Task name" aria-label="New task title" onkeydown={(e) => { if (e.key === 'Enter') void handleAdd(); if (e.key === 'Escape') addingTo = null; }} />
+							<div class="add-actions">
+								<input class="ctl date-in" type="date" bind:value={newDue} aria-label="Due date" />
+								<button class="cancel-btn" onclick={() => (addingTo = null)}>Cancel</button>
+								<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>{adding ? 'Adding…' : 'Add'}</button>
+							</div>
+						</div>
+					{:else}
+						<button class="add-in-column" onclick={() => startAdd(col.key)}><span class="material-symbols-outlined">add</span> Add task</button>
 					{/if}
 				</div>
 			</section>
@@ -313,34 +313,34 @@
 
 <style>
 	.content {
-		max-width: 1600px;
+		max-width: 1440px;
 		margin: 0 auto;
 		width: 100%;
-		padding: 20px var(--gutter) 56px;
+		padding: 32px 24px 72px;
+	}
+	.page-heading {
+		display: flex;
+		align-items: end;
+		justify-content: space-between;
+		gap: 16px;
+		margin-bottom: 24px;
+	}
+	h1 {
+		margin: 0;
+		font-size: 24px;
+		line-height: 30px;
+		font-weight: 600;
+		letter-spacing: -0.035em;
+	}
+	.heading-count {
+		color: var(--on-surface-variant);
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
-	/* Quick add reads as one command bar. */
-	.addrow {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: var(--surface-container-lowest);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-lg);
-		padding: 6px 6px 6px 10px;
-		margin-bottom: 10px;
-	}
-	.addrow:focus-within {
-		border-color: var(--primary);
-	}
-	.add-icon {
-		font-size: 18px;
-		color: var(--outline);
-		flex-shrink: 0;
-	}
 	.title-in {
-		flex: 1;
-		min-width: 0;
+		width: 100%;
 		background: none;
 		border: none;
 		outline: none;
@@ -367,11 +367,8 @@
 	.ctl:focus {
 		border-color: var(--primary);
 	}
-	.sel {
-		width: 92px;
-	}
 	.date-in {
-		width: 128px;
+		width: 132px;
 		color-scheme: dark;
 	}
 	.add-btn {
@@ -396,12 +393,12 @@
 		cursor: default;
 	}
 
-	/* One quiet summary line. Numbers carry it. */
 	.stats {
 		display: flex;
 		gap: 14px;
-		margin: 0 2px 14px;
-		font-size: var(--font-ui-micro);
+		margin: 0 2px 16px;
+		min-height: 16px;
+		font-size: 11px;
 		color: var(--outline);
 		font-variant-numeric: tabular-nums;
 	}
@@ -419,51 +416,34 @@
 	.board {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 12px;
-		align-items: start;
+		gap: 0;
+		align-items: stretch;
 	}
-	@media (max-width: 800px) {
+	@media (max-width: 760px) {
 		.board {
 			grid-template-columns: 1fr;
 		}
 	}
 
 	.col {
-		background: var(--surface-container-lowest);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-lg);
-		min-height: 220px;
+		padding: 0 14px;
+		min-height: 320px;
 		display: flex;
 		flex-direction: column;
-		transition: border-color 0.12s ease;
+		transition: background-color 0.12s ease;
 	}
+	.col:first-child { padding-left: 0; }
+	.col:last-child { padding-right: 0; }
+	.col + .col { border-left: 1px solid var(--border-default); }
 	.col.over {
-		border-color: var(--primary);
 		background: var(--surface-container-low);
 	}
 	.chead {
 		display: flex;
 		align-items: baseline;
 		gap: 7px;
-		padding: 11px 12px 9px;
+		padding: 10px 2px 12px;
 		border-bottom: 1px solid var(--border-default);
-	}
-	.dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: var(--outline);
-		flex-shrink: 0;
-		align-self: center;
-	}
-	.dot.todo {
-		background: var(--secondary);
-	}
-	.dot.doing {
-		background: var(--tertiary);
-	}
-	.dot.done {
-		background: var(--success);
 	}
 	.clabel {
 		font-size: var(--font-ui-small);
@@ -472,48 +452,65 @@
 	}
 	.ccount {
 		margin-left: auto;
-		min-width: 22px;
+		min-width: 20px;
 		text-align: center;
 		font-size: var(--font-ui-micro);
 		color: var(--on-surface-variant);
-		background: var(--surface-container-high);
-		border-radius: var(--radius-full);
-		padding: 1px 7px;
+		padding: 1px 3px;
 		font-variant-numeric: tabular-nums;
 		flex-shrink: 0;
 	}
 	.cards {
-		padding: 10px;
+		padding: 10px 0;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
 	}
+	.add-in-column {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		min-height: 36px;
+		padding: 0 10px;
+		border: 1px dashed transparent;
+		border-radius: var(--radius);
+		background: none;
+		color: var(--outline);
+		font: 12px var(--font-ui);
+		text-align: left;
+		cursor: pointer;
+	}
+	.add-in-column .material-symbols-outlined { font-size: 16px; }
+	.add-in-column:hover { border-color: var(--border-strong); background: var(--surface-container); color: var(--on-surface); }
+	.inline-add {
+		padding: 10px;
+		border: 1px solid var(--primary);
+		border-radius: var(--radius-md);
+		background: var(--surface-container-lowest);
+	}
+	.add-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+	.cancel-btn {
+		margin-left: auto;
+		padding: 0 6px;
+		height: 30px;
+		border: 0;
+		background: none;
+		color: var(--on-surface-variant);
+		font: 12px var(--font-ui);
+		cursor: pointer;
+	}
+	.cancel-btn:hover { color: var(--on-surface); }
 
-	/* The spine is the one memorable device: state readable at a glance. */
 	.card {
 		position: relative;
 		background: var(--surface-container-low);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius-md);
-		padding: 9px 10px 8px 13px;
+		padding: 12px;
 		cursor: grab;
 		overflow: hidden;
 		transition: border-color 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
-	}
-	.card::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 3px;
-		background: var(--secondary);
-	}
-	.card.doing::before {
-		background: var(--tertiary);
-	}
-	.card.done::before {
-		background: var(--success);
 	}
 	.card:hover {
 		border-color: var(--border-strong);
@@ -537,7 +534,7 @@
 		outline: none;
 		color: var(--on-surface);
 		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
+		font-size: 13px;
 		font-weight: var(--font-ui-medium-weight);
 		line-height: 1.45;
 		padding: 0;
@@ -550,16 +547,17 @@
 		outline-offset: 2px;
 	}
 	.detail {
-		margin-top: 3px;
+		margin-top: 5px;
 		font-size: var(--font-ui-micro);
 		line-height: 1.5;
 		color: var(--outline);
 		white-space: pre-wrap;
 	}
 	.meta {
-		margin-top: 7px;
+		margin-top: 12px;
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 9px;
 		font-size: var(--font-ui-micro);
 		color: var(--outline);
@@ -645,17 +643,27 @@
 	}
 	.drop-hint {
 		margin: 2px;
-		padding: 18px;
+		padding: 32px 12px;
 		text-align: center;
 		color: var(--outline-variant);
 		font-size: var(--font-ui-micro);
-		border: 1px dashed var(--border-strong);
+		border: 1px dashed var(--border-default);
 		border-radius: var(--radius-md);
+	}
+	@media (max-width: 600px) {
+		.content { padding: 24px 16px 56px; }
+		.page-heading { margin-bottom: 20px; }
+		.date-in { min-width: 0; flex: 1; }
+		.col { min-height: 160px; }
+		.ops { opacity: 1; }
+	}
+	@media (max-width: 760px) {
+		.col, .col:first-child, .col:last-child { padding: 0; }
+		.col + .col { border-left: 0; border-top: 1px solid var(--border-default); margin-top: 16px; padding-top: 16px; }
 	}
 
 	button:focus-visible,
-	input:focus-visible,
-	select:focus-visible {
+	input:focus-visible {
 		outline: 1px solid var(--primary);
 		outline-offset: 1px;
 	}

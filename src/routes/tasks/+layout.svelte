@@ -7,8 +7,8 @@
 	let { children } = $props();
 
 	const tabs = [
-		{ href: '/tasks', label: 'Agenda' },
-		{ href: '/tasks/kanban', label: 'Kanban' },
+		{ href: '/tasks', label: 'Tasks' },
+		{ href: '/tasks/kanban', label: 'Board' },
 		{ href: '/tasks/calendar', label: 'Calendar' }
 	];
 
@@ -77,27 +77,33 @@
 	}
 	.tabs {
 		display: flex;
-		gap: 2px;
-		margin-left: 8px;
+		gap: 16px;
+		margin-left: 12px;
+		align-self: stretch;
 	}
 	.tab {
-		height: 28px;
-		padding: 0 10px;
+		height: 100%;
+		padding: 2px 2px 0;
 		background: none;
 		border: none;
-		border-radius: var(--radius);
+		border-bottom: 2px solid transparent;
 		color: var(--on-surface-variant);
 		font-family: var(--font-ui);
 		font-size: var(--font-ui-small);
 		cursor: pointer;
 	}
 	.tab:hover {
-		background: var(--surface-container-low);
 		color: var(--on-surface);
 	}
 	.tab.on {
-		background: var(--surface-container-high);
 		color: var(--on-surface);
+		border-bottom-color: var(--primary);
+		font-weight: 600;
+	}
+	.tab:focus-visible,
+	.icon-btn:focus-visible {
+		outline: 2px solid var(--primary);
+		outline-offset: -2px;
 	}
 	.icon-btn {
 		display: flex;
@@ -120,5 +126,10 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
+	}
+	@media (max-width: 540px) {
+		.topbar { padding: 0 12px; }
+		.left { gap: 8px; }
+		.tabs { gap: 12px; margin-left: 2px; }
 	}
 </style>
