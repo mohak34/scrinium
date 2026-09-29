@@ -486,6 +486,7 @@
 		flex-shrink: 0;
 		height: 100vh;
 		overflow-y: auto;
+		background: var(--sidebar-bg);
 		border-left: 1px solid var(--border-default);
 		display: flex;
 		flex-direction: column;
