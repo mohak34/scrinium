@@ -226,7 +226,8 @@ State channels you will touch:
 - Deploys run through GitHub Actions (`.github/workflows/deploy.yml`): every
   push to `main` typechecks, builds, rsyncs to `/opt/scrinium/app`, runs
   `npm install --omit=dev --legacy-peer-deps` (recompiles native
-  `better-sqlite3`), runs the idempotent better-auth migrate as `scrinium`, restarts
+  `better-sqlite3`), installs the migration CLI under `app/.deploy-cli`, runs
+  the idempotent better-auth migrate as `scrinium`, restarts
   `scrinium.service`, and smoke-tests the site. Secrets used:
   `DEPLOY_KEY`, `VPS_HOST`, `VPS_USER`, `SITE_URL`.
 - The rsync excludes `node_modules .git .svelte-kit data vault .opencode
@@ -272,11 +273,12 @@ ssh $VPS_USER@$VPS_HOST \
 **Schema (auth/DB) changes:** CI runs the migrate on every deploy
 (idempotent), so no extra step. The CLI imports `db.ts`, which writes task
 tables on startup; run the CLI as the `scrinium` user that owns the database.
-Pass `--yes` to both npx and the migration so neither waits for input. To run
-it by hand:
+The CLI lives outside the app's dependency tree so its auth packages cannot
+change the app build. Pass `--yes` so the migration does not wait for input.
+To run it by hand:
 ```bash
 cd /opt/scrinium/app
-sudo -u scrinium -H npx --yes @better-auth/cli migrate --yes
+sudo -u scrinium -H ./.deploy-cli/node_modules/.bin/better-auth migrate --yes
 ```
 
 **Never** `rm -rf`, `chown`, or otherwise touch `vault/` and `data/` on the
