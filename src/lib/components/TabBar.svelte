@@ -156,7 +156,7 @@
 		overflow-y: hidden;
 		scrollbar-width: thin;
 		flex-shrink: 0;
-		background: var(--surface);
+		background: var(--sidebar-bg);
 	}
 	.tab {
 		display: flex;
