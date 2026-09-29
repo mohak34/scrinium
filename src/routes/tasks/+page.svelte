@@ -14,9 +14,6 @@
 		isOverdue,
 		isDueToday,
 		dueLabel,
-		dueInputValue,
-		dueTimeValue,
-		combineDateTime,
 		parseDueInput,
 		stampShort,
 		type Task,
@@ -27,7 +24,16 @@
 	let newDue = $state('');
 	let adding = $state(false);
 	let query = $state('');
-	let hideDone = $state(false);
+	type TaskFilter = 'all' | 'today' | 'overdue' | 'upcoming' | 'undated' | 'completed';
+	let filter = $state<TaskFilter>('all');
+	const filters: { key: TaskFilter; label: string; icon: string }[] = [
+		{ key: 'all', label: 'All tasks', icon: 'list' },
+		{ key: 'today', label: 'Today', icon: 'today' },
+		{ key: 'overdue', label: 'Overdue', icon: 'priority_high' },
+		{ key: 'upcoming', label: 'Upcoming', icon: 'event_upcoming' },
+		{ key: 'undated', label: 'No date', icon: 'event_busy' },
+		{ key: 'completed', label: 'Completed', icon: 'check_circle' }
+	];
 
 	onMount(() => {
 		loadTasks();
@@ -41,7 +47,11 @@
 	const visible = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		return topLevel($tasks).filter((t) => {
-			if (hideDone && t.status === 'done') return false;
+			if (filter === 'today' && (t.status === 'done' || !isDueToday(t))) return false;
+			if (filter === 'overdue' && !isOverdue(t)) return false;
+			if (filter === 'upcoming' && (t.status === 'done' || t.due_at == null || t.due_at < startOfToday() + 86400000)) return false;
+			if (filter === 'undated' && (t.status === 'done' || t.due_at != null)) return false;
+			if (filter === 'completed' && t.status !== 'done') return false;
 			if (!q) return true;
 			return (
 				t.title.toLowerCase().includes(q) || (t.detail && t.detail.toLowerCase().includes(q))
@@ -69,13 +79,24 @@
 			},
 			{ key: 'nodate', label: 'No date', rows: byDue.filter((t) => t.due_at == null) }
 		].filter((g) => g.rows.length > 0);
-		if (done.length > 0 && !hideDone) {
+		if (done.length > 0) {
 			out.push({ key: 'done', label: 'Done', rows: [...done].sort((a, b) => b.updated_at - a.updated_at) });
 		}
 		return out;
 	});
 
 	const openCount = $derived(topLevel($tasks).filter((t) => t.status !== 'done').length);
+	const filterCounts = $derived.by(() => {
+		const rows = topLevel($tasks);
+		return {
+			all: rows.length,
+			today: rows.filter((t) => t.status !== 'done' && isDueToday(t)).length,
+			overdue: rows.filter(isOverdue).length,
+			upcoming: rows.filter((t) => t.status !== 'done' && t.due_at != null && t.due_at >= startOfToday() + 86400000).length,
+			undated: rows.filter((t) => t.status !== 'done' && t.due_at == null).length,
+			completed: rows.filter((t) => t.status === 'done').length
+		};
+	});
 
 	// Clicking a row opens the detail drawer. Interactive controls stop the
 	// trip by matching the closest control, not by per-element handlers.
@@ -94,6 +115,7 @@
 			if (row) {
 				newTitle = '';
 				newDue = '';
+				filter = 'all';
 			}
 		} finally {
 			adding = false;
@@ -115,174 +137,201 @@
 </script>
 
 <div class="content">
-	<div class="addrow">
-		<span class="material-symbols-outlined add-icon">add</span>
-		<input
-			class="title-in"
-			placeholder="New task, pick a due date, Enter to add"
-			bind:value={newTitle}
-			aria-label="New task title"
-			onkeydown={(e) => {
-				if (e.key === 'Enter') void handleAdd();
-			}}
-		/>
-		<input class="ctl date-in" type="date" bind:value={newDue} aria-label="Due date" />
-		<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
-			{adding ? 'Adding…' : 'Add'}
-		</button>
+	<div class="page-heading">
+		<h1>Tasks</h1>
+		<span class="heading-count">{openCount} open</span>
 	</div>
-
-	<div class="toolbar">
-		<span class="material-symbols-outlined search-icon">search</span>
-		<input class="search" placeholder="Filter tasks" bind:value={query} aria-label="Filter tasks" />
-		<label class="check">
-			<input type="checkbox" bind:checked={hideDone} />
-			Hide done
-		</label>
-		<span class="count">{openCount} open</span>
-	</div>
-
-	{#if $tasks.length === 0}
-		<div class="empty">
-			<span class="material-symbols-outlined empty-icon">task</span>
-			<p>No tasks yet. Add the first one above.</p>
-		</div>
-	{:else if visible.length === 0}
-		<div class="empty">
-			<p>Nothing matches the filter.</p>
-		</div>
-	{:else}
-		{#each groups as group (group.key)}
-			<section class="group">
-				<div class="ghead">
-					<span class="glabel">{group.label}</span>
-					<span class="gcount">{group.rows.length}</span>
-				</div>
-				{#each group.rows as t (t.id)}
-					<div
-						class="row {t.status}"
-						class:done={t.status === 'done'}
-						class:over={isOverdue(t)}
-						onclick={(e) => rowClick(t, e)}
-						role="button"
-						tabindex="0"
-						aria-label="Open task details"
-						onkeydown={(e) => {
-							if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('row'))
-								openTask(t.id);
-						}}
-					>
-						<button
-							class="status"
-							title="Cycle status"
-							onclick={() => void updateTask(t.id, { status: cycleStatus(t) })}
-						>
-							<span class="material-symbols-outlined">{statusIcon(t.status)}</span>
-						</button>
-						<div class="main">
-							<input
-								class="t-in"
-								value={t.title}
-								aria-label="Task title"
-								onchange={(e) => {
-									const v = (e.target as HTMLInputElement).value.trim();
-									if (v && v !== t.title) void updateTask(t.id, { title: v });
-									else (e.target as HTMLInputElement).value = t.title;
-								}}
-							/>
-							<div class="sub">
-								<span
-									class="due"
-									class:overdue={isOverdue(t)}
-									class:today={isDueToday(t) && t.status !== 'done'}
-								>
-									<span class="material-symbols-outlined mini">event</span>
-									{dueLabel(t.due_at)}
-								</span>
-								{#if t.remind_at != null}
-									<span class="rem" title="Reminds {stampShort(t.remind_at)}">
-										<span class="material-symbols-outlined mini">notifications</span>
-										{stampShort(t.remind_at)}
-									</span>
-								{/if}
-								{#if t.status === 'doing'}
-									<span class="st doing">doing</span>
-								{/if}
-								{#if t.priority !== 'none'}
-									<span class="pri pri-{t.priority}">{t.priority}</span>
-								{/if}
-								{#if childrenOf($tasks, t.id).length > 0}
-									<span class="sub-c" title="Subtasks">
-										<span class="material-symbols-outlined mini">account_tree</span>
-										{childrenOf($tasks, t.id).filter((s) => s.status === 'done').length}/{childrenOf(
-											$tasks,
-											t.id
-										).length}
-									</span>
-								{/if}
-								{#if t.link_count > 0}
-									<span
-										class="linked"
-										title={t.link_count === 1 ? '1 linked note' : `${t.link_count} linked notes`}
-									>
-										<span class="material-symbols-outlined mini">description</span>
-										{t.link_count}
-									</span>
-								{/if}
-							</div>
-						</div>
-						<input
-							class="ctl row-date"
-							type="date"
-							value={dueInputValue(t.due_at)}
-							aria-label="Due date"
-							onchange={(e) =>
-								void updateTask(t.id, {
-									due_at: combineDateTime(
-										(e.target as HTMLInputElement).value,
-										dueTimeValue(t.due_at)
-									)
-								})}
-						/>
-						<input
-							class="ctl row-time"
-							type="time"
-							value={dueTimeValue(t.due_at)}
-							aria-label="Due time"
-							disabled={t.due_at == null}
-							title={t.due_at == null ? 'Set a date first' : 'Due time'}
-							onchange={(e) =>
-								void updateTask(t.id, {
-									due_at: combineDateTime(dueInputValue(t.due_at), (e.target as HTMLInputElement).value)
-								})}
-						/>
-						<select
-							class="ctl sel"
-							value={t.status}
-							aria-label="Status"
-							onchange={(e) =>
-								void updateTask(t.id, { status: (e.target as HTMLSelectElement).value as TaskStatus })}
-						>
-							<option value="todo">Todo</option>
-							<option value="doing">Doing</option>
-							<option value="done">Done</option>
-						</select>
-						<button class="abtn del" title="Delete" onclick={() => void handleDelete(t)}>
-							<span class="material-symbols-outlined">delete</span>
-						</button>
-					</div>
+	<div class="workspace">
+		<aside class="filter-rail" aria-label="Task filters">
+			<nav class="filters" aria-label="Task filters">
+				{#each filters as item (item.key)}
+					<button class="filter" class:active={filter === item.key} onclick={() => (filter = item.key)} aria-current={filter === item.key ? 'page' : undefined}>
+						<span class="material-symbols-outlined">{item.icon}</span>
+						<span>{item.label}</span>
+						<span class="filter-count">{filterCounts[item.key]}</span>
+					</button>
 				{/each}
-			</section>
-		{/each}
-	{/if}
+			</nav>
+		</aside>
+		<div class="list-pane">
+			<div class="addrow">
+				<span class="material-symbols-outlined add-icon">add</span>
+				<input
+					class="title-in"
+					placeholder="Add a task"
+					bind:value={newTitle}
+					aria-label="New task title"
+					onkeydown={(e) => {
+						if (e.key === 'Enter') void handleAdd();
+					}}
+				/>
+				<input class="ctl date-in" type="date" bind:value={newDue} aria-label="Due date" />
+				<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
+					{adding ? 'Adding…' : 'Add'}
+				</button>
+			</div>
+
+			<div class="toolbar">
+				<span class="material-symbols-outlined search-icon">search</span>
+				<input class="search" placeholder="Search tasks" bind:value={query} aria-label="Search tasks" />
+			</div>
+
+			{#if $tasks.length === 0}
+				<div class="empty">
+					<span class="material-symbols-outlined empty-icon">task</span>
+					<p>No tasks yet. Add the first one above.</p>
+				</div>
+			{:else if visible.length === 0}
+				<div class="empty">
+					<p>{query.trim() ? 'No matching tasks.' : 'No tasks here.'}</p>
+				</div>
+			{:else}
+				{#each groups as group (group.key)}
+					<section class="group">
+						<div class="ghead">
+							<span class="glabel">{group.label}</span>
+							<span class="gcount">{group.rows.length}</span>
+						</div>
+						{#each group.rows as t (t.id)}
+							<div
+								class="row {t.status}"
+								class:done={t.status === 'done'}
+								class:over={isOverdue(t)}
+								onclick={(e) => rowClick(t, e)}
+								role="button"
+								tabindex="0"
+								aria-label="Open {t.title} details"
+								onkeydown={(e) => {
+									if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('row'))
+										openTask(t.id);
+								}}
+							>
+								<button
+									class="status"
+									title="Cycle status"
+									onclick={() => void updateTask(t.id, { status: cycleStatus(t) })}
+								>
+									<span class="material-symbols-outlined">{statusIcon(t.status)}</span>
+								</button>
+								<div class="main">
+									<input
+										class="t-in"
+										value={t.title}
+										aria-label="Task title"
+										onchange={(e) => {
+											const v = (e.target as HTMLInputElement).value.trim();
+											if (v && v !== t.title) void updateTask(t.id, { title: v });
+											else (e.target as HTMLInputElement).value = t.title;
+										}}
+									/>
+									<div class="sub">
+										<span
+											class="due"
+											class:overdue={isOverdue(t)}
+											class:today={isDueToday(t) && t.status !== 'done'}
+										>
+											<span class="material-symbols-outlined mini">event</span>
+											{dueLabel(t.due_at)}
+										</span>
+										{#if t.remind_at != null}
+											<span class="rem" title="Reminds {stampShort(t.remind_at)}">
+												<span class="material-symbols-outlined mini">notifications</span>
+												{stampShort(t.remind_at)}
+											</span>
+										{/if}
+										{#if t.status === 'doing'}
+											<span class="st doing">doing</span>
+										{/if}
+										{#if t.priority !== 'none'}
+											<span class="pri pri-{t.priority}">{t.priority}</span>
+										{/if}
+										{#if childrenOf($tasks, t.id).length > 0}
+											<span class="sub-c" title="Subtasks">
+												<span class="material-symbols-outlined mini">account_tree</span>
+												{childrenOf($tasks, t.id).filter((s) => s.status === 'done').length}/{childrenOf(
+													$tasks,
+													t.id
+												).length}
+											</span>
+										{/if}
+										{#if t.link_count > 0}
+											<span
+												class="linked"
+												title={t.link_count === 1 ? '1 linked note' : `${t.link_count} linked notes`}
+											>
+												<span class="material-symbols-outlined mini">description</span>
+												{t.link_count}
+											</span>
+										{/if}
+									</div>
+								</div>
+								<button class="abtn del" title="Delete" onclick={() => void handleDelete(t)}>
+									<span class="material-symbols-outlined">delete</span>
+								</button>
+							</div>
+						{/each}
+					</section>
+				{/each}
+			{/if}
+		</div>
+	</div>
 </div>
 
 <style>
 	.content {
-		max-width: 780px;
+		max-width: 1160px;
 		margin: 0 auto;
 		width: 100%;
-		padding: 20px var(--gutter) 56px;
+		padding: 32px 24px 72px;
+	}
+	.workspace {
+		display: grid;
+		grid-template-columns: 192px minmax(0, 1fr);
+		gap: 40px;
+		align-items: start;
+	}
+	.filter-rail { position: sticky; top: 24px; }
+	.filters { display: flex; flex-direction: column; gap: 3px; }
+	.filter {
+		width: 100%;
+		min-height: 36px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 0 10px;
+		border: 0;
+		border-radius: var(--radius);
+		background: transparent;
+		color: var(--on-surface-variant);
+		font: 12px var(--font-ui);
+		text-align: left;
+		cursor: pointer;
+	}
+	.filter .material-symbols-outlined { font-size: 17px; color: var(--outline); }
+	.filter:hover { background: var(--surface-container-low); color: var(--on-surface); }
+	.filter.active { background: var(--surface-container-high); color: var(--on-surface); font-weight: 600; }
+	.filter.active .material-symbols-outlined { color: var(--primary); }
+	.filter-count { margin-left: auto; color: var(--outline); font-variant-numeric: tabular-nums; }
+	.list-pane { min-width: 0; }
+	.page-heading {
+		display: flex;
+		align-items: end;
+		justify-content: space-between;
+		gap: 16px;
+		margin-bottom: 24px;
+	}
+	h1 {
+		margin: 0;
+		font-size: 24px;
+		line-height: 30px;
+		font-weight: 600;
+		letter-spacing: -0.035em;
+	}
+	.heading-count {
+		color: var(--on-surface-variant);
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
 	.addrow {
@@ -292,8 +341,8 @@
 		background: var(--surface-container-lowest);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius-lg);
-		padding: 6px 6px 6px 10px;
-		margin-bottom: 10px;
+		padding: 8px 8px 8px 12px;
+		margin-bottom: 20px;
 	}
 	.addrow:focus-within {
 		border-color: var(--primary);
@@ -362,7 +411,9 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin: 0 2px 6px;
+		margin: 0 2px 12px;
+		padding-bottom: 10px;
+		border-bottom: 1px solid var(--border-default);
 	}
 	.search-icon {
 		font-size: 16px;
@@ -381,25 +432,6 @@
 	.search::placeholder {
 		color: var(--outline-variant);
 	}
-	.check {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--font-ui-small);
-		color: var(--on-surface-variant);
-		cursor: pointer;
-		user-select: none;
-	}
-	.check input {
-		accent-color: var(--primary);
-	}
-	.count {
-		margin-left: auto;
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-		font-variant-numeric: tabular-nums;
-	}
-
 	.empty {
 		padding: 56px 0;
 		text-align: center;
@@ -415,61 +447,38 @@
 	}
 
 	.group {
-		margin-bottom: 22px;
+		margin-bottom: 28px;
 	}
 	.ghead {
 		display: flex;
 		align-items: baseline;
 		gap: var(--stack-gap);
-		padding-bottom: 6px;
-		border-bottom: 1px solid var(--border-default);
+		padding: 0 2px 8px;
 	}
 	.glabel {
-		font-size: var(--font-label-caps);
-		line-height: var(--font-label-caps-lh);
-		font-weight: var(--font-label-caps-weight);
-		letter-spacing: var(--label-caps-spacing);
-		text-transform: uppercase;
-		color: var(--outline);
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--on-surface-variant);
 	}
 	.gcount {
-		font-size: var(--font-label-caps);
+		font-size: 11px;
 		color: var(--outline-variant);
 		font-variant-numeric: tabular-nums;
 	}
 
-	/* Rows carry the same spine language as kanban cards. */
 	.row {
-		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 8px 6px 8px 12px;
+		padding: 12px 8px;
 		border-bottom: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		overflow: hidden;
 		cursor: pointer;
-	}
-	.row::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 3px;
-		background: transparent;
-	}
-	.row.doing::before {
-		background: var(--tertiary);
-	}
-	.row.over::before {
-		background: var(--error);
 	}
 	.row:hover {
 		background: var(--surface-container-low);
 	}
 	.row.done {
-		opacity: 0.55;
+		opacity: 0.7;
 	}
 	.status {
 		background: none;
@@ -506,7 +515,7 @@
 		outline: none;
 		color: var(--on-surface);
 		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
+		font-size: 13px;
 		font-weight: var(--font-ui-medium-weight);
 		padding: 0;
 		width: 100%;
@@ -578,18 +587,6 @@
 		gap: 3px;
 		color: var(--outline-variant);
 	}
-	.row-date {
-		width: 126px;
-	}
-	.row-time {
-		width: 92px;
-	}
-	.row-time:disabled {
-		opacity: 0.4;
-	}
-	.sel {
-		width: 112px;
-	}
 	.abtn {
 		width: 24px;
 		height: 24px;
@@ -611,10 +608,31 @@
 		color: var(--error);
 		background: var(--surface-container-high);
 	}
+	.row .del { opacity: 0; }
+	.row:hover .del,
+	.row:focus-within .del { opacity: 1; }
+	@media (hover: none) {
+		.row .del { opacity: 1; }
+	}
+	@media (max-width: 600px) {
+		.content { padding: 24px 16px 56px; }
+		.page-heading { margin-bottom: 20px; }
+		.workspace { display: block; }
+		.filter-rail { position: static; margin: 0 -16px 20px; overflow-x: auto; padding: 0 16px; }
+		.filters { flex-direction: row; width: max-content; gap: 4px; }
+		.filter { width: auto; white-space: nowrap; padding: 0 12px; }
+		.filter-count { margin-left: 2px; }
+		.addrow { flex-wrap: wrap; }
+		.title-in { flex-basis: calc(100% - 32px); }
+		.date-in { margin-left: 26px; flex: 1; }
+		.toolbar { justify-content: space-between; }
+		.search { flex: 1; min-width: 0; }
+		.sub { flex-wrap: wrap; gap: 4px 10px; }
+	}
+	.filter:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
 	button:focus-visible,
-	input:focus-visible,
-	select:focus-visible {
+	input:focus-visible {
 		outline: 1px solid var(--primary);
 		outline-offset: 1px;
 	}

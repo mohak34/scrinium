@@ -187,6 +187,7 @@
 		const d = new Date(viewYear, viewMonth + dir, 1);
 		viewYear = d.getFullYear();
 		viewMonth = d.getMonth();
+		selected = dayKey(viewYear, viewMonth, 1);
 	}
 
 	function goToday() {
@@ -202,6 +203,10 @@
 </script>
 
 <div class="content">
+	<div class="page-heading">
+		<h1>Calendar</h1>
+		<span class="heading-count">{unscheduled} without a date</span>
+	</div>
 	<div class="cal-head">
 		<button class="nav" title="Previous month" onclick={() => shiftMonth(-1)} aria-label="Previous month">
 			<span class="material-symbols-outlined">chevron_left</span>
@@ -216,134 +221,143 @@
 				Connect Google Calendar
 			</button>
 		{/if}
-		<span class="unsched" title="Open tasks without a due date">
-			{unscheduled} unscheduled
-		</span>
 	</div>
 
-	<div class="grid" role="grid" aria-label="Task calendar">
-		{#each WEEKDAYS as w (w)}
-			<div class="dow">{w}</div>
-		{/each}
-		{#each cells as c (c.key)}
-			{@const list = byDay.get(c.key) ?? []}
-			{@const open = list.filter((t) => t.status !== 'done')}
-			{@const evs = eventsByDay.get(c.key) ?? []}
-			<button
-				class="day"
-				class:out={!c.inMonth}
-				class:today={c.key === todayKey}
-				class:sel={c.key === selected}
-				onclick={() => (selected = c.key)}
-				aria-label="{c.d} {monthLabel}, {open.length} open tasks, {evs.length} events"
-			>
-				<span class="num">{c.d}</span>
-				{#if open.length > 0}
-					<span class="dots" aria-hidden="true">
-						{#each open.slice(0, 4) as t (t.id)}
-							<span
-								class="dot"
-								class:todo={t.status === 'todo'}
-								class:doing={t.status === 'doing'}
-								class:over={isOverdue(t)}
-								class:pri={t.priority === 'urgent' || t.priority === 'high'}
-							></span>
-						{/each}
-					</span>
-				{/if}
-				{#if evs.length > 0}
-					<span class="evts" aria-hidden="true">
-						{#each evs.slice(0, 3) as e (e.id)}
-							<span class="evt" title={e.title}></span>
-						{/each}
-					</span>
-				{/if}
-				{#if open.length > 4 || evs.length > 3}
-					<span class="more">
-						+{(open.length > 4 ? open.length - 4 : 0) + (evs.length > 3 ? evs.length - 3 : 0)}
-					</span>
-				{/if}
-			</button>
-		{/each}
-	</div>
-
-	<section class="day-list" aria-label="Tasks on selected day">
-		<div class="dhead">
-			<span class="dlabel">{selectedLabel}</span>
-			<span class="dcount">{selectedTasks.length + selectedEvents.length}</span>
-		</div>
-		{#if selectedEvents.length > 0}
-			{#each selectedEvents as e (e.id)}
-				<div class="evrow" title="Google Calendar event (read-only)">
-					<span class="evtime">{e.allDay ? 'all day' : fmtTime(e.start)}</span>
-					<span class="evtitle">{e.title}</span>
-					<span class="evsrc">Google</span>
-				</div>
+	<div class="calendar-layout">
+		<div class="month-pane">
+			<div class="grid" role="grid" aria-label="Task calendar">
+			{#each WEEKDAYS as w (w)}
+				<div class="dow">{w}</div>
 			{/each}
-		{/if}
-		{#if selectedTasks.length === 0 && selectedEvents.length === 0}
-			<p class="empty">Nothing due this day.</p>
-		{:else}
-			{#each selectedTasks as t (t.id)}
-				<div
-					class="row"
-					class:done={t.status === 'done'}
-					class:over={isOverdue(t)}
-					onclick={(e) => {
-						const el = e.target as HTMLElement;
-						if (el.closest('button,input')) return;
-						openTask(t.id);
-					}}
-					role="button"
-					tabindex="0"
-					aria-label="Open task details"
-					onkeydown={(e) => {
-						if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('row'))
-							openTask(t.id);
-					}}
+			{#each cells as c (c.key)}
+				{@const list = byDay.get(c.key) ?? []}
+				{@const open = list.filter((t) => t.status !== 'done')}
+				{@const evs = eventsByDay.get(c.key) ?? []}
+				<button
+					class="day"
+					class:out={!c.inMonth}
+					class:today={c.key === todayKey}
+					class:sel={c.key === selected}
+					onclick={() => (selected = c.key)}
+					aria-label="{new Date(c.y, c.m, c.d).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}, {open.length} open tasks, {evs.length} events"
 				>
-					<button
-						class="status"
-						title="Cycle status"
-						onclick={() =>
-							void updateTask(t.id, {
-								status: t.status === 'todo' ? 'doing' : t.status === 'doing' ? 'done' : 'todo'
-							})}
-					>
-						<span class="material-symbols-outlined">{statusIcon(t)}</span>
-					</button>
-					<div class="main">
-						<span class="t-title">{t.title}</span>
-						<span class="sub">
-							{#if dueTimeValue(t.due_at)}
-								<span class="time">{dueTimeValue(t.due_at)}</span>
-							{:else}
-								<span class="allday">all day</span>
-							{/if}
-							{#if t.priority !== 'none'}
-								<span class="pri pri-{t.priority}">{t.priority}</span>
-							{/if}
+					<span class="num">{c.d}</span>
+					<span class="entries" aria-hidden="true">
+						{#each open.slice(0, 2) as t (t.id)}
+							<span class="entry task-entry" class:late={isOverdue(t)} title={t.title}>{t.title}</span>
+						{/each}
+						{#each evs.slice(0, Math.max(0, 2 - open.length)) as e (e.id)}
+							<span class="entry event-entry" title={e.title}>{e.title}</span>
+						{/each}
+					</span>
+					{#if open.length + evs.length > 2}
+						<span class="more">
+							+{open.length + evs.length - 2} more
 						</span>
-					</div>
-				</div>
+					{/if}
+				</button>
 			{/each}
-		{/if}
-	</section>
+			</div>
+		</div>
+
+		<section class="day-list" aria-label="Tasks on selected day">
+			<div class="dhead">
+				<span class="dlabel">{selectedLabel}</span>
+				<span class="dcount">{selectedTasks.length + selectedEvents.length}</span>
+			</div>
+			{#if selectedEvents.length > 0}
+				{#each selectedEvents as e (e.id)}
+					<div class="evrow" title="Google Calendar event (read-only)">
+						<span class="evtime">{e.allDay ? 'all day' : fmtTime(e.start)}</span>
+						<span class="evtitle">{e.title}</span>
+						<span class="evsrc">Google</span>
+					</div>
+				{/each}
+			{/if}
+			{#if selectedTasks.length === 0 && selectedEvents.length === 0}
+				<p class="empty">Nothing due this day.</p>
+			{:else}
+				{#each selectedTasks as t (t.id)}
+					<div
+						class="row"
+						class:done={t.status === 'done'}
+						class:over={isOverdue(t)}
+						onclick={(e) => {
+							const el = e.target as HTMLElement;
+							if (el.closest('button,input')) return;
+							openTask(t.id);
+						}}
+						role="button"
+						tabindex="0"
+						aria-label="Open {t.title} details"
+						onkeydown={(e) => {
+							if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('row'))
+								openTask(t.id);
+						}}
+					>
+						<button
+							class="status"
+							title="Cycle status"
+							onclick={() =>
+								void updateTask(t.id, {
+									status: t.status === 'todo' ? 'doing' : t.status === 'doing' ? 'done' : 'todo'
+								})}
+						>
+							<span class="material-symbols-outlined">{statusIcon(t)}</span>
+						</button>
+						<div class="main">
+							<span class="t-title">{t.title}</span>
+							<span class="sub">
+								{#if dueTimeValue(t.due_at)}
+									<span class="time">{dueTimeValue(t.due_at)}</span>
+								{:else}
+									<span class="allday">all day</span>
+								{/if}
+								{#if t.priority !== 'none'}
+									<span class="pri pri-{t.priority}">{t.priority}</span>
+								{/if}
+							</span>
+						</div>
+					</div>
+				{/each}
+			{/if}
+		</section>
+	</div>
 </div>
 
 <style>
 	.content {
-		max-width: 1100px;
+		max-width: 1200px;
 		margin: 0 auto;
 		width: 100%;
-		padding: 20px var(--gutter) 56px;
+		padding: 32px 24px 72px;
+	}
+	.page-heading {
+		display: flex;
+		align-items: end;
+		justify-content: space-between;
+		gap: 16px;
+		margin-bottom: 24px;
+	}
+	h1 {
+		margin: 0;
+		font-size: 24px;
+		line-height: 30px;
+		font-weight: 600;
+		letter-spacing: -0.035em;
+	}
+	.heading-count {
+		color: var(--on-surface-variant);
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
 	.cal-head {
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		margin-bottom: 12px;
+		margin-bottom: 16px;
 	}
 	.nav {
 		width: 28px;
@@ -367,8 +381,8 @@
 		border: none;
 		color: var(--on-surface);
 		font-family: var(--font-ui);
-		font-size: var(--font-ui-medium);
-		font-weight: var(--font-ui-medium-weight);
+		font-size: 16px;
+		font-weight: 600;
 		cursor: pointer;
 		padding: 4px 8px;
 		border-radius: var(--radius);
@@ -377,7 +391,7 @@
 		background: var(--surface-container-low);
 	}
 	.today-btn {
-		margin-left: 8px;
+		margin-left: auto;
 		height: 28px;
 		padding: 0 12px;
 		background: none;
@@ -398,7 +412,7 @@
 		padding: 0 12px;
 		background: var(--primary);
 		border: 1px solid var(--primary);
-		border-radius: var(--radius-full);
+		border-radius: var(--radius);
 		color: var(--on-primary);
 		font-family: var(--font-ui);
 		font-size: var(--font-ui-small);
@@ -409,51 +423,58 @@
 	.connect-btn:hover {
 		filter: brightness(1.08);
 	}
-	.unsched {
-		margin-left: auto;
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-		font-variant-numeric: tabular-nums;
-	}
-
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(7, minmax(0, 1fr));
-		gap: 4px;
+		gap: 1px;
+		background: var(--border-default);
+		border: 1px solid var(--border-default);
+		border-radius: var(--radius-md);
+		overflow: hidden;
 	}
+	.calendar-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 300px;
+		gap: 28px;
+		align-items: start;
+	}
+	.month-pane { min-width: 0; }
 	.dow {
 		text-align: center;
-		font-size: var(--font-ui-micro);
-		color: var(--outline-variant);
-		padding: 4px 0;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--on-surface-variant);
+		padding: 10px 0;
+		background: var(--surface-container-low);
 	}
 	.day {
-		min-height: 76px;
+		min-height: 108px;
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
-		gap: 4px;
-		padding: 6px 8px;
-		background: var(--surface-container-lowest);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-md);
+		gap: 5px;
+		padding: 8px;
+		background: var(--background);
+		border: 0;
 		cursor: pointer;
 		color: var(--on-surface);
 		font-family: var(--font-ui);
 	}
 	.day:hover {
-		border-color: var(--border-strong);
+		background: var(--surface-container-low);
 	}
 	.day.out {
-		opacity: 0.35;
+		background: var(--surface-container-lowest);
+		color: var(--outline);
+	}
+	.day.sel {
+		background: var(--surface-container);
+		box-shadow: inset 0 0 0 1px var(--primary);
 	}
 	.day.today .num {
 		background: var(--primary);
 		color: var(--on-primary);
 		border-radius: var(--radius-full);
-	}
-	.day.sel {
-		border-color: var(--primary);
 	}
 	.num {
 		font-size: var(--font-ui-small);
@@ -464,37 +485,36 @@
 		align-items: center;
 		justify-content: center;
 	}
-	.dots {
+	.entries {
+		width: 100%;
 		display: flex;
-		gap: 4px;
-		flex-wrap: wrap;
+		flex-direction: column;
+		gap: 3px;
 	}
-	.dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: var(--secondary);
+	.entry {
+		display: block;
+		width: 100%;
+		padding: 3px 5px;
+		border-radius: var(--radius-sm);
+		font-size: 11px;
+		line-height: 15px;
+		text-align: left;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
-	.dot.doing {
-		background: var(--tertiary);
+	.task-entry {
+		background: var(--secondary-container);
+		color: var(--on-surface);
 	}
-	.dot.over {
-		background: var(--error);
+	.task-entry.late {
+		background: var(--error-container);
+		color: var(--on-error-container);
 	}
-	.dot.pri {
-		outline: 1px solid var(--error);
-		outline-offset: 1px;
-	}
-	.evts {
-		display: flex;
-		gap: 4px;
-		flex-wrap: wrap;
-	}
-	.evt {
-		width: 7px;
-		height: 7px;
-		border-radius: 2px;
-		border: 1px solid var(--primary);
+	.event-entry {
+		background: var(--surface-container-high);
+		color: var(--on-surface-variant);
+		box-shadow: inset 2px 0 var(--primary);
 	}
 	.more {
 		font-size: var(--font-ui-micro);
@@ -503,7 +523,9 @@
 	}
 
 	.day-list {
-		margin-top: 20px;
+		min-width: 0;
+		padding-left: 24px;
+		border-left: 1px solid var(--border-default);
 	}
 	.dhead {
 		display: flex;
@@ -513,12 +535,9 @@
 		border-bottom: 1px solid var(--border-default);
 	}
 	.dlabel {
-		font-size: var(--font-label-caps);
-		line-height: var(--font-label-caps-lh);
-		font-weight: var(--font-label-caps-weight);
-		letter-spacing: var(--label-caps-spacing);
-		text-transform: uppercase;
-		color: var(--outline);
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--on-surface-variant);
 	}
 	.dcount {
 		font-size: var(--font-label-caps);
@@ -532,13 +551,12 @@
 		margin: 0;
 	}
 
-	/* Google events are read-only visitors: quiet rows, no actions. */
 	.evrow {
 		display: flex;
 		align-items: baseline;
 		gap: 10px;
 		padding: 7px 6px;
-		border-bottom: 1px dashed var(--border-default);
+		border-bottom: 1px solid var(--border-default);
 	}
 	.evtime {
 		min-width: 64px;
@@ -567,7 +585,6 @@
 		gap: 8px;
 		padding: 8px 6px;
 		border-bottom: 1px solid var(--border-default);
-		border-radius: var(--radius);
 		cursor: pointer;
 	}
 	.row:hover {
@@ -602,7 +619,7 @@
 		gap: 1px;
 	}
 	.t-title {
-		font-size: var(--font-ui-small);
+		font-size: 13px;
 		font-weight: var(--font-ui-medium-weight);
 		color: var(--on-surface);
 		overflow: hidden;
@@ -642,7 +659,21 @@
 	}
 
 	button:focus-visible {
-		outline: 1px solid var(--primary);
-		outline-offset: 1px;
+		outline: 2px solid var(--primary);
+		outline-offset: -2px;
+	}
+	@media (max-width: 680px) {
+		.content { padding: 24px 16px 56px; }
+		.page-heading { margin-bottom: 20px; }
+		.cal-head { flex-wrap: wrap; }
+		.connect-btn { margin-left: 0; }
+		.day { min-height: 66px; padding: 5px 3px; }
+		.num { min-width: 22px; height: 22px; }
+		.entry { padding: 3px; font-size: 0; line-height: 6px; height: 6px; }
+		.more { font-size: 9px; }
+	}
+	@media (max-width: 980px) {
+		.calendar-layout { grid-template-columns: 1fr; gap: 24px; }
+		.day-list { border-left: 0; padding-left: 0; }
 	}
 </style>

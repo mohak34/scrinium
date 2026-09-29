@@ -31,6 +31,8 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
   not just "whoever has a Google account".
 - **Task checkboxes** — click to toggle `[ ]` ↔ `[x]`; on the active line the
   raw brackets come back and the caret crosses them freely.
+- **Tasks** — manage due dates and status in a task list, Kanban board, or
+  calendar. Open a task for details; the calendar can also show Google events.
 - **Wikilinks + backlinks** — `[[Note]]`, `[[Note|alias]]`, `[[Note#section]]`
   render as clickable pills with `[[` autocomplete; clicking an unresolved
   link creates the note. The sidebar lists every note linking to the open one.
