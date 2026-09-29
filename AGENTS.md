@@ -226,7 +226,7 @@ State channels you will touch:
 - Deploys run through GitHub Actions (`.github/workflows/deploy.yml`): every
   push to `main` typechecks, builds, rsyncs to `/opt/scrinium/app`, runs
   `npm install --omit=dev --legacy-peer-deps` (recompiles native
-  `better-sqlite3`), runs the idempotent better-auth migrate, restarts
+  `better-sqlite3`), runs the idempotent better-auth migrate as `scrinium`, restarts
   `scrinium.service`, and smoke-tests the site. Secrets used:
   `DEPLOY_KEY`, `VPS_HOST`, `VPS_USER`, `SITE_URL`.
 - The rsync excludes `node_modules .git .svelte-kit data vault .opencode
@@ -270,9 +270,11 @@ ssh $VPS_USER@$VPS_HOST \
 ```
 
 **Schema (auth/DB) changes:** CI runs the migrate on every deploy
-(idempotent), so no extra step. To run it by hand:
+(idempotent), so no extra step. The CLI imports `db.ts`, which writes task
+tables on startup; run it as the `scrinium` user that owns the database. To
+run it by hand:
 ```bash
-sudo bash -c 'cd /opt/scrinium/app && set -a && . ./.env && set +a && npx @better-auth/cli migrate'
+sudo -u scrinium -H sh -c 'cd /opt/scrinium/app && npx --yes @better-auth/cli migrate'
 ```
 
 **Never** `rm -rf`, `chown`, or otherwise touch `vault/` and `data/` on the
