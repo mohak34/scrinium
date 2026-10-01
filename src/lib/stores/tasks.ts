@@ -1,16 +1,8 @@
 import { writable, get } from 'svelte/store';
+import type { TaskArea, TaskPriority, TaskStatus } from '$lib/taskModel';
 
-export type TaskStatus = 'todo' | 'doing' | 'done';
-
-export type TaskPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent';
-
-export const PRIORITIES: { key: TaskPriority; label: string }[] = [
-	{ key: 'none', label: 'No priority' },
-	{ key: 'low', label: 'Low' },
-	{ key: 'medium', label: 'Medium' },
-	{ key: 'high', label: 'High' },
-	{ key: 'urgent', label: 'Urgent' }
-];
+export type { TaskArea, TaskPriority, TaskStatus };
+export { AREAS, PRIORITIES, STATUSES } from '$lib/taskModel';
 
 export interface Task {
 	id: string;
@@ -18,6 +10,9 @@ export interface Task {
 	detail: string;
 	status: TaskStatus;
 	priority: TaskPriority;
+	area: TaskArea | null;
+	waiting_on: string | null;
+	waiting_since: number | null;
 	parent_id: string | null;
 	due_at: number | null;
 	remind_at: number | null;
@@ -34,13 +29,27 @@ export interface NewTaskInput {
 	detail?: string;
 	status?: TaskStatus;
 	priority?: TaskPriority;
+	area?: TaskArea | null;
+	waiting_on?: string | null;
 	parent_id?: string | null;
 	due_at?: number | null;
 	remind_at?: number | null;
 }
 
 export type TaskUpdate = Partial<
-	Pick<Task, 'title' | 'detail' | 'status' | 'priority' | 'parent_id' | 'due_at' | 'remind_at' | 'position'>
+	Pick<
+		Task,
+		| 'title'
+		| 'detail'
+		| 'status'
+		| 'priority'
+		| 'area'
+		| 'waiting_on'
+		| 'parent_id'
+		| 'due_at'
+		| 'remind_at'
+		| 'position'
+	>
 >;
 
 export const tasks = writable<Task[]>([]);

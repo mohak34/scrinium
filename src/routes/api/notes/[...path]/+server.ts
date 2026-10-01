@@ -8,7 +8,8 @@ import {
 	renameNoteMeta,
 	indexNote,
 	deleteNoteIndexByPrefix,
-	renameNoteIndex
+	renameNoteIndex,
+	renameTaskLinks
 } from '$lib/server/db';
 import { deleteSharesByPrefix, renameShares } from '$lib/server/shares';
 
@@ -49,6 +50,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	renameNoteMeta(params.path, body.newPath);
 	renameNoteIndex(params.path, body.newPath);
 	renameShares(params.path, body.newPath);
+	renameTaskLinks(params.path, body.newPath);
 	return new Response(null, { status: 204 });
 };
 

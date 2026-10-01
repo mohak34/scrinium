@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import fs from 'node:fs';
 import path from 'node:path';
 import { titleScore } from './rank';
+import type { TaskStatus, TaskPriority, TaskArea } from '../taskModel';
 
 const dbPath = env.DATABASE_PATH || './data/scrinium.db';
 
@@ -181,7 +182,9 @@ export function listRecentNotes(limit = 15) {
 // Standalone tasks section (separate from note checklists). Due dates are
 // first-class columns, not parsed from text. gcal_event_id is a placeholder
 // for the later Calendar sync phase - no sync logic reads it yet.
-// priority is none|low|medium|high|urgent. parent_id nests a task as a
+// status, area and priority come from $lib/taskModel. waiting_on names who a
+// 'waiting' task is blocked on; waiting_since stamps when it entered that
+// column (set and cleared by updateTask). parent_id nests a task as a
 // subtask of another (one level in the UI; deeper nesting is stored but the
 // drawer only renders direct children). remind_at is an absolute timestamp,
 // independent of due_at, so reminders survive due-date moves. Vault
@@ -230,6 +233,9 @@ db.exec(`
 			);
 		}
 	}
+	if (!names.has('area')) db.exec(`ALTER TABLE tasks ADD COLUMN area TEXT`);
+	if (!names.has('waiting_on')) db.exec(`ALTER TABLE tasks ADD COLUMN waiting_on TEXT`);
+	if (!names.has('waiting_since')) db.exec(`ALTER TABLE tasks ADD COLUMN waiting_since INTEGER`);
 	if (names.has('note_path')) {
 		// Old single-note column folds into the links table, then goes away.
 		db.prepare(
@@ -242,9 +248,7 @@ db.exec(`
 	if (names.has('note_path')) db.exec(`ALTER TABLE tasks DROP COLUMN note_path`);
 }
 
-export type TaskStatus = 'todo' | 'doing' | 'done';
-
-export type TaskPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent';
+export type { TaskStatus, TaskPriority, TaskArea };
 
 export interface TaskRow {
 	id: string;
@@ -252,6 +256,9 @@ export interface TaskRow {
 	detail: string;
 	status: TaskStatus;
 	priority: TaskPriority;
+	area: TaskArea | null;
+	waiting_on: string | null;
+	waiting_since: number | null;
 	parent_id: string | null;
 	due_at: number | null;
 	remind_at: number | null;
@@ -283,6 +290,8 @@ export interface NewTask {
 	detail?: string;
 	status?: TaskStatus;
 	priority?: TaskPriority;
+	area?: TaskArea | null;
+	waiting_on?: string | null;
 	parent_id?: string | null;
 	due_at?: number | null;
 	remind_at?: number | null;
@@ -292,14 +301,18 @@ export interface NewTask {
 export function insertTask(t: NewTask): TaskRow {
 	const now = Date.now();
 	db.prepare(
-		`INSERT INTO tasks (id, title, detail, status, priority, parent_id, due_at, remind_at, position, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		`INSERT INTO tasks (id, title, detail, status, priority, area, waiting_on, waiting_since,
+		 parent_id, due_at, remind_at, position, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		t.id,
 		t.title,
 		t.detail ?? '',
 		t.status ?? 'todo',
 		t.priority ?? 'none',
+		t.area ?? null,
+		t.waiting_on ?? null,
+		t.status === 'waiting' ? now : null,
 		t.parent_id ?? null,
 		t.due_at ?? null,
 		t.remind_at ?? null,
@@ -311,7 +324,20 @@ export function insertTask(t: NewTask): TaskRow {
 }
 
 export type TaskPatch = Partial<
-	Pick<TaskRow, 'title' | 'detail' | 'status' | 'priority' | 'parent_id' | 'due_at' | 'remind_at' | 'position' | 'gcal_event_id'>
+	Pick<
+		TaskRow,
+		| 'title'
+		| 'detail'
+		| 'status'
+		| 'priority'
+		| 'area'
+		| 'waiting_on'
+		| 'parent_id'
+		| 'due_at'
+		| 'remind_at'
+		| 'position'
+		| 'gcal_event_id'
+	>
 >;
 
 export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
@@ -320,8 +346,13 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 	const next = { ...cur, ...patch, updated_at: Date.now() };
 	// A changed (or cleared) reminder re-arms: a new time must fire again.
 	if ('remind_at' in patch && patch.remind_at !== cur.remind_at) next.notified_at = null;
+	// Entering Waiting starts its clock; leaving it clears the clock.
+	if (next.status !== cur.status) {
+		next.waiting_since = next.status === 'waiting' ? next.updated_at : null;
+	}
 	db.prepare(
-		`UPDATE tasks SET title = ?, detail = ?, status = ?, priority = ?, parent_id = ?,
+		`UPDATE tasks SET title = ?, detail = ?, status = ?, priority = ?, area = ?,
+		 waiting_on = ?, waiting_since = ?, parent_id = ?,
 		 due_at = ?, remind_at = ?, notified_at = ?,
 		 position = ?, updated_at = ?, gcal_event_id = ? WHERE id = ?`
 	).run(
@@ -329,6 +360,9 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 		next.detail,
 		next.status,
 		next.priority,
+		next.area,
+		next.waiting_on,
+		next.waiting_since,
 		next.parent_id,
 		next.due_at,
 		next.remind_at,
@@ -349,7 +383,32 @@ export function deleteTask(id: string) {
 	db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
 }
 
-export function listTaskLinks(taskId: string): string[] {	const rows = db
+// Tasks that reference a note, for the note's right panel.
+export function listTasksForNote(notePath: string): TaskRow[] {
+	return db
+		.prepare(
+			`SELECT ${TASK_COLS} FROM tasks
+			 WHERE id IN (SELECT task_id FROM task_links WHERE note_path = ?)
+			 ORDER BY (status = 'done'), due_at IS NULL, due_at ASC, position ASC`
+		)
+		.all(notePath) as TaskRow[];
+}
+
+// Keep links pointing at the file after a note or folder rename, same as shares.
+export function renameTaskLinks(oldPath: string, newPath: string) {
+	db.prepare(
+		`UPDATE OR IGNORE task_links SET note_path = ? || substr(note_path, ?)
+		 WHERE note_path = ? OR note_path LIKE ?`
+	).run(newPath, oldPath.length + 1, oldPath, `${oldPath}/%`);
+	// Rows left behind were already linked at the new path; drop the duplicates.
+	db.prepare(`DELETE FROM task_links WHERE note_path = ? OR note_path LIKE ?`).run(
+		oldPath,
+		`${oldPath}/%`
+	);
+}
+
+export function listTaskLinks(taskId: string): string[] {
+	const rows = db
 		.prepare(`SELECT note_path FROM task_links WHERE task_id = ? ORDER BY created_at ASC`)
 		.all(taskId) as { note_path: string }[];
 	return rows.map((r) => r.note_path);

@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getTask, updateTask, deleteTask } from '$lib/server/db';
+import { isArea, isPriority, isStatus } from '$lib/taskModel';
 
 // Walk the parent chain to reject a reparent that would cycle.
 function wouldCycle(id: string, parentId: string | null): boolean {
@@ -29,14 +30,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		patch.detail = body.detail.slice(0, 4000);
 	}
 	if (body.status !== undefined) {
-		if (body.status !== 'todo' && body.status !== 'doing' && body.status !== 'done')
-			throw error(400, 'Bad status');
+		if (!isStatus(body.status)) throw error(400, 'Bad status');
 		patch.status = body.status;
 	}
 	if (body.priority !== undefined) {
-		const ok = ['none', 'low', 'medium', 'high', 'urgent'].includes(body.priority);
-		if (!ok) throw error(400, 'Bad priority');
+		if (!isPriority(body.priority)) throw error(400, 'Bad priority');
 		patch.priority = body.priority;
+	}
+	if (body.area !== undefined) {
+		if (body.area !== null && !isArea(body.area)) throw error(400, 'Bad area');
+		patch.area = body.area;
+	}
+	if (body.waiting_on !== undefined) {
+		if (body.waiting_on !== null && typeof body.waiting_on !== 'string')
+			throw error(400, 'Bad waiting_on');
+		patch.waiting_on = body.waiting_on?.trim().slice(0, 120) || null;
 	}
 	if (body.parent_id !== undefined) {
 		if (body.parent_id !== null && typeof body.parent_id !== 'string')
