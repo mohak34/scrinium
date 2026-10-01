@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { activePath, linkUnlinkedMention } from '$lib/stores/vault';
 	import { tree } from '$lib/stores/vault';
+	import PanelSection from './PanelSection.svelte';
 
 	interface Props {
 		onSelect: (path: string) => void;
@@ -71,175 +72,168 @@
 	function nameOf(path: string): string {
 		return (path.split('/').pop() ?? path).replace(/\.md$/i, '');
 	}
+
+	function folderOf(path: string): string {
+		const i = path.lastIndexOf('/');
+		return i === -1 ? '' : path.slice(0, i).split('/').pop()!;
+	}
+
+	// Split an excerpt around mentions of the open note so they can be marked.
+	function pieces(excerpt: string): { text: string; hit: boolean }[] {
+		const name = $activePath ? nameOf($activePath) : '';
+		if (!name) return [{ text: excerpt, hit: false }];
+		const re = new RegExp(`(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+		return excerpt
+			.split(re)
+			.filter(Boolean)
+			.map((text) => ({ text, hit: text.toLowerCase() === name.toLowerCase() }));
+	}
 </script>
 
-<section aria-label="Linked mentions">
-	<header>
-		<span class="title">Linked mentions</span>
-		{#if $activePath && !loading && !failed && links.length > 0}
-			<span class="count">{links.length}</span>
+{#snippet card(l: Backlink)}
+	<button class="card" onclick={() => onSelect(l.path)} title={l.path}>
+		<span class="head">
+			<span class="material-symbols-outlined">description</span>
+			<span class="name">{nameOf(l.path)}</span>
+			{#if folderOf(l.path)}<span class="folder">{folderOf(l.path)}</span>{/if}
+		</span>
+		{#if l.excerpt}
+			<span class="excerpt"
+				>{#each pieces(l.excerpt) as p, i (i)}{#if p.hit}<mark>{p.text}</mark>{:else}{p.text}{/if}{/each}</span
+			>
 		{/if}
-	</header>
-	{#if $activePath && !loading && links.length > 0}
-		<ul>
-			{#each links as l (l.path)}
-				<li>
-					<button onclick={() => onSelect(l.path)} title={l.path}>
-						<span class="name-row">
-							<span class="material-symbols-outlined link-icon">link</span>
-							<span class="name">{nameOf(l.path)}</span>
-						</span>
-						{#if l.excerpt}<span class="excerpt">"{l.excerpt}"</span>{/if}
-					</button>
-				</li>
-			{/each}
-		</ul>
-	{:else if $activePath && !loading && failed}
-		<p class="empty">Couldn't load backlinks.</p>
-	{:else if $activePath && !loading}
-		<p class="empty">None yet.</p>
-	{/if}
-	{#if $activePath && !loading && !failed && unlinked.length > 0}
-		<header class="sub">
-			<span class="title">Unlinked mentions</span>
-		</header>
-		<ul>
+	</button>
+{/snippet}
+
+{#if $activePath}
+	<PanelSection icon="link" title="Linked notes" count={links.length}>
+		{#if !loading && failed}
+			<p class="empty">Could not load linked notes.</p>
+		{:else if !loading && links.length === 0}
+			<p class="empty">No notes link here yet.</p>
+		{/if}
+		{#each links as l (l.path)}
+			{@render card(l)}
+		{/each}
+		{#if !loading && !failed && unlinked.length > 0}
+			<div class="sub">Mentioned without a link</div>
 			{#each unlinked as u (u.path)}
-				<li>
-					<button onclick={() => onSelect(u.path)} title={u.path}>
-						<span class="name-row">
-							<span class="material-symbols-outlined link-icon">link</span>
-							<span class="name">{nameOf(u.path)}</span>
-						</span>
-						{#if u.excerpt}<span class="excerpt">"{u.excerpt}"</span>{/if}
-					</button>
+				<div class="unlinked">
+					{@render card(u)}
 					<button
 						class="link-btn"
 						disabled={linking === u.path}
 						onclick={() => link(u.path)}
-						title="Convert to [[link]]"
+						title="Turn the mention into a [[link]]"
 					>
-						{linking === u.path ? 'Linking…' : 'Link'}
+						<span class="material-symbols-outlined">add_link</span>
+						{linking === u.path ? 'Linking' : 'Link'}
 					</button>
-				</li>
+				</div>
 			{/each}
-		</ul>
-	{/if}
-</section>
+		{/if}
+	</PanelSection>
+{/if}
 
 <style>
-	section {
+	.card {
 		display: flex;
 		flex-direction: column;
-		flex: none;
-		max-height: 45%;
-		padding: 1rem var(--gutter);
-		overflow-y: auto;
-	}
-	header {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-bottom: 1rem;
-	}
-	.title {
-		font-size: var(--font-ui-small);
-		line-height: var(--font-ui-small-lh);
-		font-weight: 600;
-		letter-spacing: var(--label-caps-spacing);
-		text-transform: uppercase;
-		color: var(--on-surface-variant);
-		flex: 1;
-	}
-	.count {
-		font-size: var(--font-ui-small);
-		color: var(--on-surface);
-		background: var(--background);
-		border-radius: var(--radius);
-		padding: 1px 8px;
-	}
-	header.sub {
-		margin-top: 1.5rem;
-	}
-	ul {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	li {
-		background: var(--background);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-lg);
-	}
-	li button {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 2px;
+		gap: 4px;
 		width: 100%;
-		background: none;
-		border: none;
-		padding: 7px 10px;
-		cursor: pointer;
+		margin: 6px 0;
+		padding: 9px 11px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-md);
+		background: var(--raise);
 		text-align: left;
+		cursor: pointer;
 	}
-	.name-row {
+	.card:hover {
+		border-color: var(--line-2);
+		background: var(--hover);
+	}
+	.head {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		max-width: 100%;
+		min-width: 0;
+		color: var(--text);
+		font: 500 var(--fs) var(--font-ui);
 	}
-	.link-icon {
-		flex: none;
+	.head .material-symbols-outlined {
 		font-size: 16px;
-		color: var(--primary);
+		color: var(--text-3);
 	}
 	.name {
-		font-size: var(--font-ui-small);
-		font-weight: 600;
-		color: var(--on-surface);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	li button:hover .name {
-		color: var(--primary);
+	.folder {
+		margin-left: auto;
+		padding-left: 8px;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+		font-weight: 400;
+		white-space: nowrap;
+	}
+	.excerpt {
+		color: var(--text-2);
+		font: var(--fs) / 1.55 var(--font-read);
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	mark {
+		background: var(--accent-dim);
+		color: var(--accent);
+		border-radius: 3px;
+		padding: 0 2px;
+	}
+	.sub {
+		margin: 12px 4px 0;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+	}
+	.unlinked {
+		position: relative;
+	}
+	.unlinked .card {
+		padding-bottom: 34px;
 	}
 	.link-btn {
-		align-self: flex-start;
-		margin: 2px 0 7px 10px;
-		background: none;
-		border: 1px solid var(--border-strong);
-		border-radius: var(--radius);
-		color: var(--on-surface-variant);
-		font-size: var(--font-ui-micro);
-		padding: 1px 8px;
+		position: absolute;
+		left: 10px;
+		bottom: 8px;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 22px;
+		padding: 0 8px 0 6px;
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-sm);
+		background: var(--bg);
+		color: var(--text-2);
+		font-size: var(--fs-xs);
 		cursor: pointer;
-		width: auto;
+	}
+	.link-btn .material-symbols-outlined {
+		font-size: 15px;
 	}
 	.link-btn:hover:not(:disabled) {
-		color: var(--primary);
-		border-color: var(--primary);
+		color: var(--accent);
+		border-color: var(--accent);
 	}
 	.link-btn:disabled {
 		opacity: 0.5;
 		cursor: default;
 	}
-	.excerpt {
-		font-size: var(--font-ui-micro);
-		color: var(--on-surface-variant);
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
 	.empty {
-		font-size: var(--font-ui-micro);
-		color: var(--outline-variant);
-		margin: 0;
+		margin: 4px 4px 2px;
+		color: var(--text-3);
+		font-size: var(--fs-sm);
 	}
 </style>

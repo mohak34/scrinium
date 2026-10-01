@@ -7,6 +7,10 @@
 	import '@material-symbols/font-400';
 	import '$lib/design/theme.css';
 	import ReminderToasts from '$lib/components/ReminderToasts.svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { APPS } from '$lib/apps';
+	import { flushSave } from '$lib/stores/vault';
 
 	let { children } = $props();
 
@@ -16,7 +20,23 @@
 		// as an app-level action.
 		const block = (e: MouseEvent) => e.preventDefault();
 		window.addEventListener('contextmenu', block);
-		return () => window.removeEventListener('contextmenu', block);
+
+		// Ctrl+Shift+1..4 jumps between Notes, Tasks, Board and Calendar.
+		// Plain Ctrl+digit is taken (editor headings, browser tabs). Public
+		// share and login pages have no apps to switch to.
+		const jump = (e: KeyboardEvent) => {
+			if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey) return;
+			const n = /^Digit([1-4])$/.exec(e.code)?.[1];
+			const path = page.url.pathname;
+			if (!n || path.startsWith('/login') || path.startsWith('/s/')) return;
+			e.preventDefault();
+			void flushSave().then(() => goto(APPS[Number(n) - 1].href));
+		};
+		window.addEventListener('keydown', jump);
+		return () => {
+			window.removeEventListener('contextmenu', block);
+			window.removeEventListener('keydown', jump);
+		};
 	});
 </script>
 

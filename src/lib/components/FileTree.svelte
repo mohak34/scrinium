@@ -137,7 +137,14 @@
 		renameCommitted = true;
 		onCancelRename();
 	}
-const display = $derived(sortPinnedFirst(entries));
+	const display = $derived(sortPinnedFirst(entries));
+
+	// Notes under a folder, shown as a quiet count on the folder row.
+	function noteCount(e: VaultEntry): number {
+		let n = 0;
+		for (const c of e.children ?? []) n += c.type === 'directory' ? noteCount(c) : c.name.endsWith('.md') ? 1 : 0;
+		return n;
+	}
 </script>
 
 <ul style="--depth: {depth}">
@@ -184,11 +191,11 @@ const display = $derived(sortPinnedFirst(entries));
 						ondragleave={() => folderDragLeave(entry)}
 						ondrop={(e) => folderDrop(e, entry)}
 					>
-						<span
-							class="material-symbols-outlined file-chevron"
-							>{$collapsedDirs.has(entry.path) ? 'folder' : 'folder_open'}</span
+						<span class="material-symbols-outlined file-chevron"
+							>{$collapsedDirs.has(entry.path) ? 'chevron_right' : 'expand_more'}</span
 						>
 						<span class="file-label">{entry.name}</span>
+						{#if noteCount(entry) > 0}<span class="count">{noteCount(entry)}</span>{/if}
 					</div>
 				{/if}
 				{#if !$collapsedDirs.has(entry.path)}
@@ -247,10 +254,10 @@ const display = $derived(sortPinnedFirst(entries));
 						e.stopPropagation();
 					}}
 				>
-					<span class="material-symbols-outlined file-icon">
-						{$pinnedPaths.includes(entry.path) ? 'push_pin' : 'description'}
-					</span>
 					<span class="file-label">{entry.name.replace(/\.md$/, '')}</span>
+					{#if $pinnedPaths.includes(entry.path)}
+						<span class="material-symbols-outlined pin-mark" title="Pinned">keep</span>
+					{/if}
 				</button>
 			{:else}
 				{@const viewable = /\.(png|jpe?g|gif|webp)$/i.test(entry.name)}
@@ -321,128 +328,118 @@ const display = $derived(sortPinnedFirst(entries));
 	ul {
 		list-style: none;
 		margin: 0;
-		padding-left: calc(var(--depth, 0) * 12px);
+		padding: 0;
+		position: relative;
 	}
-	.dir {
+	/* Indent guide for nested levels, aligned under the parent chevron. */
+	ul:not([style*='--depth: 0'])::before {
+		content: '';
+		position: absolute;
+		left: calc(var(--depth) * 16px + 1px);
+		top: 0;
+		bottom: 0;
+		width: 1px;
+		background: var(--line-2);
+		pointer-events: none;
+	}
+	.dir,
+	.file {
+		position: relative;
 		display: flex;
 		align-items: center;
-		gap: var(--stack-gap);
-		height: 28px;
-		padding: 0 var(--stack-gap);
-		border-radius: var(--radius);
-		color: var(--on-surface-variant);
-		font-size: var(--font-ui-small);
+		gap: 6px;
+		width: 100%;
+		height: 29px;
+		padding: 0 8px 0 calc(8px + var(--depth, 0) * 16px);
+		border: none;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-2);
+		font: var(--fs) var(--font-ui);
+		text-align: left;
 		cursor: pointer;
 		user-select: none;
+		white-space: nowrap;
 	}
-	.dir:hover {
-		background: #1d1f28;
-		color: var(--on-surface);
+	.dir {
+		color: var(--text);
+	}
+	.file {
+		padding-left: calc(30px + var(--depth, 0) * 16px);
+	}
+	.dir:hover,
+	.file:hover {
+		background: var(--hover);
+		color: var(--text);
 	}
 	.dir.drop-target {
-		background: #242840;
-		box-shadow: inset 0 0 0 1px var(--primary);
-		color: var(--on-surface);
+		background: var(--accent-dim);
+		box-shadow: inset 0 0 0 1px var(--accent);
 	}
 	.dir.dragging,
 	.file.dragging {
 		opacity: 0.4;
 	}
-	.file-chevron,
+	.file-chevron {
+		font-size: 18px;
+		color: var(--text-3);
+	}
 	.file-icon {
-		flex-shrink: 0;
 		font-size: 16px;
-		transition: opacity 0.12s ease;
+		color: var(--text-3);
 	}
-	.dir .file-chevron {
-		color: var(--on-surface-variant);
-		opacity: 0.4;
+	.file.asset {
+		padding-left: calc(10px + var(--depth, 0) * 16px);
 	}
-	.dir:hover .file-chevron {
-		opacity: 1;
+	.count {
+		margin-left: auto;
+		padding-left: 8px;
+		font-size: var(--fs-xs);
+		color: var(--text-3);
 	}
-	.file {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: var(--stack-gap);
-		width: 100%;
-		height: 28px;
-		text-align: left;
-		background: none;
-		border: none;
-		color: var(--on-surface-variant);
-		padding: 0 var(--stack-gap);
-		border-radius: var(--radius);
-		font-size: var(--font-ui-small);
-		font-family: var(--font-ui);
-		cursor: pointer;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.file .file-icon {
-		color: var(--on-surface-variant);
-		opacity: 0.6;
-	}
-	.file:hover {
-		background: #1d1f28;
-		color: var(--on-surface);
+	.pin-mark {
+		margin-left: auto;
+		font-size: 14px;
+		color: var(--text-3);
 	}
 	.file.active {
-		background: #111111;
-		color: var(--on-surface);
-		font-size: var(--font-ui-medium);
+		background: var(--accent-dim);
+		color: var(--text);
 	}
-	.file.active::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 2px;
-		background: var(--primary);
-	}
-	.file.active .file-icon {
-		color: var(--primary);
-		opacity: 1;
-	}
-	.file.pinned .file-icon {
-		color: var(--primary);
-		opacity: 0.9;
+	.file.active .pin-mark {
+		color: var(--accent);
 	}
 	.file-label {
-		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.file.asset {
 		cursor: default;
-		color: var(--outline);
-		font-size: var(--font-ui-micro);
+		color: var(--text-3);
+		font-size: var(--fs-sm);
 	}
 	.file.asset:hover {
 		background: none;
-	}
-	.file.asset .file-icon {
-		opacity: 0.4;
+		color: var(--text-3);
 	}
 	.file.asset.viewable {
 		cursor: pointer;
-		color: var(--on-surface-variant);
+		color: var(--text-2);
 	}
 	.file.asset.viewable:hover {
-		background: #1d1f28;
+		background: var(--hover);
 	}
 	.rename-input {
-		margin-left: var(--stack-gap);
-		width: calc(100% - var(--stack-gap));
-		background: var(--background);
-		border: 1px solid var(--primary);
-		border-radius: var(--radius);
-		color: var(--on-surface);
-		padding: 4px var(--stack-gap);
-		font-size: var(--font-ui-small);
+		display: block;
+		margin: 1px 0 1px calc(8px + var(--depth, 0) * 16px);
+		width: calc(100% - 8px - var(--depth, 0) * 16px);
+		height: 27px;
+		background: var(--bg);
+		border: 1px solid var(--accent);
+		border-radius: var(--r);
+		color: var(--text);
+		padding: 0 8px;
+		font: var(--fs) var(--font-ui);
 		outline: none;
 	}
 </style>

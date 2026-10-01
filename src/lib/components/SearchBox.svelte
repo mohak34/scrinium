@@ -117,12 +117,13 @@
 		<input
 			bind:this={inputEl}
 			class="search-input"
-			placeholder="Search notes…"
+			placeholder="Search notes"
 			bind:value={query}
 			onfocus={() => (open = true)}
 			onblur={() => setTimeout(() => (open = false), 150)}
 			onkeydown={onKeyDown}
 		/>
+		{#if !query}<span class="kbd">/</span>{/if}
 	</div>
 	{#if open && query.trim()}
 		<div class="results" bind:this={resultsEl}>
@@ -155,23 +156,23 @@
 <style>
 	.searchbox {
 		position: relative;
-		padding: 0 var(--panel-padding) var(--gutter);
+		padding: 2px 10px 8px;
 	}
 	.search-field {
 		display: flex;
 		align-items: center;
-		gap: var(--stack-gap);
-		background: var(--surface-container-low);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		padding: 3px 8px;
+		gap: 8px;
+		height: 32px;
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-md);
+		padding: 0 8px 0 10px;
 	}
 	.search-field:focus-within {
-		border-color: var(--primary);
+		border-color: var(--accent);
 	}
 	.search-icon {
-		color: var(--on-surface-variant);
-		font-size: 14px;
+		color: var(--text-3);
+		font-size: 18px;
 	}
 	.search-input {
 		flex: 1;
@@ -179,25 +180,23 @@
 		background: transparent;
 		border: none;
 		outline: none;
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-micro);
-		line-height: var(--font-ui-micro-lh);
+		color: var(--text);
+		font: var(--fs) var(--font-ui);
 		padding: 0;
 	}
 	.search-input::placeholder {
-		color: var(--on-surface-variant);
+		color: var(--text-3);
 	}
 	.results {
 		position: absolute;
-		top: calc(100% - 12px);
-		left: var(--panel-padding);
-		right: var(--panel-padding);
+		top: calc(100% - 4px);
+		left: 10px;
+		right: 10px;
 		z-index: 60;
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-pop);
+		background: var(--panel);
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-lg);
+		box-shadow: var(--shadow);
 		max-height: 55vh;
 		overflow-y: auto;
 		padding: 4px;
@@ -210,36 +209,36 @@
 		text-align: left;
 		background: none;
 		border: none;
-		color: var(--on-surface-variant);
-		padding: 6px 8px;
-		border-radius: var(--radius);
+		color: var(--text-2);
+		padding: 7px 9px;
+		border-radius: var(--r);
 		cursor: pointer;
 	}
 	.row:hover,
 	.row.selected {
-		background: var(--surface-container-high);
+		background: var(--hover);
 	}
 	.row.muted {
 		cursor: default;
-		color: var(--outline);
+		color: var(--text-3);
 	}
 	.title {
-		font-size: var(--font-ui-small);
-		color: var(--on-surface);
+		font-size: var(--fs);
+		color: var(--text);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.path {
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
+		font-size: var(--fs-xs);
+		color: var(--text-3);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.snippet {
-		font-size: var(--font-ui-micro);
-		color: var(--on-surface-variant);
+		font: var(--fs-sm) / 1.5 var(--font-read);
+		color: var(--text-2);
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		line-clamp: 2;

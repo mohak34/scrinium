@@ -7,6 +7,8 @@
 	import SearchBox from './SearchBox.svelte';
 	import {
 		tree,
+		pinnedPaths,
+		activePath,
 		createNote,
 		createFolder,
 		renameNote,
@@ -30,7 +32,7 @@
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest } from '$lib/stores/actions';
 	import { signOut } from '$lib/auth-client';
-	import WorkspaceSwitcher from './WorkspaceSwitcher.svelte';
+	import AppSwitcher from './AppSwitcher.svelte';
 
 	interface Props {
 		onSelect: (path: string) => void;
@@ -40,7 +42,6 @@
 	let { onSelect, onOpenAsset, onToggleCollapse }: Props = $props();
 
 	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
-	let addMenu = $state<{ x: number; y: number } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ path: string } | null>(null);
 	let treeEl = $state<HTMLDivElement>();
@@ -209,6 +210,17 @@
 		if (source && kind && canDrop(source, null, kind)) void onMove(source, null);
 	}
 
+	function countNotes(entries: VaultEntry[]): number {
+		let n = 0;
+		for (const e of entries) {
+			if (e.type === 'directory') n += countNotes(e.children ?? []);
+			else if (e.name.endsWith('.md')) n++;
+		}
+		return n;
+	}
+	const noteCount = $derived(countNotes($tree));
+	const pinName = (path: string) => (path.split('/').pop() ?? path).replace(/\.md$/, '');
+
 	const menuItems = $derived.by(() => {
 		if (!menu) return [];
 		const entry = menu.entry;
@@ -266,82 +278,80 @@
 	}}
 >
 	<div class="header">
-		<WorkspaceSwitcher current="notes" label="Scrinium" />
-		<div class="header-actions">
-			<button
-				class="icon-btn"
-				onclick={onToggleCollapse}
-				title="Collapse sidebar"
-			>
-				<span class="material-symbols-outlined">left_panel_close</span>
-			</button>
-			<button
-				class="icon-btn"
-				onclick={(e) => (addMenu = { x: e.clientX, y: e.clientY })}
-				title="New note or folder"
-			>
-				<span class="material-symbols-outlined">add</span>
-			</button>
-		</div>
+		<AppSwitcher current="notes" />
+		<span class="sp"></span>
+		<button
+			class="icon-btn"
+			title="New note (Space n)"
+			onclick={() => (createTarget = { parent: null, kind: 'note' })}
+		>
+			<span class="material-symbols-outlined">edit_square</span>
+		</button>
+		<button
+			class="icon-btn"
+			title="New folder (Space N)"
+			onclick={() => (createTarget = { parent: null, kind: 'folder' })}
+		>
+			<span class="material-symbols-outlined">create_new_folder</span>
+		</button>
+		<button class="icon-btn" onclick={onToggleCollapse} title="Collapse sidebar (Ctrl+/)">
+			<span class="material-symbols-outlined">left_panel_close</span>
+		</button>
 	</div>
 	<SearchBox {onSelect} />
-	<div
-		class="tree"
-		class:drop-root={$dropRoot}
-		role="tree"
-		aria-label="Vault files"
-		tabindex="-1"
-		bind:this={treeEl}
-		onkeydown={treeKey}
-		ondragover={rootDragOver}
-		ondragleave={() => dropRoot.set(false)}
-		ondrop={rootDrop}
-	>
-		<FileTree
-			entries={$tree}
-			{onSelect}
-			{onOpenAsset}
-			onContextMenu={onEntryContextMenu}
-			{onMove}
-			{createTarget}
-			{renameTarget}
-			onCreate={commitCreate}
-			onRename={commitRename}
-			onCancelCreate={() => (createTarget = null)}
-			onCancelRename={() => (renameTarget = null)}
-		/>
+	<div class="scroll">
+		{#if $pinnedPaths.length > 0}
+			<div class="group"><span class="material-symbols-outlined">keep</span>Pinned</div>
+			{#each $pinnedPaths as p (p)}
+				<button class="pin-row" class:active={$activePath === p} title={p} onclick={() => onSelect(p)}>
+					<span class="material-symbols-outlined">description</span>
+					<span class="pin-name">{pinName(p)}</span>
+				</button>
+			{/each}
+		{/if}
+		<div class="group"><span class="material-symbols-outlined">folder</span>Files</div>
+		<div
+			class="tree"
+			class:drop-root={$dropRoot}
+			role="tree"
+			aria-label="Vault files"
+			tabindex="-1"
+			bind:this={treeEl}
+			onkeydown={treeKey}
+			ondragover={rootDragOver}
+			ondragleave={() => dropRoot.set(false)}
+			ondrop={rootDrop}
+		>
+			<FileTree
+				entries={$tree}
+				{onSelect}
+				{onOpenAsset}
+				onContextMenu={onEntryContextMenu}
+				{onMove}
+				{createTarget}
+				{renameTarget}
+				onCreate={commitCreate}
+				onRename={commitRename}
+				onCancelCreate={() => (createTarget = null)}
+				onCancelRename={() => (renameTarget = null)}
+			/>
+		</div>
 	</div>
 	<div class="footer">
-		<button class="footer-item" onclick={() => goto('/tasks')}>
-			<span class="material-symbols-outlined">task</span>
-			<span>Tasks</span>
-		</button>
-		<button class="footer-item" onclick={() => goto('/trash')}>
+		<span class="count">{noteCount} {noteCount === 1 ? 'note' : 'notes'}</span>
+		<span class="sp"></span>
+		<button class="icon-btn" title="Trash" onclick={() => goto('/trash')}>
 			<span class="material-symbols-outlined">delete</span>
-			<span>Trash</span>
 		</button>
-		<button class="footer-item" onclick={() => goto('/settings')}>
+		<button class="icon-btn" title="Settings" onclick={() => goto('/settings')}>
 			<span class="material-symbols-outlined">settings</span>
-			<span>Settings</span>
 		</button>
-		<button class="footer-item" onclick={signOut}>
+		<button class="icon-btn" title="Sign out" onclick={signOut}>
 			<span class="material-symbols-outlined">logout</span>
-			<span>Sign out</span>
 		</button>
 	</div>
 	{#if menu}
 		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
-	{/if}
-	{#if addMenu}
-		<ContextMenu
-			x={addMenu.x}
-			y={addMenu.y}
-			items={[
-				{ label: 'New note', action: () => (createTarget = { parent: null, kind: 'note' }) },
-				{ label: 'New folder', action: () => (createTarget = { parent: null, kind: 'folder' }) }
-			]}
-			onClose={() => (addMenu = null)}
-		/>
 	{/if}
 </aside>
 
@@ -349,8 +359,8 @@
 	aside {
 		width: 100%;
 		flex-shrink: 0;
-		background: var(--sidebar-bg);
-		border-right: 1px solid var(--border-default);
+		background: var(--panel);
+		border-right: 1px solid var(--line);
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
@@ -358,64 +368,109 @@
 	.header {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		gap: 2px;
 		height: 48px;
-		padding: 0 var(--gutter);
+		padding: 0 8px 0 16px;
 		flex-shrink: 0;
 	}
-	.header-actions {
+	.sp {
+		flex: 1;
+	}
+	.icon-btn {
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-3);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.icon-btn:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.scroll {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding-bottom: 12px;
+	}
+	.group {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 12px 16px 4px;
+		color: var(--text-3);
+		font-size: var(--fs-sm);
+		font-weight: 500;
+	}
+	.group .material-symbols-outlined {
+		font-size: 16px;
+	}
+	.pin-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: calc(100% - 12px);
+		height: 29px;
+		margin: 0 6px;
+		padding: 0 8px 0 14px;
+		border: none;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-2);
+		font-size: var(--fs);
+		text-align: left;
+		cursor: pointer;
+	}
+	.pin-row .material-symbols-outlined {
+		font-size: 16px;
+		color: var(--text-3);
+	}
+	.pin-row:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.pin-row.active {
+		background: var(--accent-dim);
+		color: var(--text);
+	}
+	.pin-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.tree {
+		padding: 0 6px;
+		min-height: 40px;
+	}
+	.tree.drop-root {
+		background: var(--hover);
+		box-shadow: inset 0 0 0 1px var(--accent);
+		border-radius: var(--r);
+	}
+	.footer {
 		display: flex;
 		align-items: center;
 		gap: 2px;
-	}
-	.icon-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		border: none;
-		border-radius: var(--radius);
-		background: none;
-		color: var(--on-surface-variant);
-		cursor: pointer;
-		line-height: 1;
-	}
-	.icon-btn:hover {
-		background: var(--surface-container-low);
-		color: var(--on-surface);
-	}
-	.tree {
-		flex: 1;
-		overflow-y: auto;
-		padding: 0.25rem 0;
-	}
-	.tree.drop-root {
-		background: var(--surface-container-low);
-		box-shadow: inset 0 0 0 1px var(--primary);
-	}
-	.footer {
-		padding: var(--panel-padding);
-		border-top: 1px solid var(--border-default);
+		height: 26px;
+		padding: 0 6px 0 16px;
+		border-top: 1px solid var(--line);
 		flex-shrink: 0;
 	}
-	.footer-item {
-		display: flex;
-		align-items: center;
-		gap: var(--stack-gap);
-		width: 100%;
-		height: 28px;
-		padding: 0 8px;
-		background: none;
-		border: none;
-		border-radius: var(--radius);
-		color: var(--on-surface-variant);
-		font-size: var(--font-ui-small);
-		cursor: pointer;
-		text-align: left;
+	/* Lines up with the editor status bar across the bottom edge. */
+	.footer .icon-btn {
+		width: 22px;
+		height: 22px;
 	}
-	.footer-item:hover {
-		background: var(--surface-container-low);
-		color: var(--on-surface);
+	.footer .icon-btn .material-symbols-outlined {
+		font-size: 16px;
+	}
+	.count {
+		color: var(--text-3);
+		font-size: var(--fs-xs);
 	}
 </style>

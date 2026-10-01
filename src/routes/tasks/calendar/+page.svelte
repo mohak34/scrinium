@@ -1,17 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import {
 		tasks,
 		loadTasks,
+		createTask,
 		updateTask,
 		openTask,
+		openTaskId,
 		topLevel,
 		isOverdue,
 		dueTimeValue,
 		type Task
 	} from '$lib/stores/tasks';
+	import { areaMeta } from '$lib/taskModel';
 	import { connectCalendar } from '$lib/auth-client';
+	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
+	import PageFooter from '$lib/components/PageFooter.svelte';
 
 	// Google events as returned by GET /api/calendar/events (read-only).
 	interface GEvent {
@@ -73,12 +77,7 @@
 	}
 
 	onMount(() => {
-		loadTasks();
-		const key = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') goto('/');
-		};
-		window.addEventListener('keydown', key);
-		return () => window.removeEventListener('keydown', key);
+		void loadTasks();
 	});
 
 	function dayKey(y: number, m: number, d: number): string {
@@ -198,482 +197,595 @@
 	}
 
 	function statusIcon(t: Task): string {
-		return t.status === 'done' ? 'check_circle' : t.status === 'doing' ? 'timelapse' : 'circle';
+		if (t.status === 'done') return 'check_circle';
+		if (t.status === 'doing') return 'clock_loader_40';
+		if (t.status === 'waiting') return 'hourglass_top';
+		return 'radio_button_unchecked';
 	}
+
+	const undated = $derived(
+		topLevel($tasks).filter((t) => t.due_at == null && t.status !== 'done')
+	);
+
+	function dayStart(key: string): number {
+		const [y, m, d] = key.split('-').map(Number);
+		return new Date(y, m, d).getTime();
+	}
+
+	// Drag a task onto a day to (re)schedule it; a set time of day survives.
+	let dragId = $state<string | null>(null);
+	let overDay = $state<string | null>(null);
+
+	function dragStart(t: Task, e: DragEvent) {
+		dragId = t.id;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', t.id);
+		}
+	}
+
+	async function dropOn(key: string, e: DragEvent) {
+		e.preventDefault();
+		const id = dragId ?? e.dataTransfer?.getData('text/plain');
+		dragId = null;
+		overDay = null;
+		const t = id ? $tasks.find((x) => x.id === id) : null;
+		if (!t) return;
+		const base = new Date(dayStart(key));
+		if (t.due_at != null) {
+			const prev = new Date(t.due_at);
+			base.setHours(prev.getHours(), prev.getMinutes());
+		}
+		selected = key;
+		await updateTask(t.id, { due_at: base.getTime(), status: t.status === 'inbox' ? 'todo' : t.status });
+	}
+
+	let draft = $state('');
+	async function addForDay() {
+		const title = draft.trim();
+		if (!title) return;
+		draft = '';
+		await createTask({ title, due_at: dayStart(selected), status: 'todo' });
+	}
+
+	const daySummary = $derived.by(() => {
+		const parts = [];
+		if (selectedEvents.length) parts.push(`${selectedEvents.length} ${selectedEvents.length === 1 ? 'event' : 'events'}`);
+		if (selectedTasks.length) parts.push(`${selectedTasks.length} ${selectedTasks.length === 1 ? 'task' : 'tasks'}`);
+		return parts.join(', ') || 'Nothing planned';
+	});
 </script>
 
-<div class="content">
-	<div class="page-heading">
-		<h1>Calendar</h1>
-		<span class="heading-count">{unscheduled} without a date</span>
-	</div>
-	<div class="cal-head">
-		<button class="nav" title="Previous month" onclick={() => shiftMonth(-1)} aria-label="Previous month">
-			<span class="material-symbols-outlined">chevron_left</span>
-		</button>
-		<button class="month" onclick={goToday} title="Back to today">{monthLabel}</button>
-		<button class="nav" title="Next month" onclick={() => shiftMonth(1)} aria-label="Next month">
-			<span class="material-symbols-outlined">chevron_right</span>
-		</button>
-		<button class="today-btn" onclick={goToday}>Today</button>
-		{#if needConnect}
-			<button class="connect-btn" onclick={() => void connectCalendar()}>
-				Connect Google Calendar
+<div class="page">
+	<div class="main">
+		<header class="page-h">
+			<AppSwitcher current="calendar" size="lg" />
+			<span class="vsep"></span>
+			<span class="mo">{monthLabel}</span>
+			<button class="ib" title="Previous month" onclick={() => shiftMonth(-1)} aria-label="Previous month">
+				<span class="material-symbols-outlined">chevron_left</span>
 			</button>
-		{/if}
-	</div>
+			<button class="ib" title="Next month" onclick={() => shiftMonth(1)} aria-label="Next month">
+				<span class="material-symbols-outlined">chevron_right</span>
+			</button>
+			<button class="line" onclick={goToday}>Today</button>
+			<span class="sp"></span>
+			{#if needConnect}
+				<button class="line" onclick={() => void connectCalendar()}>
+					<span class="material-symbols-outlined">add_link</span>Connect Google Calendar
+				</button>
+			{/if}
+		</header>
 
-	<div class="calendar-layout">
-		<div class="month-pane">
-			<div class="grid" role="grid" aria-label="Task calendar">
+		<div class="grid" role="grid" aria-label="Task calendar" style="--weeks: {cells.length / 7}">
 			{#each WEEKDAYS as w (w)}
 				<div class="dow">{w}</div>
 			{/each}
-			{#each cells as c (c.key)}
+			{#each cells as c, i (c.key)}
 				{@const list = byDay.get(c.key) ?? []}
-				{@const open = list.filter((t) => t.status !== 'done')}
 				{@const evs = eventsByDay.get(c.key) ?? []}
-				<button
+				{@const shown = 3}
+				<div
 					class="day"
 					class:out={!c.inMonth}
+					class:wk={i % 7 >= 5}
 					class:today={c.key === todayKey}
 					class:sel={c.key === selected}
+					class:drop={overDay === c.key}
 					onclick={() => (selected = c.key)}
-					aria-label="{new Date(c.y, c.m, c.d).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}, {open.length} open tasks, {evs.length} events"
+					onkeydown={(e) => {
+						if (e.key === 'Enter' || e.key === ' ') selected = c.key;
+					}}
+					ondragover={(e) => {
+						e.preventDefault();
+						overDay = c.key;
+					}}
+					ondragleave={() => {
+						if (overDay === c.key) overDay = null;
+					}}
+					ondrop={(e) => void dropOn(c.key, e)}
+					role="gridcell"
+					tabindex="0"
+					aria-label="{new Date(c.y, c.m, c.d).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}, {list.length} tasks, {evs.length} events"
 				>
-					<span class="num">{c.d}</span>
-					<span class="entries" aria-hidden="true">
-						{#each open.slice(0, 2) as t (t.id)}
-							<span class="entry task-entry" class:late={isOverdue(t)} title={t.title}>{t.title}</span>
-						{/each}
-						{#each evs.slice(0, Math.max(0, 2 - open.length)) as e (e.id)}
-							<span class="entry event-entry" title={e.title}>{e.title}</span>
-						{/each}
-					</span>
-					{#if open.length + evs.length > 2}
-						<span class="more">
-							+{open.length + evs.length - 2} more
+					<span class="dn">{c.d}</span>
+					{#each evs.slice(0, shown) as e (e.id)}
+						<span class="ev g" title="{e.title} (Google)">
+							{#if !e.allDay}<span class="tm">{fmtTime(e.start)}</span>{/if}{e.title}
 						</span>
+					{/each}
+					{#each list.slice(0, Math.max(0, shown - evs.length)) as t (t.id)}
+						<span
+							class="ev task"
+							class:over={isOverdue(t)}
+							class:done={t.status === 'done'}
+							title={t.title}
+							draggable="true"
+							ondragstart={(e) => dragStart(t, e)}
+							ondragend={() => (dragId = null)}
+							role="button"
+							tabindex="-1"
+							onclick={(e) => {
+								e.stopPropagation();
+								selected = c.key;
+								openTask(t.id);
+							}}
+							onkeydown={() => {}}>{t.title}</span
+						>
+					{/each}
+					{#if list.length + evs.length > shown}
+						<span class="more">{list.length + evs.length - shown} more</span>
 					{/if}
-				</button>
+				</div>
 			{/each}
-			</div>
 		</div>
+		<PageFooter>
+			<span>{undated.length} without a date</span>
+			<span>{needConnect ? 'Google Calendar not connected' : 'Google Calendar connected'}</span>
+		</PageFooter>
+	</div>
 
-		<section class="day-list" aria-label="Tasks on selected day">
-			<div class="dhead">
-				<span class="dlabel">{selectedLabel}</span>
-				<span class="dcount">{selectedTasks.length + selectedEvents.length}</span>
-			</div>
-			{#if selectedEvents.length > 0}
-				{#each selectedEvents as e (e.id)}
-					<div class="evrow" title="Google Calendar event (read-only)">
-						<span class="evtime">{e.allDay ? 'all day' : fmtTime(e.start)}</span>
-						<span class="evtitle">{e.title}</span>
-						<span class="evsrc">Google</span>
+	<aside class="agenda" aria-label="Selected day">
+		<div class="ag-head">
+			<div class="big">{selectedLabel}</div>
+			<div class="sub">{daySummary}</div>
+		</div>
+		<div class="ag-scroll">
+			{#each selectedEvents as e (e.id)}
+				<div class="ag-row g" title="Google Calendar event, read only">
+					<span class="tm">{e.allDay ? 'All day' : fmtTime(e.start)}</span>
+					<div>
+						<div class="tt">{e.title}</div>
+						<div class="src"><span class="material-symbols-outlined">event</span>Google</div>
 					</div>
-				{/each}
-			{/if}
-			{#if selectedTasks.length === 0 && selectedEvents.length === 0}
-				<p class="empty">Nothing due this day.</p>
-			{:else}
-				{#each selectedTasks as t (t.id)}
+				</div>
+			{/each}
+			{#each selectedTasks as t (t.id)}
+				<div
+					class="ag-row t"
+					class:done={t.status === 'done'}
+					class:over={isOverdue(t)}
+					class:on={$openTaskId === t.id}
+					onclick={(e) => {
+						if ((e.target as HTMLElement).closest('button')) return;
+						openTask(t.id);
+					}}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' && e.target === e.currentTarget) openTask(t.id);
+					}}
+					role="button"
+					tabindex="0"
+					draggable="true"
+					ondragstart={(e) => dragStart(t, e)}
+					ondragend={() => (dragId = null)}
+				>
+					<span class="tm">{dueTimeValue(t.due_at) ? fmtTime(t.due_at!) : 'Any time'}</span>
+					<div>
+						<div class="tt">{t.title}</div>
+						<div class="src">
+							<button
+								class="st"
+								title="Mark done"
+								onclick={() => void updateTask(t.id, { status: t.status === 'done' ? 'todo' : 'done' })}
+							>
+								<span class="material-symbols-outlined" class:fill={t.status === 'done'}>{statusIcon(t)}</span>
+							</button>
+							{#if t.area}<i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}{/if}
+							{#if t.priority !== 'none'}<span class="pri-{t.priority}">{t.priority}</span>{/if}
+						</div>
+					</div>
+				</div>
+			{/each}
+			<div class="ag-add">
+				<span class="material-symbols-outlined">add</span>
+				<input
+					placeholder="Add a task for this day"
+					bind:value={draft}
+					onkeydown={(e) => {
+						if (e.key === 'Enter') void addForDay();
+					}}
+				/>
+			</div>
+			{#if undated.length > 0}
+				<div class="ag-group">No date<span class="n">{undated.length}</span></div>
+				<p class="hint">Drag one onto a day to schedule it.</p>
+				{#each undated as t (t.id)}
 					<div
-						class="row"
-						class:done={t.status === 'done'}
-						class:over={isOverdue(t)}
-						onclick={(e) => {
-							const el = e.target as HTMLElement;
-							if (el.closest('button,input')) return;
-							openTask(t.id);
+						class="und"
+						draggable="true"
+						ondragstart={(e) => dragStart(t, e)}
+						ondragend={() => (dragId = null)}
+						onclick={() => openTask(t.id)}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') openTask(t.id);
 						}}
 						role="button"
 						tabindex="0"
-						aria-label="Open {t.title} details"
-						onkeydown={(e) => {
-							if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('row'))
-								openTask(t.id);
-						}}
 					>
-						<button
-							class="status"
-							title="Cycle status"
-							onclick={() =>
-								void updateTask(t.id, {
-									status: t.status === 'todo' ? 'doing' : t.status === 'doing' ? 'done' : 'todo'
-								})}
-						>
-							<span class="material-symbols-outlined">{statusIcon(t)}</span>
-						</button>
-						<div class="main">
-							<span class="t-title">{t.title}</span>
-							<span class="sub">
-								{#if dueTimeValue(t.due_at)}
-									<span class="time">{dueTimeValue(t.due_at)}</span>
-								{:else}
-									<span class="allday">all day</span>
-								{/if}
-								{#if t.priority !== 'none'}
-									<span class="pri pri-{t.priority}">{t.priority}</span>
-								{/if}
-							</span>
-						</div>
+						<span class="material-symbols-outlined">drag_indicator</span>
+						<span class="und-t">{t.title}</span>
+						{#if t.area}<i style="background: {areaMeta(t.area).color}"></i>{/if}
 					</div>
 				{/each}
 			{/if}
-		</section>
-	</div>
+		</div>
+	</aside>
 </div>
 
 <style>
-	.content {
-		max-width: 1200px;
-		margin: 0 auto;
-		width: 100%;
-		padding: 32px 24px 72px;
-	}
-	.page-heading {
-		display: flex;
-		align-items: end;
-		justify-content: space-between;
-		gap: 16px;
-		margin-bottom: 24px;
-	}
-	h1 {
-		margin: 0;
-		font-size: 24px;
-		line-height: 30px;
-		font-weight: 600;
-		letter-spacing: -0.035em;
-	}
-	.heading-count {
-		color: var(--on-surface-variant);
-		font-size: 12px;
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-	}
-
-	.cal-head {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		margin-bottom: 16px;
-	}
-	.nav {
-		width: 28px;
-		height: 28px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border: none;
-		background: none;
-		color: var(--on-surface-variant);
-		border-radius: var(--radius);
-		cursor: pointer;
-		padding: 0;
-	}
-	.nav:hover {
-		background: var(--surface-container-low);
-		color: var(--on-surface);
-	}
-	.month {
-		background: none;
-		border: none;
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: 16px;
-		font-weight: 600;
-		cursor: pointer;
-		padding: 4px 8px;
-		border-radius: var(--radius);
-	}
-	.month:hover {
-		background: var(--surface-container-low);
-	}
-	.today-btn {
-		margin-left: auto;
-		height: 28px;
-		padding: 0 12px;
-		background: none;
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-full);
-		color: var(--on-surface-variant);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		cursor: pointer;
-	}
-	.today-btn:hover {
-		color: var(--primary);
-		border-color: var(--primary);
-	}
-	.connect-btn {
-		margin-left: 8px;
-		height: 28px;
-		padding: 0 12px;
-		background: var(--primary);
-		border: 1px solid var(--primary);
-		border-radius: var(--radius);
-		color: var(--on-primary);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		font-weight: var(--font-ui-medium-weight);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.connect-btn:hover {
-		filter: brightness(1.08);
-	}
-	.grid {
-		display: grid;
-		grid-template-columns: repeat(7, minmax(0, 1fr));
-		gap: 1px;
-		background: var(--border-default);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-md);
-		overflow: hidden;
-	}
-	.calendar-layout {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) 300px;
-		gap: 28px;
-		align-items: start;
-	}
-	.month-pane { min-width: 0; }
-	.dow {
-		text-align: center;
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--on-surface-variant);
-		padding: 10px 0;
-		background: var(--surface-container-low);
-	}
-	.day {
-		min-height: 108px;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 5px;
-		padding: 8px;
-		background: var(--background);
-		border: 0;
-		cursor: pointer;
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-	}
-	.day:hover {
-		background: var(--surface-container-low);
-	}
-	.day.out {
-		background: var(--surface-container-lowest);
-		color: var(--outline);
-	}
-	.day.sel {
-		background: var(--surface-container);
-		box-shadow: inset 0 0 0 1px var(--primary);
-	}
-	.day.today .num {
-		background: var(--primary);
-		color: var(--on-primary);
-		border-radius: var(--radius-full);
-	}
-	.num {
-		font-size: var(--font-ui-small);
-		font-variant-numeric: tabular-nums;
-		min-width: 24px;
-		height: 24px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-	}
-	.entries {
-		width: 100%;
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-	}
-	.entry {
-		display: block;
-		width: 100%;
-		padding: 3px 5px;
-		border-radius: var(--radius-sm);
-		font-size: 11px;
-		line-height: 15px;
-		text-align: left;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.task-entry {
-		background: var(--secondary-container);
-		color: var(--on-surface);
-	}
-	.task-entry.late {
-		background: var(--error-container);
-		color: var(--on-error-container);
-	}
-	.event-entry {
-		background: var(--surface-container-high);
-		color: var(--on-surface-variant);
-		box-shadow: inset 2px 0 var(--primary);
-	}
-	.more {
-		font-size: var(--font-ui-micro);
-		color: var(--outline-variant);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.day-list {
-		min-width: 0;
-		padding-left: 24px;
-		border-left: 1px solid var(--border-default);
-	}
-	.dhead {
-		display: flex;
-		align-items: baseline;
-		gap: var(--stack-gap);
-		padding-bottom: 6px;
-		border-bottom: 1px solid var(--border-default);
-	}
-	.dlabel {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--on-surface-variant);
-	}
-	.dcount {
-		font-size: var(--font-label-caps);
-		color: var(--outline-variant);
-		font-variant-numeric: tabular-nums;
-	}
-	.empty {
-		color: var(--outline-variant);
-		font-size: var(--font-ui-small);
-		padding: 12px 2px;
-		margin: 0;
-	}
-
-	.evrow {
-		display: flex;
-		align-items: baseline;
-		gap: 10px;
-		padding: 7px 6px;
-		border-bottom: 1px solid var(--border-default);
-	}
-	.evtime {
-		min-width: 64px;
-		font-size: var(--font-ui-micro);
-		color: var(--primary);
-		font-variant-numeric: tabular-nums;
-	}
-	.evtitle {
+	.page {
 		flex: 1;
-		min-width: 0;
-		font-size: var(--font-ui-small);
-		color: var(--on-surface-variant);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.evsrc {
-		font-size: var(--font-ui-micro);
-		color: var(--outline-variant);
-		flex-shrink: 0;
-	}
-
-	.row {
+		min-height: 0;
 		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 8px 6px;
-		border-bottom: 1px solid var(--border-default);
-		cursor: pointer;
-	}
-	.row:hover {
-		background: var(--surface-container-low);
-	}
-	.row.done {
-		opacity: 0.55;
-	}
-	.status {
-		background: none;
-		border: none;
-		color: var(--on-surface-variant);
-		cursor: pointer;
-		padding: 2px;
-		display: flex;
-		border-radius: var(--radius);
-	}
-	.status:hover {
-		color: var(--primary);
-	}
-	.row.done .status {
-		color: var(--success);
-	}
-	.row.over .status {
-		color: var(--error);
 	}
 	.main {
 		flex: 1;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 1px;
 	}
-	.t-title {
-		font-size: 13px;
-		font-weight: var(--font-ui-medium-weight);
-		color: var(--on-surface);
+	.page-h {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 56px;
+		padding: 0 16px 0 24px;
+		border-bottom: 1px solid var(--line);
+		flex-shrink: 0;
+	}
+	.vsep {
+		width: 1px;
+		height: 18px;
+		background: var(--line-2);
+		margin: 0 8px;
+	}
+	.mo {
+		min-width: 150px;
+		font: 700 18px var(--font-read);
+		white-space: nowrap;
+	}
+	.sp {
+		flex: 1;
+	}
+	.ib {
+		display: grid;
+		place-items: center;
+		width: 30px;
+		height: 30px;
+		border: none;
+		border-radius: var(--r-md);
+		background: none;
+		color: var(--text-3);
+		cursor: pointer;
+	}
+	.ib:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.line {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 30px;
+		margin-left: 6px;
+		padding: 0 12px;
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-md);
+		background: none;
+		color: var(--text-2);
+		font: var(--fs) var(--font-ui);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.line .material-symbols-outlined {
+		font-size: 17px;
+	}
+	.line:hover {
+		color: var(--text);
+		border-color: var(--line-3);
+	}
+	.grid {
+		flex: 1;
+		min-height: 0;
+		display: grid;
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+		grid-template-rows: 34px repeat(var(--weeks), minmax(0, 1fr));
+	}
+	.dow {
+		display: flex;
+		align-items: center;
+		padding: 0 12px;
+		color: var(--text-3);
+		font-size: var(--fs-sm);
+		border-right: 1px solid var(--line);
+		border-bottom: 1px solid var(--line);
+	}
+	.day {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		min-height: 0;
+		padding: 8px 8px 6px;
+		overflow: hidden;
+		border-right: 1px solid var(--line);
+		border-bottom: 1px solid var(--line);
+		cursor: pointer;
+		outline-offset: -2px;
+	}
+	.dow:nth-child(7n),
+	.day:nth-child(7n) {
+		border-right: 0;
+	}
+	.day.wk {
+		background: #080808;
+	}
+	.day:hover {
+		background: var(--raise);
+	}
+	.day.sel {
+		background: var(--raise);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+	}
+	.day.drop {
+		background: var(--accent-dim);
+	}
+	.dn {
+		width: 24px;
+		height: 24px;
+		display: grid;
+		place-items: center;
+		margin: -2px 0 2px -2px;
+		border-radius: 50%;
+		color: var(--text-2);
+		font-size: var(--fs);
+		font-variant-numeric: tabular-nums;
+	}
+	.day.out .dn {
+		color: var(--text-4);
+	}
+	.day.today .dn {
+		background: var(--accent-fill);
+		color: var(--on-accent);
+		font-weight: 600;
+	}
+	.ev {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 0 6px;
+		border-radius: var(--r-sm);
+		color: var(--text);
+		font-size: var(--fs-xs);
+		line-height: 20px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		flex-shrink: 0;
+	}
+	.ev.task::before {
+		content: '';
+		flex: none;
+		width: 6px;
+		height: 6px;
+		border: 1.5px solid var(--text-2);
+		border-radius: 2px;
+	}
+	.ev.task:hover {
+		background: var(--hover);
+	}
+	.ev.task.over {
+		color: var(--red);
+	}
+	.ev.task.over::before {
+		border-color: var(--red);
+	}
+	.ev.task.done {
+		color: var(--text-3);
+		text-decoration: line-through;
+	}
+	.ev.task.done::before {
+		background: var(--text-3);
+		border-color: var(--text-3);
+	}
+	.ev.g {
+		background: color-mix(in srgb, var(--blue) 13%, transparent);
+		color: #c5d6ff;
+		display: block;
+	}
+	.ev.g .tm {
+		color: var(--blue);
+		margin-right: 6px;
+	}
+	.more {
+		padding-left: 6px;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+	}
+	.agenda {
+		width: 320px;
+		flex-shrink: 0;
+		background: var(--panel);
+		border-left: 1px solid var(--line);
+		display: flex;
+		flex-direction: column;
+	}
+	.ag-head {
+		padding: 18px 18px 12px;
+		border-bottom: 1px solid var(--line);
+	}
+	.big {
+		font: 700 24px / 1.2 var(--font-read);
+	}
+	.ag-head .sub {
+		margin-top: 4px;
+		color: var(--text-3);
+	}
+	.ag-scroll {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding-bottom: 24px;
+	}
+	.ag-row {
+		display: grid;
+		grid-template-columns: 64px minmax(0, 1fr);
+		gap: 10px;
+		padding: 10px 18px;
+		border-bottom: 1px solid var(--line);
+		align-items: start;
+	}
+	.ag-row.g {
+		box-shadow: inset 2px 0 0 var(--blue);
+	}
+	.ag-row.t {
+		box-shadow: inset 2px 0 0 var(--accent);
+		cursor: pointer;
+	}
+	.ag-row.t:hover {
+		background: var(--raise);
+	}
+	.ag-row.t.on {
+		background: var(--accent-dim);
+	}
+	.ag-row.t.over {
+		box-shadow: inset 2px 0 0 var(--red);
+	}
+	.ag-row .tm {
+		padding-top: 2px;
+		color: var(--text-3);
+		font-size: var(--fs-sm);
+	}
+	.tt {
+		color: var(--text);
+	}
+	.ag-row.done .tt {
+		color: var(--text-3);
+		text-decoration: line-through;
+	}
+	.src {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 3px;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+	}
+	.src .material-symbols-outlined {
+		font-size: 15px;
+	}
+	.src i,
+	.und i {
+		width: 7px;
+		height: 7px;
+		border-radius: 2px;
+	}
+	.st {
+		display: grid;
+		place-items: center;
+		border: none;
+		background: none;
+		padding: 0;
+		color: var(--text-3);
+		cursor: pointer;
+	}
+	.st:hover {
+		color: var(--accent);
+	}
+	.ag-row.done .st {
+		color: var(--green);
+	}
+	.pri-urgent {
+		color: var(--red);
+	}
+	.pri-high {
+		color: var(--orange);
+	}
+	.pri-medium {
+		color: var(--yellow);
+	}
+	.pri-low {
+		color: var(--blue);
+	}
+	.ag-add {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 42px;
+		padding: 0 18px;
+		color: var(--text-3);
+		border-bottom: 1px solid var(--line);
+	}
+	.ag-add input {
+		flex: 1;
+		border: none;
+		outline: none;
+		background: none;
+		color: var(--text);
+		font: var(--fs) var(--font-ui);
+	}
+	.ag-add input::placeholder {
+		color: var(--text-3);
+	}
+	.ag-group {
+		display: flex;
+		gap: 8px;
+		padding: 18px 18px 2px;
+		font-weight: 600;
+		font-size: var(--fs-sm);
+	}
+	.ag-group .n {
+		color: var(--text-3);
+		font-weight: 400;
+	}
+	.hint {
+		margin: 0;
+		padding: 0 18px 8px;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+	}
+	.und {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 0 10px;
+		padding: 6px 8px 6px 4px;
+		border-radius: var(--r);
+		color: var(--text-2);
+		cursor: grab;
+	}
+	.und:hover {
+		background: var(--raise);
+		color: var(--text);
+	}
+	.und .material-symbols-outlined {
+		font-size: 17px;
+		color: var(--text-4);
+	}
+	.und-t {
+		flex: 1;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.row.done .t-title {
-		text-decoration: line-through;
-		font-weight: var(--font-ui-small-weight);
-	}
-	.sub {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-		font-variant-numeric: tabular-nums;
-	}
-	.allday {
-		color: var(--outline-variant);
-	}
-	.pri {
-		text-transform: capitalize;
-	}
-	.pri-urgent {
-		color: var(--error);
-		font-weight: var(--font-ui-medium-weight);
-	}
-	.pri-high {
-		color: var(--tertiary);
-	}
-	.pri-medium {
-		color: var(--primary);
-	}
-	.pri-low {
-		color: var(--outline);
-	}
-
-	button:focus-visible {
-		outline: 2px solid var(--primary);
-		outline-offset: -2px;
-	}
-	@media (max-width: 680px) {
-		.content { padding: 24px 16px 56px; }
-		.page-heading { margin-bottom: 20px; }
-		.cal-head { flex-wrap: wrap; }
-		.connect-btn { margin-left: 0; }
-		.day { min-height: 66px; padding: 5px 3px; }
-		.num { min-width: 22px; height: 22px; }
-		.entry { padding: 3px; font-size: 0; line-height: 6px; height: 6px; }
-		.more { font-size: 9px; }
-	}
-	@media (max-width: 980px) {
-		.calendar-layout { grid-template-columns: 1fr; gap: 24px; }
-		.day-list { border-left: 0; padding-left: 0; }
 	}
 </style>

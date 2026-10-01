@@ -2,6 +2,7 @@
 	import { uniqueTagNames } from '$lib/editor/tags';
 	import { parseFrontmatter, frontmatterTags } from '$lib/editor/frontmatter';
 	import { searchTagRequest } from '$lib/stores/actions';
+	import PanelSection from './PanelSection.svelte';
 
 	interface Props {
 		content: string;
@@ -19,63 +20,32 @@
 </script>
 
 {#if tags.length > 0}
-	<section aria-label="Tags">
-		<header>
-			<span class="title">Tags</span>
-		</header>
-		<div class="pills">
+	<PanelSection icon="sell" title="Tags">
+		<div class="tags">
 			{#each tags as t (t)}
-				<button onclick={() => searchTagRequest.set(t)} title={`Search #${t}`}>
-					<span class="pill">#{t}</span>
-				</button>
+				<button onclick={() => searchTagRequest.set(t)} title={`Search #${t}`}>#{t}</button>
 			{/each}
 		</div>
-	</section>
+	</PanelSection>
 {/if}
 
 <style>
-	section {
-		display: flex;
-		flex-direction: column;
-		flex: none;
-		max-height: 30%;
-		padding: 1rem var(--gutter) 0;
-		overflow-y: auto;
-	}
-	header {
-		display: flex;
-		align-items: center;
-		margin-bottom: 0.75rem;
-	}
-	.title {
-		font-size: var(--font-ui-small);
-		line-height: var(--font-ui-small-lh);
-		font-weight: 600;
-		letter-spacing: var(--label-caps-spacing);
-		text-transform: uppercase;
-		color: var(--on-surface-variant);
-		flex: 1;
-	}
-	.pills {
+	.tags {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
+		padding: 4px;
 	}
-	.pills button {
-		background: none;
+	button {
 		border: none;
-		padding: 0;
+		border-radius: var(--r-sm);
+		padding: 2px 7px;
+		background: color-mix(in srgb, var(--violet) 12%, transparent);
+		color: var(--violet);
+		font: var(--fs-sm) var(--font-ui);
 		cursor: pointer;
 	}
-	.pill {
-		display: inline-block;
-		font-size: var(--font-ui-micro);
-		color: var(--primary);
-		background: rgba(181, 196, 255, 0.12);
-		padding: 0.15em 0.6em;
-		border-radius: 999px;
-	}
-	.pills button:hover .pill {
-		background: rgba(181, 196, 255, 0.22);
+	button:hover {
+		background: color-mix(in srgb, var(--violet) 22%, transparent);
 	}
 </style>

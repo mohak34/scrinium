@@ -1,13 +1,14 @@
 <script lang="ts">
-	import { parseFrontmatter, stripFrontmatter, propDisplayRows } from '$lib/editor/frontmatter';
+	import { parseFrontmatter, propDisplayRows, renameKey } from '$lib/editor/frontmatter';
 	import { activePath, updateFrontmatter } from '$lib/stores/vault';
-import { renameKey } from '$lib/editor/frontmatter';
+	import PanelSection from './PanelSection.svelte';
 
+	// Frontmatter properties of the open note: status and priority get preset
+	// pickers, every other key is a double-click-to-edit row.
 	interface Props {
 		content: string;
-		onClose: () => void;
 	}
-	let { content, onClose }: Props = $props();
+	let { content }: Props = $props();
 
 	type AddKind = 'text' | 'status' | 'priority' | 'date';
 	const ADD_TYPES: Array<{ id: AddKind; icon: string; label: string; hint: string }> = [
@@ -161,13 +162,6 @@ import { renameKey } from '$lib/editor/frontmatter';
 		}
 	}
 
-	// Estimates over the body (frontmatter excluded): fenced code dropped,
-	// words are alphanumeric runs. Good enough for a rail readout.
-	const words = $derived.by(() => {
-		const body = stripFrontmatter(content).replace(/```[\s\S]*?(```|$)/g, ' ');
-		return body.match(/[A-Za-z0-9']+/g)?.length ?? 0;
-	});
-
 	const fm = $derived(parseFrontmatter(content)?.data ?? null);
 	const status = $derived(fm && typeof fm['status'] === 'string' && fm['status'].trim() ? fm['status'].trim() : null);
 	const priority = $derived(
@@ -209,9 +203,8 @@ import { renameKey } from '$lib/editor/frontmatter';
 	}
 </script>
 
-<section aria-label="Properties">
-	<header>
-		<span class="title">Properties</span>
+<PanelSection icon="tune" title="Properties">
+	{#snippet action()}
 		<button
 			class="add-toggle"
 			title="Add property"
@@ -220,10 +213,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 		>
 			<span class="material-symbols-outlined">add</span>
 		</button>
-		<button class="add-toggle" onclick={onClose} title="Close panel">
-			<span class="material-symbols-outlined">close</span>
-		</button>
-	</header>
+	{/snippet}
 	{#if menuOpen && !adding}
 		<div class="menu" role="menu" bind:this={menuEl} tabindex="-1" onkeydown={menuKey}>
 			{#each ADD_TYPES as t, i (t.id)}
@@ -412,12 +402,9 @@ import { renameKey } from '$lib/editor/frontmatter';
 				{/if}
 			</div>
 		{/if}
-		<div class="row">
-			<span class="label">
-				<span class="material-symbols-outlined">format_align_left</span> Words
-			</span>
-			<span class="val">{words.toLocaleString()}</span>
-		</div>
+		{#if !status && !priority && extra.length === 0 && !adding && !menuOpen}
+			<p class="empty">No properties. Add one with the plus button.</p>
+		{/if}
 		{#each extra as r (r.key)}
 			<div class="row">
 				{#if editing?.key === r.key && editing.field === 'key'}
@@ -444,52 +431,31 @@ import { renameKey } from '$lib/editor/frontmatter';
 			</div>
 		{/each}
 	</div>
-</section>
+</PanelSection>
 
 <style>
-	section {
-		display: flex;
-		flex-direction: column;
-		flex: none;
-		max-height: 35%;
-		padding: 1rem var(--gutter) 0;
-		overflow-y: auto;
-	}
-	header {
-		display: flex;
-		align-items: center;
-		margin-bottom: 0.75rem;
-	}
-	.title {
-		font-size: var(--font-ui-small);
-		line-height: var(--font-ui-small-lh);
-		font-weight: 600;
-		letter-spacing: var(--label-caps-spacing);
-		text-transform: uppercase;
-		color: var(--on-surface-variant);
-		flex: 1;
-	}
 	.card {
 		display: flex;
 		flex-direction: column;
+		padding: 2px 4px 0;
 	}
 	.row {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
-		font-size: var(--font-ui-small);
-		padding: 5px 0;
-		border-top: 1px solid var(--border-default);
+		min-height: 30px;
+		font-size: var(--fs);
+		border-top: 1px solid var(--line);
 	}
 	.row:first-child {
 		border-top: none;
-		padding-top: 0;
 	}
 	/* Preset picking stacks full-width; the label hides while choosing. */
 	.row.menu-open {
 		flex-direction: column;
 		align-items: stretch;
+		padding: 4px 0;
 	}
 	.row.menu-open .label {
 		display: none;
@@ -497,25 +463,24 @@ import { renameKey } from '$lib/editor/frontmatter';
 	.label {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		color: var(--on-surface-variant);
-		font-weight: 600;
+		gap: 7px;
+		color: var(--text-3);
 	}
 	.label .material-symbols-outlined {
-		font-size: 14px;
+		font-size: 16px;
 	}
 	.label.edit {
 		cursor: text;
-		border-radius: var(--radius);
+		border-radius: var(--r-sm);
 	}
 	.label.edit:hover {
-		color: var(--primary);
+		color: var(--text);
 	}
 	.in.key-edit {
 		flex: 0 1 90px;
 	}
 	.val {
-		color: var(--on-surface);
+		color: var(--text);
 		font-variant-numeric: tabular-nums;
 		max-width: 62%;
 		overflow: hidden;
@@ -524,27 +489,23 @@ import { renameKey } from '$lib/editor/frontmatter';
 		text-align: right;
 	}
 	.add-toggle {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 22px;
-		height: 22px;
+		display: grid;
+		place-items: center;
+		width: 24px;
+		height: 24px;
 		border: none;
-		border-radius: var(--radius);
+		border-radius: var(--r-sm);
 		background: none;
-		color: var(--on-surface-variant);
+		color: var(--text-3);
 		cursor: pointer;
 	}
 	.add-toggle:hover:not(:disabled) {
-		background: var(--surface-container-low);
-		color: var(--primary);
+		background: var(--hover);
+		color: var(--text);
 	}
 	.add-toggle:disabled {
 		opacity: 0.4;
 		cursor: default;
-	}
-	.add-toggle .material-symbols-outlined {
-		font-size: 16px;
 	}
 	/* The + flow speaks the app's palette language: borderless rows with a
 	   background wash for the armed item, one input, Enter commits. */
@@ -552,7 +513,7 @@ import { renameKey } from '$lib/editor/frontmatter';
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
-		margin-bottom: 8px;
+		margin: 2px 0 8px;
 		outline: none;
 	}
 	.menu-item {
@@ -562,22 +523,26 @@ import { renameKey } from '$lib/editor/frontmatter';
 		width: 100%;
 		background: none;
 		border: none;
-		border-radius: var(--radius);
-		color: var(--on-surface-variant);
-		font-size: var(--font-ui-small);
-		padding: 5px 8px;
+		border-radius: var(--r);
+		color: var(--text-2);
+		font: var(--fs) var(--font-ui);
+		padding: 6px 8px;
 		cursor: pointer;
 		text-align: left;
 	}
+	.menu-item:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
 	.menu-item .material-symbols-outlined {
-		font-size: 15px;
+		font-size: 16px;
 	}
 	.menu-item.on {
-		background: var(--sidebar-bg);
-		color: var(--on-surface);
+		background: var(--hover);
+		color: var(--text);
 	}
 	.menu-item.on .material-symbols-outlined {
-		color: var(--primary);
+		color: var(--accent);
 	}
 	.menu.presets {
 		margin-bottom: 4px;
@@ -590,46 +555,47 @@ import { renameKey } from '$lib/editor/frontmatter';
 	.in {
 		flex: 1;
 		min-width: 0;
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		color: var(--on-surface);
-		background: var(--sidebar-bg);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		padding: 3px 6px;
+		height: 28px;
+		font: var(--fs) var(--font-ui);
+		color: var(--text);
+		background: var(--bg);
+		border: 1px solid var(--line-2);
+		border-radius: var(--r);
+		padding: 0 8px;
 		outline: none;
 	}
 	.in.key {
-		flex: 0 1 70px;
+		flex: 0 1 80px;
 	}
 	.in:focus {
-		border-color: var(--primary);
+		border-color: var(--accent);
 	}
 	.pill {
-		font-size: var(--font-ui-micro);
-		color: var(--on-surface-variant);
-		background: var(--sidebar-bg);
-		border: 1px solid var(--border-default);
-		border-radius: 999px;
-		padding: 0 8px;
+		font-size: var(--fs-xs);
+		color: var(--text-2);
+		background: var(--raise);
+		border-radius: var(--r-sm);
+		padding: 2px 8px;
 		max-width: 55%;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.pill.ok {
-		color: #7dd8a8;
-		border-color: rgba(125, 216, 168, 0.3);
-		background: rgba(125, 216, 168, 0.08);
+		color: var(--green);
+		background: color-mix(in srgb, var(--green) 12%, transparent);
 	}
 	.pill.warn {
-		color: #f0c674;
-		border-color: rgba(240, 198, 116, 0.3);
-		background: rgba(240, 198, 116, 0.08);
+		color: var(--accent);
+		background: var(--accent-dim);
 	}
 	.pill.bad {
-		color: #f19494;
-		border-color: rgba(241, 148, 148, 0.3);
-		background: rgba(241, 148, 148, 0.08);
+		color: var(--red);
+		background: color-mix(in srgb, var(--red) 12%, transparent);
+	}
+	.empty {
+		margin: 2px 0;
+		color: var(--text-3);
+		font-size: var(--fs-sm);
 	}
 </style>

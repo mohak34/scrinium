@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { parseOutline } from '$lib/editor/outline';
+	import { cursorPos } from '$lib/stores/editor';
+	import PanelSection from './PanelSection.svelte';
 
 	interface Props {
 		content: string;
@@ -8,85 +10,66 @@
 	let { content, onJump }: Props = $props();
 
 	const entries = $derived(parseOutline(content));
+	// The heading the caret sits under lights up as you move through the note.
+	const current = $derived.by(() => {
+		let line = -1;
+		for (const e of entries) if (e.line <= $cursorPos.line) line = e.line;
+		return line;
+	});
+	const minLevel = $derived(Math.min(...entries.map((e) => e.level)));
 </script>
 
 {#if entries.length > 0}
-	<section aria-label="Outline">
-		<header>
-			<span class="title">Outline</span>
-		</header>
+	<PanelSection icon="toc" title="Outline">
 		<ul>
 			{#each entries as e (e.line)}
 				<li>
 					<button
+						class:on={e.line === current}
 						onclick={() => onJump(e.line)}
 						title={e.text}
-						style="padding-left: {(e.level - 1) * 10}px"
+						style="padding-left: {10 + (e.level - minLevel) * 14}px"
 					>
-						<span class="htext">{e.text}</span>
+						{e.text}
 					</button>
 				</li>
 			{/each}
 		</ul>
-	</section>
+	</PanelSection>
 {/if}
 
 <style>
-	section {
-		display: flex;
-		flex-direction: column;
-		flex: none;
-		max-height: 40%;
-		margin-top: auto;
-		padding: 1rem var(--gutter);
-		overflow-y: auto;
-	}
-	header {
-		display: flex;
-		align-items: center;
-		margin-bottom: 0.75rem;
-	}
-	.title {
-		font-size: var(--font-ui-small);
-		line-height: var(--font-ui-small-lh);
-		font-weight: 600;
-		letter-spacing: var(--label-caps-spacing);
-		text-transform: uppercase;
-		color: var(--on-surface-variant);
-		flex: 1;
-	}
 	ul {
 		list-style: none;
-		margin: 0;
+		margin: 2px 0 0 6px;
 		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
+		border-left: 1px solid var(--line-2);
 	}
-	li button {
+	button {
 		display: block;
 		width: 100%;
-		background: none;
+		margin-left: -1px;
+		padding-top: 4px;
+		padding-bottom: 4px;
+		padding-right: 8px;
 		border: none;
-		border-radius: var(--radius);
-		padding-top: 0.2rem;
-		padding-bottom: 0.2rem;
-		padding-right: 0.3rem;
-		cursor: pointer;
+		border-left: 1px solid transparent;
+		border-radius: 0 var(--r) var(--r) 0;
+		background: none;
+		color: var(--text-2);
+		font: var(--fs) var(--font-ui);
 		text-align: left;
-	}
-	li button:hover {
-		background: var(--surface-container-low);
-	}
-	li button:hover .htext {
-		color: var(--primary);
-	}
-	.htext {
-		display: block;
-		font-size: var(--font-ui-small);
-		color: var(--on-surface-variant);
+		cursor: pointer;
+		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		white-space: nowrap;
+	}
+	button:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	button.on {
+		color: var(--accent);
+		border-left-color: var(--accent);
 	}
 </style>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
+	import { cursorPos } from '$lib/stores/editor';
 	import { Compartment, Prec } from '@codemirror/state';
 	import {
 		EditorView,
@@ -535,6 +536,11 @@ import { findCallouts } from './callouts';
 					if (update.docChanged && !suppressChange) {
 						onChange(update.state.doc.toString());
 					}
+					if (update.selectionSet || update.docChanged) {
+						const head = update.state.selection.main.head;
+						const line = update.state.doc.lineAt(head);
+						cursorPos.set({ line: line.number, col: head - line.from + 1 });
+					}
 					// Yank-flash bookkeeping: the cursor line, so operator yanks
 					// can cover N lines from where the motion started.
 					if (get(settings).editor.vimMotions) {
@@ -618,6 +624,13 @@ import { findCallouts } from './callouts';
 		if (!view) return;
 		if (isPreviewMode()) setPreviewMode(view, false);
 		view.focus();
+	}
+
+	// Note bar eye button: flip full preview either way.
+	export function togglePreview() {
+		if (!view) return;
+		if (isPreviewMode()) exitPreview();
+		else runCommand('preview');
 	}
 
 	// App-level Esc while the editor is blurred in full preview: unhide the

@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import {
 		tasks,
 		loadTasks,
@@ -8,6 +6,7 @@
 		updateTask,
 		deleteTask,
 		openTask,
+		openTaskId,
 		topLevel,
 		childrenOf,
 		startOfToday,
@@ -16,47 +15,59 @@
 		dueLabel,
 		parseDueInput,
 		stampShort,
+		AREAS,
 		type Task,
+		type TaskArea,
 		type TaskStatus
 	} from '$lib/stores/tasks';
+	import { areaMeta } from '$lib/taskModel';
+	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
+	import PageFooter from '$lib/components/PageFooter.svelte';
+	import { onMount } from 'svelte';
 
 	let newTitle = $state('');
 	let newDue = $state('');
+	let newArea = $state<TaskArea | ''>('');
 	let adding = $state(false);
 	let query = $state('');
+	let searching = $state(false);
 	type TaskFilter = 'all' | 'today' | 'overdue' | 'upcoming' | 'undated' | 'completed';
 	let filter = $state<TaskFilter>('all');
+	let area = $state<TaskArea | null>(null);
 	const filters: { key: TaskFilter; label: string; icon: string }[] = [
-		{ key: 'all', label: 'All tasks', icon: 'list' },
+		{ key: 'all', label: 'All open', icon: 'inbox' },
 		{ key: 'today', label: 'Today', icon: 'today' },
-		{ key: 'overdue', label: 'Overdue', icon: 'priority_high' },
-		{ key: 'upcoming', label: 'Upcoming', icon: 'event_upcoming' },
-		{ key: 'undated', label: 'No date', icon: 'event_busy' },
+		{ key: 'overdue', label: 'Overdue', icon: 'event_busy' },
+		{ key: 'upcoming', label: 'Upcoming', icon: 'date_range' },
+		{ key: 'undated', label: 'No date', icon: 'calendar_clock' },
 		{ key: 'completed', label: 'Completed', icon: 'check_circle' }
 	];
 
 	onMount(() => {
-		loadTasks();
-		const key = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') goto('/');
-		};
-		window.addEventListener('keydown', key);
-		return () => window.removeEventListener('keydown', key);
+		void loadTasks();
 	});
+
+	const tomorrow = () => startOfToday() + 86400000;
+
+	function matchesFilter(t: Task, f: TaskFilter): boolean {
+		if (f === 'completed') return t.status === 'done';
+		if (t.status === 'done') return false;
+		if (f === 'today') return isDueToday(t);
+		if (f === 'overdue') return isOverdue(t);
+		if (f === 'upcoming') return t.due_at != null && t.due_at >= tomorrow();
+		if (f === 'undated') return t.due_at == null;
+		return true;
+	}
+
+	const inArea = $derived(topLevel($tasks).filter((t) => area == null || t.area === area));
 
 	const visible = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		return topLevel($tasks).filter((t) => {
-			if (filter === 'today' && (t.status === 'done' || !isDueToday(t))) return false;
-			if (filter === 'overdue' && !isOverdue(t)) return false;
-			if (filter === 'upcoming' && (t.status === 'done' || t.due_at == null || t.due_at < startOfToday() + 86400000)) return false;
-			if (filter === 'undated' && (t.status === 'done' || t.due_at != null)) return false;
-			if (filter === 'completed' && t.status !== 'done') return false;
-			if (!q) return true;
-			return (
-				t.title.toLowerCase().includes(q) || (t.detail && t.detail.toLowerCase().includes(q))
-			);
-		});
+		return inArea.filter(
+			(t) =>
+				matchesFilter(t, filter) &&
+				(!q || t.title.toLowerCase().includes(q) || t.detail.toLowerCase().includes(q))
+		);
 	});
 
 	interface Group {
@@ -75,7 +86,7 @@
 			{
 				key: 'upcoming',
 				label: 'Upcoming',
-				rows: byDue.filter((t) => t.due_at != null && t.due_at >= startOfToday() + 86400000)
+				rows: byDue.filter((t) => t.due_at != null && t.due_at >= tomorrow())
 			},
 			{ key: 'nodate', label: 'No date', rows: byDue.filter((t) => t.due_at == null) }
 		].filter((g) => g.rows.length > 0);
@@ -85,18 +96,22 @@
 		return out;
 	});
 
+	const counts = $derived(
+		Object.fromEntries(filters.map((f) => [f.key, inArea.filter((t) => matchesFilter(t, f.key)).length])) as Record<
+			TaskFilter,
+			number
+		>
+	);
+	const areaCounts = $derived(
+		Object.fromEntries(
+			AREAS.map((a) => [a.key, topLevel($tasks).filter((t) => t.area === a.key && t.status !== 'done').length])
+		) as Record<TaskArea, number>
+	);
 	const openCount = $derived(topLevel($tasks).filter((t) => t.status !== 'done').length);
-	const filterCounts = $derived.by(() => {
-		const rows = topLevel($tasks);
-		return {
-			all: rows.length,
-			today: rows.filter((t) => t.status !== 'done' && isDueToday(t)).length,
-			overdue: rows.filter(isOverdue).length,
-			upcoming: rows.filter((t) => t.status !== 'done' && t.due_at != null && t.due_at >= startOfToday() + 86400000).length,
-			undated: rows.filter((t) => t.status !== 'done' && t.due_at == null).length,
-			completed: rows.filter((t) => t.status === 'done').length
-		};
-	});
+	const overdueCount = $derived(topLevel($tasks).filter(isOverdue).length);
+	const heading = $derived(
+		(area ? `${areaMeta(area).label}: ` : '') + filters.find((f) => f.key === filter)!.label
+	);
 
 	// Clicking a row opens the detail drawer. Interactive controls stop the
 	// trip by matching the closest control, not by per-element handlers.
@@ -111,161 +126,221 @@
 		if (!title || adding) return;
 		adding = true;
 		try {
-			const row = await createTask({ title, due_at: parseDueInput(newDue) });
+			const due = parseDueInput(newDue);
+			// A dated task is already planned; undated ones land in the Inbox.
+			const row = await createTask({
+				title,
+				due_at: due,
+				status: due == null ? 'inbox' : 'todo',
+				area: newArea || area
+			});
 			if (row) {
 				newTitle = '';
 				newDue = '';
-				filter = 'all';
+				if (filter === 'completed') filter = 'all';
 			}
 		} finally {
 			adding = false;
 		}
 	}
 
-	function cycleStatus(t: Task): TaskStatus {
-		return t.status === 'todo' ? 'doing' : t.status === 'doing' ? 'done' : 'todo';
+	// The circle advances a task one step toward done; done reopens it.
+	function nextStatus(t: Task): TaskStatus {
+		if (t.status === 'done') return 'todo';
+		if (t.status === 'doing' || t.status === 'waiting') return 'done';
+		return 'doing';
 	}
 
 	function statusIcon(s: TaskStatus): string {
-		return s === 'done' ? 'check_circle' : s === 'doing' ? 'timelapse' : 'circle';
+		if (s === 'done') return 'check_circle';
+		if (s === 'doing') return 'clock_loader_40';
+		if (s === 'waiting') return 'hourglass_top';
+		return 'radio_button_unchecked';
 	}
 
 	async function handleDelete(t: Task) {
 		if (!confirm(`Delete "${t.title}"?`)) return;
 		await deleteTask(t.id);
 	}
+
+	function subCount(t: Task): string | null {
+		const kids = childrenOf($tasks, t.id);
+		if (kids.length === 0) return null;
+		return `${kids.filter((k) => k.status === 'done').length}/${kids.length}`;
+	}
 </script>
 
-<div class="content">
-	<div class="page-heading">
-		<h1>Tasks</h1>
-		<span class="heading-count">{openCount} open</span>
-	</div>
-	<div class="workspace">
-		<aside class="filter-rail" aria-label="Task filters">
-			<nav class="filters" aria-label="Task filters">
-				{#each filters as item (item.key)}
-					<button class="filter" class:active={filter === item.key} onclick={() => (filter = item.key)} aria-current={filter === item.key ? 'page' : undefined}>
-						<span class="material-symbols-outlined">{item.icon}</span>
-						<span>{item.label}</span>
-						<span class="filter-count">{filterCounts[item.key]}</span>
-					</button>
-				{/each}
-			</nav>
-		</aside>
-		<div class="list-pane">
-			<div class="addrow">
-				<span class="material-symbols-outlined add-icon">add</span>
-				<input
-					class="title-in"
-					placeholder="Add a task"
-					bind:value={newTitle}
-					aria-label="New task title"
-					onkeydown={(e) => {
-						if (e.key === 'Enter') void handleAdd();
-					}}
-				/>
-				<input class="ctl date-in" type="date" bind:value={newDue} aria-label="Due date" />
-				<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
-					{adding ? 'Adding…' : 'Add'}
+<div class="page">
+	<aside class="side" aria-label="Task filters">
+		<div class="side-head"><AppSwitcher current="tasks" /></div>
+		<nav class="filters">
+			{#each filters as item (item.key)}
+				<button
+					class="filt"
+					class:on={filter === item.key}
+					class:red={item.key === 'overdue' && counts.overdue > 0}
+					onclick={() => (filter = item.key)}
+					aria-current={filter === item.key ? 'page' : undefined}
+				>
+					<span class="material-symbols-outlined" class:fill={filter === item.key}>{item.icon}</span>
+					<span class="fl">{item.label}</span>
+					<span class="n">{counts[item.key]}</span>
 				</button>
-			</div>
+			{/each}
+		</nav>
+		<div class="grp">Areas</div>
+		<nav class="filters">
+			{#each AREAS as a (a.key)}
+				<button
+					class="filt"
+					class:on={area === a.key}
+					onclick={() => (area = area === a.key ? null : a.key)}
+					aria-pressed={area === a.key}
+				>
+					<i class="dot" style="background: {a.color}"></i>
+					<span class="fl">{a.label}</span>
+					<span class="n">{areaCounts[a.key]}</span>
+				</button>
+			{/each}
+		</nav>
+	</aside>
 
-			<div class="toolbar">
-				<span class="material-symbols-outlined search-icon">search</span>
-				<input class="search" placeholder="Search tasks" bind:value={query} aria-label="Search tasks" />
-			</div>
+	<main class="main">
+		<header class="page-h">
+			<h1>{heading}</h1>
+			<span class="cnt">{visible.length} {visible.length === 1 ? 'task' : 'tasks'}</span>
+			<span class="sp"></span>
+			{#if searching || query}
+				<input
+					class="search"
+					placeholder="Search tasks"
+					bind:value={query}
+					aria-label="Search tasks"
+					onkeydown={(e) => {
+						if (e.key === 'Escape') {
+							query = '';
+							searching = false;
+						}
+					}}
+					{@attach (el) => el.focus()}
+				/>
+			{:else}
+				<button class="ib" title="Search tasks" onclick={() => (searching = true)}>
+					<span class="material-symbols-outlined">search</span>
+				</button>
+			{/if}
+		</header>
 
+		<div class="adder">
+			<span class="material-symbols-outlined">add</span>
+			<input
+				class="title-in"
+				placeholder="Add a task, press Enter"
+				bind:value={newTitle}
+				aria-label="New task title"
+				onkeydown={(e) => {
+					if (e.key === 'Enter') void handleAdd();
+				}}
+			/>
+			<select class="ctl" bind:value={newArea} aria-label="Area">
+				<option value="">{area ? areaMeta(area).label : 'No area'}</option>
+				{#each AREAS as a (a.key)}
+					<option value={a.key}>{a.label}</option>
+				{/each}
+			</select>
+			<input class="ctl" type="date" bind:value={newDue} aria-label="Due date" />
+			<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
+				Add
+			</button>
+		</div>
+
+		<div class="list">
 			{#if $tasks.length === 0}
 				<div class="empty">
-					<span class="material-symbols-outlined empty-icon">task</span>
-					<p>No tasks yet. Add the first one above.</p>
+					<span class="material-symbols-outlined">task_alt</span>
+					<p>No tasks yet. Type one above and press Enter.</p>
 				</div>
 			{:else if visible.length === 0}
 				<div class="empty">
-					<p>{query.trim() ? 'No matching tasks.' : 'No tasks here.'}</p>
+					<p>{query.trim() ? 'No tasks match that search.' : 'Nothing here.'}</p>
 				</div>
 			{:else}
 				{#each groups as group (group.key)}
-					<section class="group">
-						<div class="ghead">
-							<span class="glabel">{group.label}</span>
-							<span class="gcount">{group.rows.length}</span>
-						</div>
+					<section>
+						<h2 class="lg" class:over={group.key === 'overdue'}>
+							{group.label}<span class="n">{group.rows.length}</span>
+						</h2>
 						{#each group.rows as t (t.id)}
 							<div
-								class="row {t.status}"
+								class="tr"
 								class:done={t.status === 'done'}
-								class:over={isOverdue(t)}
+								class:on={$openTaskId === t.id}
 								onclick={(e) => rowClick(t, e)}
 								role="button"
 								tabindex="0"
 								aria-label="Open {t.title} details"
 								onkeydown={(e) => {
-									if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('row'))
+									if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('tr'))
 										openTask(t.id);
 								}}
 							>
 								<button
-									class="status"
-									title="Cycle status"
-									onclick={() => void updateTask(t.id, { status: cycleStatus(t) })}
+									class="st {t.status}"
+									title="Advance status"
+									onclick={() => void updateTask(t.id, { status: nextStatus(t) })}
 								>
-									<span class="material-symbols-outlined">{statusIcon(t.status)}</span>
+									<span class="material-symbols-outlined" class:fill={t.status === 'done'}
+										>{statusIcon(t.status)}</span
+									>
 								</button>
-								<div class="main">
-									<input
-										class="t-in"
-										value={t.title}
-										aria-label="Task title"
-										onchange={(e) => {
-											const v = (e.target as HTMLInputElement).value.trim();
-											if (v && v !== t.title) void updateTask(t.id, { title: v });
-											else (e.target as HTMLInputElement).value = t.title;
-										}}
-									/>
-									<div class="sub">
-										<span
-											class="due"
-											class:overdue={isOverdue(t)}
-											class:today={isDueToday(t) && t.status !== 'done'}
-										>
-											<span class="material-symbols-outlined mini">event</span>
-											{dueLabel(t.due_at)}
+								<input
+									class="ttl"
+									value={t.title}
+									aria-label="Task title"
+									onchange={(e) => {
+										const v = (e.target as HTMLInputElement).value.trim();
+										if (v && v !== t.title) void updateTask(t.id, { title: v });
+										else (e.target as HTMLInputElement).value = t.title;
+									}}
+								/>
+								<span class="meta">
+									{#if t.status === 'waiting' && t.waiting_on}
+										<span class="m" title="Waiting on">
+											<span class="material-symbols-outlined">person</span>{t.waiting_on}
 										</span>
-										{#if t.remind_at != null}
-											<span class="rem" title="Reminds {stampShort(t.remind_at)}">
-												<span class="material-symbols-outlined mini">notifications</span>
-												{stampShort(t.remind_at)}
-											</span>
-										{/if}
-										{#if t.status === 'doing'}
-											<span class="st doing">doing</span>
-										{/if}
-										{#if t.priority !== 'none'}
-											<span class="pri pri-{t.priority}">{t.priority}</span>
-										{/if}
-										{#if childrenOf($tasks, t.id).length > 0}
-											<span class="sub-c" title="Subtasks">
-												<span class="material-symbols-outlined mini">account_tree</span>
-												{childrenOf($tasks, t.id).filter((s) => s.status === 'done').length}/{childrenOf(
-													$tasks,
-													t.id
-												).length}
-											</span>
-										{/if}
-										{#if t.link_count > 0}
-											<span
-												class="linked"
-												title={t.link_count === 1 ? '1 linked note' : `${t.link_count} linked notes`}
-											>
-												<span class="material-symbols-outlined mini">description</span>
-												{t.link_count}
-											</span>
-										{/if}
-									</div>
-								</div>
-								<button class="abtn del" title="Delete" onclick={() => void handleDelete(t)}>
+									{/if}
+									{#if t.area}
+										<span class="m area"><i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}</span>
+									{/if}
+									{#if t.link_count > 0}
+										<span class="m" title="Linked notes">
+											<span class="material-symbols-outlined">description</span>{t.link_count}
+										</span>
+									{/if}
+									{#if subCount(t)}
+										<span class="m" title="Subtasks">
+											<span class="material-symbols-outlined">subdirectory_arrow_right</span>{subCount(t)}
+										</span>
+									{/if}
+									{#if t.remind_at != null}
+										<span class="m" title="Reminds {stampShort(t.remind_at)}">
+											<span class="material-symbols-outlined">notifications</span>
+										</span>
+									{/if}
+									{#if t.priority !== 'none'}
+										<span class="m pri-{t.priority}" title="{t.priority} priority">
+											<span class="material-symbols-outlined fill">flag</span>
+										</span>
+									{/if}
+								</span>
+								<span
+									class="due"
+									class:over={isOverdue(t)}
+									class:today={isDueToday(t) && t.status !== 'done'}
+								>
+									{t.due_at == null ? '' : isDueToday(t) && t.status !== 'done' ? 'Today' : dueLabel(t.due_at)}
+								</span>
+								<button class="del" title="Delete" onclick={() => void handleDelete(t)}>
 									<span class="material-symbols-outlined">delete</span>
 								</button>
 							</div>
@@ -274,373 +349,365 @@
 				{/each}
 			{/if}
 		</div>
-	</div>
+		<PageFooter>
+			<span>{openCount} open</span>
+			{#if overdueCount > 0}<span class="red">{overdueCount} overdue</span>{/if}
+		</PageFooter>
+	</main>
 </div>
 
 <style>
-	.content {
-		max-width: 1160px;
-		margin: 0 auto;
-		width: 100%;
-		padding: 32px 24px 72px;
+	.page {
+		flex: 1;
+		min-height: 0;
+		display: flex;
 	}
-	.workspace {
-		display: grid;
-		grid-template-columns: 192px minmax(0, 1fr);
-		gap: 40px;
-		align-items: start;
+	.side {
+		width: 240px;
+		flex-shrink: 0;
+		background: var(--panel);
+		border-right: 1px solid var(--line);
+		display: flex;
+		flex-direction: column;
+		overflow-y: auto;
 	}
-	.filter-rail { position: sticky; top: 24px; }
-	.filters { display: flex; flex-direction: column; gap: 3px; }
-	.filter {
-		width: 100%;
-		min-height: 36px;
+	.side-head {
+		height: 56px;
+		display: flex;
+		align-items: center;
+		padding: 0 16px;
+		flex-shrink: 0;
+	}
+	.filters {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		padding: 0 8px;
+	}
+	.filt {
 		display: flex;
 		align-items: center;
 		gap: 10px;
+		height: 32px;
 		padding: 0 10px;
-		border: 0;
-		border-radius: var(--radius);
-		background: transparent;
-		color: var(--on-surface-variant);
-		font: 12px var(--font-ui);
+		border: none;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-2);
+		font: var(--fs) var(--font-ui);
 		text-align: left;
 		cursor: pointer;
 	}
-	.filter .material-symbols-outlined { font-size: 17px; color: var(--outline); }
-	.filter:hover { background: var(--surface-container-low); color: var(--on-surface); }
-	.filter.active { background: var(--surface-container-high); color: var(--on-surface); font-weight: 600; }
-	.filter.active .material-symbols-outlined { color: var(--primary); }
-	.filter-count { margin-left: auto; color: var(--outline); font-variant-numeric: tabular-nums; }
-	.list-pane { min-width: 0; }
-	.page-heading {
-		display: flex;
-		align-items: end;
-		justify-content: space-between;
-		gap: 16px;
-		margin-bottom: 24px;
-	}
-	h1 {
-		margin: 0;
-		font-size: 24px;
-		line-height: 30px;
-		font-weight: 600;
-		letter-spacing: -0.035em;
-	}
-	.heading-count {
-		color: var(--on-surface-variant);
-		font-size: 12px;
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-	}
-
-	.addrow {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: var(--surface-container-lowest);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-lg);
-		padding: 8px 8px 8px 12px;
-		margin-bottom: 20px;
-	}
-	.addrow:focus-within {
-		border-color: var(--primary);
-	}
-	.add-icon {
+	.filt .material-symbols-outlined {
 		font-size: 18px;
-		color: var(--outline);
-		flex-shrink: 0;
+		color: var(--text-3);
 	}
-	.title-in {
+	.filt:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.filt.on {
+		background: var(--accent-dim);
+		color: var(--text);
+	}
+	.filt.on .material-symbols-outlined {
+		color: var(--accent);
+	}
+	.fl {
 		flex: 1;
-		min-width: 0;
-		background: none;
-		border: none;
-		outline: none;
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-medium);
-		height: 30px;
 	}
-	.title-in::placeholder {
-		color: var(--outline-variant);
-	}
-	.ctl {
-		height: 30px;
-		padding: 0 8px;
-		background: var(--surface-container-low);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		color: var(--on-surface-variant);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		outline: none;
-		flex-shrink: 0;
-	}
-	.ctl:focus {
-		border-color: var(--primary);
-	}
-	.date-in {
-		width: 132px;
-		color-scheme: dark;
-	}
-	.add-btn {
-		height: 30px;
-		padding: 0 14px;
-		background: var(--primary);
-		border: 1px solid var(--primary);
-		border-radius: var(--radius);
-		color: var(--on-primary);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		font-weight: var(--font-ui-medium-weight);
-		cursor: pointer;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-	.add-btn:hover:not(:disabled) {
-		filter: brightness(1.08);
-	}
-	.add-btn:disabled {
-		opacity: 0.45;
-		cursor: default;
-	}
-
-	.toolbar {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin: 0 2px 12px;
-		padding-bottom: 10px;
-		border-bottom: 1px solid var(--border-default);
-	}
-	.search-icon {
-		font-size: 16px;
-		color: var(--outline-variant);
-	}
-	.search {
-		width: 190px;
-		background: none;
-		border: none;
-		outline: none;
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		height: 28px;
-	}
-	.search::placeholder {
-		color: var(--outline-variant);
-	}
-	.empty {
-		padding: 56px 0;
-		text-align: center;
-		color: var(--outline);
-		font-size: var(--font-ui-small);
-	}
-	.empty-icon {
-		font-size: 28px;
-		opacity: 0.5;
-	}
-	.empty p {
-		margin: 8px 0 0;
-	}
-
-	.group {
-		margin-bottom: 28px;
-	}
-	.ghead {
-		display: flex;
-		align-items: baseline;
-		gap: var(--stack-gap);
-		padding: 0 2px 8px;
-	}
-	.glabel {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--on-surface-variant);
-	}
-	.gcount {
-		font-size: 11px;
-		color: var(--outline-variant);
+	.n {
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+		font-weight: 400;
 		font-variant-numeric: tabular-nums;
 	}
-
-	.row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 12px 8px;
-		border-bottom: 1px solid var(--border-default);
-		cursor: pointer;
+	.filt.red .n {
+		color: var(--red);
 	}
-	.row:hover {
-		background: var(--surface-container-low);
+	.dot {
+		width: 8px;
+		height: 8px;
+		margin: 0 5px;
+		border-radius: 2px;
 	}
-	.row.done {
-		opacity: 0.7;
-	}
-	.status {
-		background: none;
-		border: none;
-		color: var(--on-surface-variant);
-		cursor: pointer;
-		padding: 2px;
-		display: flex;
-		flex-shrink: 0;
-		border-radius: var(--radius);
-	}
-	.status:hover {
-		color: var(--primary);
-	}
-	.row.doing .status {
-		color: var(--tertiary);
-	}
-	.row.done .status {
-		color: var(--success);
-	}
-	.row.over .status {
-		color: var(--error);
+	.grp {
+		padding: 20px 18px 6px;
+		color: var(--text-3);
+		font-size: var(--fs-sm);
+		font-weight: 500;
 	}
 	.main {
 		flex: 1;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 1px;
 	}
-	.t-in {
-		background: none;
-		border: none;
-		outline: none;
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		font-weight: var(--font-ui-medium-weight);
-		padding: 0;
-		width: 100%;
-		border-radius: 2px;
-	}
-	.t-in:focus-visible {
-		outline: 1px solid var(--primary);
-		outline-offset: 2px;
-	}
-	.row.done .t-in {
-		text-decoration: line-through;
-		font-weight: var(--font-ui-small-weight);
-	}
-	.sub {
+	.page-h {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-		font-variant-numeric: tabular-nums;
-	}
-	.due {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-	}
-	.due.overdue {
-		color: var(--error);
-		font-weight: var(--font-ui-medium-weight);
-	}
-	.due.today {
-		color: var(--tertiary);
-	}
-	.rem {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		color: var(--outline-variant);
-	}
-	.mini {
-		font-size: 13px;
-	}
-	.st {
-		text-transform: capitalize;
-	}
-	.st.doing {
-		color: var(--tertiary);
-	}
-	.pri {
-		text-transform: capitalize;
-	}
-	.pri-urgent {
-		color: var(--error);
-		font-weight: var(--font-ui-medium-weight);
-	}
-	.pri-high {
-		color: var(--tertiary);
-	}
-	.pri-medium {
-		color: var(--primary);
-	}
-	.pri-low {
-		color: var(--outline);
-	}
-	.sub-c,
-	.linked {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		color: var(--outline-variant);
-	}
-	.abtn {
-		width: 24px;
-		height: 24px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border: none;
-		background: none;
-		color: var(--on-surface-variant);
-		border-radius: var(--radius);
-		cursor: pointer;
-		padding: 0;
+		gap: 12px;
+		height: 56px;
+		padding: 0 16px 0 24px;
+		border-bottom: 1px solid var(--line);
 		flex-shrink: 0;
 	}
-	.abtn .material-symbols-outlined {
-		font-size: 16px;
+	h1 {
+		margin: 0;
+		font: 700 20px var(--font-read);
+		white-space: nowrap;
 	}
-	.abtn.del:hover {
-		color: var(--error);
-		background: var(--surface-container-high);
+	.cnt {
+		color: var(--text-3);
+		white-space: nowrap;
 	}
-	.row .del { opacity: 0; }
-	.row:hover .del,
-	.row:focus-within .del { opacity: 1; }
-	@media (hover: none) {
-		.row .del { opacity: 1; }
+	.sp {
+		flex: 1;
 	}
-	@media (max-width: 600px) {
-		.content { padding: 24px 16px 56px; }
-		.page-heading { margin-bottom: 20px; }
-		.workspace { display: block; }
-		.filter-rail { position: static; margin: 0 -16px 20px; overflow-x: auto; padding: 0 16px; }
-		.filters { flex-direction: row; width: max-content; gap: 4px; }
-		.filter { width: auto; white-space: nowrap; padding: 0 12px; }
-		.filter-count { margin-left: 2px; }
-		.addrow { flex-wrap: wrap; }
-		.title-in { flex-basis: calc(100% - 32px); }
-		.date-in { margin-left: 26px; flex: 1; }
-		.toolbar { justify-content: space-between; }
-		.search { flex: 1; min-width: 0; }
-		.sub { flex-wrap: wrap; gap: 4px 10px; }
+	.ib {
+		display: grid;
+		place-items: center;
+		width: 32px;
+		height: 32px;
+		border: none;
+		border-radius: var(--r-md);
+		background: none;
+		color: var(--text-3);
+		cursor: pointer;
 	}
-	.filter:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-
-	button:focus-visible,
-	input:focus-visible {
-		outline: 1px solid var(--primary);
-		outline-offset: 1px;
+	.ib:hover {
+		background: var(--hover);
+		color: var(--text);
 	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.row,
-		.card {
-			transition: none;
-		}
+	.search {
+		width: 240px;
+		height: 32px;
+		padding: 0 10px;
+		border: 1px solid var(--accent);
+		border-radius: var(--r-md);
+		background: var(--bg);
+		color: var(--text);
+		font: var(--fs) var(--font-ui);
+		outline: none;
+	}
+	.adder {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 48px;
+		margin: 18px 24px 4px;
+		padding: 0 8px 0 14px;
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-lg);
+		color: var(--text-3);
+		flex-shrink: 0;
+	}
+	.adder:focus-within {
+		border-color: var(--line-3);
+	}
+	.title-in {
+		flex: 1;
+		min-width: 0;
+		border: none;
+		outline: none;
+		background: none;
+		color: var(--text);
+		font: var(--fs-md) var(--font-ui);
+	}
+	.title-in::placeholder {
+		color: var(--text-3);
+	}
+	.ctl {
+		height: 30px;
+		padding: 0 8px;
+		border: 1px solid transparent;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-2);
+		font: var(--fs) var(--font-ui);
+		color-scheme: dark;
+		cursor: pointer;
+		outline: none;
+	}
+	.ctl:hover,
+	.ctl:focus {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.add-btn {
+		height: 32px;
+		padding: 0 14px;
+		border: none;
+		border-radius: var(--r-md);
+		background: var(--accent-fill);
+		color: var(--on-accent);
+		font: 600 var(--fs) var(--font-ui);
+		cursor: pointer;
+	}
+	.add-btn:hover:not(:disabled) {
+		background: var(--accent-fill-hi);
+	}
+	.add-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.list {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding: 0 24px 40px;
+	}
+	.lg {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 0;
+		padding: 22px 6px 8px;
+		border-bottom: 1px solid var(--line);
+		font-size: var(--fs);
+		font-weight: 600;
+	}
+	.lg.over {
+		color: var(--red);
+	}
+	.tr {
+		display: grid;
+		grid-template-columns: 28px minmax(0, 1fr) auto 96px 28px;
+		align-items: center;
+		gap: 12px;
+		min-height: 44px;
+		padding: 0 4px 0 8px;
+		border-bottom: 1px solid var(--line);
+		cursor: pointer;
+	}
+	.tr:hover {
+		background: var(--raise);
+	}
+	.tr.on {
+		background: var(--accent-dim);
+	}
+	.st {
+		display: grid;
+		place-items: center;
+		border: none;
+		background: none;
+		padding: 0;
+		color: var(--text-3);
+		cursor: pointer;
+	}
+	.st .material-symbols-outlined {
+		font-size: 20px;
+	}
+	.st:hover {
+		color: var(--accent);
+	}
+	.st.doing {
+		color: var(--accent);
+	}
+	.st.waiting {
+		color: var(--yellow);
+	}
+	.st.done {
+		color: var(--green);
+	}
+	.ttl {
+		min-width: 0;
+		border: none;
+		outline: none;
+		background: none;
+		padding: 4px 0;
+		color: var(--text);
+		font: var(--fs-md) var(--font-ui);
+		text-overflow: ellipsis;
+		cursor: pointer;
+	}
+	.ttl:focus {
+		cursor: text;
+	}
+	.tr.done .ttl {
+		color: var(--text-3);
+		text-decoration: line-through;
+	}
+	.meta {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		color: var(--text-3);
+		font-size: var(--fs-sm);
+		white-space: nowrap;
+	}
+	.m {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.m .material-symbols-outlined {
+		font-size: 15px;
+	}
+	.m.area i {
+		width: 7px;
+		height: 7px;
+		border-radius: 2px;
+	}
+	.pri-urgent {
+		color: var(--red);
+	}
+	.pri-high {
+		color: var(--orange);
+	}
+	.pri-medium {
+		color: var(--yellow);
+	}
+	.pri-low {
+		color: var(--blue);
+	}
+	.due {
+		text-align: right;
+		color: var(--text-2);
+		font-size: var(--fs-sm);
+		white-space: nowrap;
+	}
+	.due.over {
+		color: var(--red);
+	}
+	.due.today {
+		color: var(--accent);
+	}
+	.del {
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-3);
+		cursor: pointer;
+		visibility: hidden;
+	}
+	.tr:hover .del {
+		visibility: visible;
+	}
+	.del:hover {
+		background: var(--hover);
+		color: var(--red);
+	}
+	.del .material-symbols-outlined {
+		font-size: 17px;
+	}
+	.empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		padding: 80px 0;
+		color: var(--text-3);
+	}
+	.empty .material-symbols-outlined {
+		font-size: 34px;
+		color: var(--text-4);
+	}
+	.empty p {
+		margin: 0;
 	}
 </style>

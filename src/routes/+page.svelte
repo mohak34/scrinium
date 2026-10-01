@@ -7,6 +7,9 @@
 	import Outline from '$lib/components/Outline.svelte';
 	import Tags from '$lib/components/Tags.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
+	import NoteBar from '$lib/components/NoteBar.svelte';
+	import StatusBar from '$lib/components/StatusBar.svelte';
+	import NoteTasks from '$lib/components/NoteTasks.svelte';
 	import CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import {
@@ -369,7 +372,16 @@
 			onActivate={openNote}
 			sidebarCollapsed={collapsed}
 			onToggleSidebar={toggleCollapse}
+			onNewNote={() => newEntry('note')}
 		/>
+		{#if $activePath}
+			<NoteBar
+				path={$activePath}
+				rightOpen={!rightCollapsed}
+				onTogglePreview={() => editorRef?.togglePreview()}
+				onToggleRight={toggleRightCollapse}
+			/>
+		{/if}
 		<div class="editor-scroll">
 			{#if $activePath}
 				<CodeEditor
@@ -379,16 +391,34 @@
 					notePath={$activePath}
 				/>
 			{:else}
-				<div class="empty">Select a note, or create one from the sidebar.</div>
+				<div class="empty">
+					<span class="material-symbols-outlined">description</span>
+					<p>Open a note from the sidebar, or start a new one.</p>
+					<button class="new" onclick={() => newEntry('note')}>
+						<span class="material-symbols-outlined">edit_square</span>New note
+					</button>
+				</div>
 			{/if}
 		</div>
+		{#if $activePath}
+			<StatusBar content={currentContent} />
+		{/if}
 	</div>
 	{#if $activePath && !rightCollapsed}
-		<aside class="rightbar" aria-label="Right sidebar">
-			<FileInfo content={currentContent} onClose={toggleRightCollapse} />
-			<Tags content={currentContent} />
-			<Backlinks onSelect={openNote} />
-			<Outline content={currentContent} onJump={(line) => editorRef?.gotoLine(line)} />
+		<aside class="rightbar" aria-label="Note details">
+			<div class="rhead">
+				<span class="rtitle">{($activePath.split('/').pop() ?? '').replace(/\.md$/, '')}</span>
+				<button class="rclose" title="Hide panel (Space r)" onclick={toggleRightCollapse}>
+					<span class="material-symbols-outlined">close</span>
+				</button>
+			</div>
+			<div class="rscroll">
+				<Outline content={currentContent} onJump={(line) => editorRef?.gotoLine(line)} />
+				<Backlinks onSelect={openNote} />
+				<NoteTasks />
+				<Tags content={currentContent} />
+				<FileInfo content={currentContent} />
+			</div>
 		</aside>
 	{/if}
 </div>
@@ -478,46 +508,100 @@
 	}
 	.resize-handle:hover,
 	.resize-handle:focus-visible {
-		background: rgba(181, 196, 255, 0.25);
+		background: var(--accent-dim);
 		outline: none;
 	}
 	.rightbar {
-		width: 260px;
+		width: 290px;
 		flex-shrink: 0;
 		height: 100vh;
-		overflow-y: auto;
-		background: var(--sidebar-bg);
-		border-left: 1px solid var(--border-default);
+		background: var(--panel);
+		border-left: 1px solid var(--line);
 		display: flex;
 		flex-direction: column;
 	}
-	/* One hairline between stacked sections; components untouched. The
-	   last child keeps its own top margin (Outline pins to the bottom). */
-	.rightbar > :global(*:not(:first-child)) {
-		border-top: 1px solid var(--border-default);
+	.rhead {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 40px;
+		padding: 0 8px 0 16px;
+		border-bottom: 1px solid var(--line);
+		flex-shrink: 0;
 	}
-	.rightbar > :global(*:not(:first-child):not(:last-child)) {
-		margin-top: 1rem;
+	.rtitle {
+		flex: 1;
+		min-width: 0;
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.rclose {
+		display: grid;
+		place-items: center;
+		width: 26px;
+		height: 26px;
+		border: none;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-3);
+		cursor: pointer;
+	}
+	.rclose:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.rscroll {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding: 4px 0 24px;
 	}
 	.main {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
+		background: var(--bg);
 	}
 	.editor-scroll {
 		flex: 1;
 		min-height: 0;
 		overflow: hidden;
-		padding: 0 var(--gutter);
 	}
 	.empty {
-		flex: 1;
+		height: 100%;
 		display: flex;
+		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		color: var(--outline);
-		font-size: var(--font-ui-small);
+		gap: 10px;
+		color: var(--text-3);
+	}
+	.empty > .material-symbols-outlined {
+		font-size: 36px;
+		color: var(--text-4);
+	}
+	.empty p {
+		margin: 0;
+	}
+	.new {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		height: 32px;
+		margin-top: 6px;
+		padding: 0 14px 0 12px;
+		border: none;
+		border-radius: var(--r-md);
+		background: var(--accent-fill);
+		color: var(--on-accent);
+		font: 600 var(--fs) var(--font-ui);
+		cursor: pointer;
+	}
+	.new:hover {
+		background: var(--accent-fill-hi);
 	}
 	.leader {
 		position: fixed;

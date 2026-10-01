@@ -7,81 +7,114 @@
 		updateTask,
 		deleteTask,
 		openTask,
+		openTaskId,
 		topLevel,
 		childrenOf,
 		isOverdue,
 		isDueToday,
 		dueLabel,
-		parseDueInput,
 		stampShort,
+		STATUSES,
+		AREAS,
 		type Task,
+		type TaskArea,
 		type TaskStatus
 	} from '$lib/stores/tasks';
+	import { areaMeta, DOING_LIMIT } from '$lib/taskModel';
+	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
+	import PageFooter from '$lib/components/PageFooter.svelte';
 
-	const COLS: { key: TaskStatus; label: string }[] = [
-		{ key: 'todo', label: 'Todo' },
-		{ key: 'doing', label: 'Doing' },
-		{ key: 'done', label: 'Done' }
-	];
+	// Two views of the same tasks: status columns, or the same columns split
+	// into one row per area. Drag a card to change its status (and its area,
+	// in the area view). Done only shows the last week unless expanded.
+	type View = 'columns' | 'areas';
+	const VIEW_KEY = 'scrinium:boardView';
+	let view = $state<View>('columns');
+	let area = $state<TaskArea | null>(null);
+	let showAllDone = $state(false);
 
-	let newTitle = $state('');
-	let newDue = $state('');
-	let newCol = $state<TaskStatus>('todo');
-	let adding = $state(false);
-	let addingTo = $state<TaskStatus | null>(null);
+	let draft = $state('');
+	let addingTo = $state<string | null>(null);
 
 	let dragId = $state<string | null>(null);
-	let overCol = $state<TaskStatus | null>(null);
+	let overCell = $state<string | null>(null);
 	let overId = $state<string | null>(null);
 
+	const WEEK = 7 * 86400000;
+	// The area view leaves Inbox out: unplanned work has no row to sit in yet.
+	const LANE_STATUSES = STATUSES.filter((s) => s.key !== 'inbox');
+
 	onMount(() => {
-		loadTasks();
+		void loadTasks();
+		if (localStorage.getItem(VIEW_KEY) === 'areas') view = 'areas';
 	});
 
-	const cols = $derived.by(() =>
-		COLS.map((c) => ({
-			...c,
-			rows: topLevel($tasks)
-				.filter((t) => t.status === c.key)
-				.sort((a, b) => a.position - b.position)
-		}))
-	);
+	function setView(v: View) {
+		view = v;
+		localStorage.setItem(VIEW_KEY, v);
+	}
 
-	const openCount = $derived(topLevel($tasks).filter((t) => t.status !== 'done').length);
-	const overdueCount = $derived(topLevel($tasks).filter(isOverdue).length);
-	const dueTodayCount = $derived(
-		topLevel($tasks).filter((t) => t.status !== 'done' && isDueToday(t)).length
-	);
+	const pool = $derived(topLevel($tasks).filter((t) => area == null || t.area === area));
+
+	function cellRows(status: TaskStatus, laneArea?: TaskArea | null): Task[] {
+		let rows = pool.filter(
+			(t) => t.status === status && (laneArea === undefined || (t.area ?? null) === laneArea)
+		);
+		if (status === 'done') {
+			rows = rows.sort((a, b) => b.updated_at - a.updated_at);
+			if (!showAllDone) rows = rows.filter((t) => t.updated_at >= Date.now() - WEEK);
+			return rows;
+		}
+		return rows.sort((a, b) => a.position - b.position);
+	}
+
+	const doneTotal = $derived(pool.filter((t) => t.status === 'done').length);
+	const openCount = $derived(pool.filter((t) => t.status !== 'done').length);
+	const overdueCount = $derived(pool.filter(isOverdue).length);
+	const todayCount = $derived(pool.filter((t) => t.status !== 'done' && isDueToday(t)).length);
+	const inboxCount = $derived(pool.filter((t) => t.status === 'inbox').length);
+	const lanes = $derived([
+		...AREAS.map((a) => ({ key: a.key as TaskArea | null, label: a.label, color: a.color })),
+		...(pool.some((t) => t.area == null && t.status !== 'inbox')
+			? [{ key: null, label: 'No area', color: 'var(--text-4)' }]
+			: [])
+	]);
+
+	function weekRange(): string {
+		const now = new Date();
+		const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+		const sunday = new Date(monday.getTime() + 6 * 86400000);
+		const f = (d: Date) => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+		return `${f(monday)} to ${f(sunday)}`;
+	}
+
+	function subLabel(key: TaskStatus): string {
+		if (key === 'todo') return `Committed for ${weekRange()}`;
+		if (key === 'done') return showAllDone ? 'All time' : 'Last 7 days';
+		return STATUSES.find((s) => s.key === key)!.hint;
+	}
 
 	// Clicking a card opens the detail drawer; drags and controls are exempt.
 	function cardClick(t: Task, e: MouseEvent) {
 		if (dragId) return;
-		const el = e.target as HTMLElement;
-		if (el.closest('input,select,button,textarea,a')) return;
+		if ((e.target as HTMLElement).closest('input,button,a')) return;
 		openTask(t.id);
 	}
 
-	async function handleAdd() {
-		const title = newTitle.trim();
-		if (!title || adding) return;
-		adding = true;
-		try {
-			const row = await createTask({ title, status: newCol, due_at: parseDueInput(newDue) });
-			if (row) {
-				newTitle = '';
-				newDue = '';
-				addingTo = null;
-			}
-		} finally {
-			adding = false;
-		}
+	async function add(status: TaskStatus, laneArea?: TaskArea | null) {
+		const title = draft.trim();
+		if (!title) return;
+		draft = '';
+		await createTask({ title, status, area: laneArea === undefined ? area : laneArea });
 	}
 
-	function startAdd(col: TaskStatus) {
-		newCol = col;
-		newTitle = '';
-		newDue = '';
-		addingTo = col;
+	function startAdd(cell: string) {
+		draft = '';
+		addingTo = cell;
+	}
+
+	function cellKey(status: TaskStatus, laneArea?: TaskArea | null) {
+		return laneArea === undefined ? status : `${status}|${laneArea ?? ''}`;
 	}
 
 	function onDragStart(t: Task, e: DragEvent) {
@@ -94,38 +127,29 @@
 
 	function onDragEnd() {
 		dragId = null;
-		overCol = null;
+		overCell = null;
 		overId = null;
 	}
 
-	function onColOver(col: TaskStatus, e: DragEvent) {
+	function onCellOver(key: string, e: DragEvent) {
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		overCol = col;
-		overId = null;
+		if (overCell !== key) {
+			overCell = key;
+			overId = null;
+		}
 	}
 
-	function onCardOver(id: string, e: DragEvent) {
+	function onCardOver(key: string, id: string, e: DragEvent) {
 		e.preventDefault();
 		e.stopPropagation();
+		overCell = key;
 		overId = id;
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 	}
 
-	async function onDrop(col: TaskStatus, e: DragEvent) {
-		e.preventDefault();
-		const id = dragId ?? e.dataTransfer?.getData('text/plain');
-		const targetId = overId;
-		dragId = null;
-		overCol = null;
-		overId = null;
-		if (!id) return;
-		const moving = $tasks.find((t) => t.id === id);
-		if (!moving) return;
-		// Order within the target column excluding the dragged card.
-		const rows = topLevel($tasks)
-			.filter((t) => t.status === col && t.id !== id)
-			.sort((a, b) => a.position - b.position);
+	// Position between neighbours so a drop never renumbers the column.
+	function positionAt(rows: Task[], targetId: string | null): number {
 		let idx = rows.length;
 		if (targetId) {
 			const at = rows.findIndex((t) => t.id === targetId);
@@ -133,545 +157,700 @@
 		}
 		const prev = rows[idx - 1]?.position;
 		const next = rows[idx]?.position;
-		let position: number;
-		if (prev != null && next != null) position = (prev + next) / 2;
-		else if (prev != null) position = prev + 1000;
-		else if (next != null) position = next - 1000;
-		else position = Date.now();
-		if (moving.status === col && moving.position === position) return;
-		await updateTask(id, { status: col, position });
+		if (prev != null && next != null) return (prev + next) / 2;
+		if (prev != null) return prev + 1000;
+		if (next != null) return next - 1000;
+		return Date.now();
 	}
 
+	async function onDrop(status: TaskStatus, laneArea: TaskArea | null | undefined, e: DragEvent) {
+		e.preventDefault();
+		const id = dragId ?? e.dataTransfer?.getData('text/plain');
+		const targetId = overId;
+		onDragEnd();
+		if (!id) return;
+		const moving = $tasks.find((t) => t.id === id);
+		if (!moving) return;
+		const rows = cellRows(status, laneArea).filter((t) => t.id !== id);
+		const position = positionAt(rows, targetId);
+		const patch: Parameters<typeof updateTask>[1] = { status, position };
+		if (laneArea !== undefined) patch.area = laneArea;
+		await updateTask(id, patch);
+	}
+
+	// Keyboard and button fallbacks for drag and drop.
 	async function shiftColumn(t: Task, dir: 1 | -1) {
-		const order: TaskStatus[] = ['todo', 'doing', 'done'];
+		const order = STATUSES.map((s) => s.key);
 		const next = order[order.indexOf(t.status) + dir];
-		if (!next) return;
-		await updateTask(t.id, { status: next, position: Date.now() });
+		if (next) await updateTask(t.id, { status: next, position: Date.now() });
 	}
 
 	async function shiftOrder(t: Task, dir: 1 | -1) {
-		const rows = topLevel($tasks)
-			.filter((x) => x.status === t.status)
-			.sort((a, b) => a.position - b.position);
+		const rows = cellRows(t.status);
 		const i = rows.findIndex((x) => x.id === t.id);
 		const other = rows[i + dir];
 		if (!other) return;
-		// Swap positions so order flips without renumbering the column.
 		await updateTask(t.id, { position: other.position });
 		await updateTask(other.id, { position: t.position });
 	}
+
+	function subCount(t: Task): string | null {
+		const kids = childrenOf($tasks, t.id);
+		if (kids.length === 0) return null;
+		return `${kids.filter((k) => k.status === 'done').length}/${kids.length}`;
+	}
+
+	function since(ts: number | null): string {
+		if (ts == null) return '';
+		return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+	}
 </script>
 
-<div class="content">
-	<div class="page-heading">
-		<h1>Board</h1>
-		<span class="heading-count">{openCount} open</span>
+{#snippet card(t: Task, key: string, showArea: boolean)}
+	<div
+		class="kc"
+		class:done={t.status === 'done'}
+		class:dragging={dragId === t.id}
+		class:on={$openTaskId === t.id}
+		draggable="true"
+		ondragstart={(e) => onDragStart(t, e)}
+		ondragend={onDragEnd}
+		ondragover={(e) => onCardOver(key, t.id, e)}
+		onclick={(e) => cardClick(t, e)}
+		role="button"
+		tabindex="0"
+		aria-label="Open {t.title} details"
+		onkeydown={(e) => {
+			if (e.target !== e.currentTarget) return;
+			if (e.key === 'Enter') openTask(t.id);
+			else if (e.altKey && e.key === 'ArrowLeft') void shiftColumn(t, -1);
+			else if (e.altKey && e.key === 'ArrowRight') void shiftColumn(t, 1);
+			else if (e.altKey && e.key === 'ArrowUp') void shiftOrder(t, -1);
+			else if (e.altKey && e.key === 'ArrowDown') void shiftOrder(t, 1);
+		}}
+	>
+		{#if overId === t.id && dragId && dragId !== t.id}<div class="ins"></div>{/if}
+		{#if showArea && t.area}
+			<span class="area"><i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}</span>
+		{/if}
+		<div class="kt">{t.title}</div>
+		{#if t.status === 'waiting' && (t.waiting_on || t.waiting_since)}
+			<div class="wait">
+				<span class="material-symbols-outlined">person</span>
+				{t.waiting_on ?? 'Someone'}{t.waiting_since ? `, since ${since(t.waiting_since)}` : ''}
+			</div>
+		{/if}
+		{#if t.due_at != null || t.priority !== 'none' || subCount(t) || t.link_count > 0 || t.remind_at != null}
+			<div class="km">
+				{#if t.due_at != null}
+					<span class:over={isOverdue(t)} class:today={isDueToday(t) && t.status !== 'done'}>
+						<span class="material-symbols-outlined">{t.status === 'done' ? 'check' : 'event'}</span>
+						{isDueToday(t) && t.status !== 'done' ? 'Today' : dueLabel(t.due_at)}
+					</span>
+				{/if}
+				{#if t.priority !== 'none'}
+					<span class="pri-{t.priority}">
+						<span class="material-symbols-outlined fill">flag</span>{t.priority}
+					</span>
+				{/if}
+				{#if subCount(t)}
+					<span title="Subtasks"><span class="material-symbols-outlined">subdirectory_arrow_right</span>{subCount(t)}</span>
+				{/if}
+				{#if t.remind_at != null}
+					<span title="Reminds {stampShort(t.remind_at)}"><span class="material-symbols-outlined">notifications</span></span>
+				{/if}
+				{#if t.link_count > 0}
+					<span class="r" title="Linked notes"><span class="material-symbols-outlined">description</span>{t.link_count}</span>
+				{/if}
+			</div>
+		{/if}
+		<span class="ops">
+			<button title="Move left (Alt+Left)" onclick={() => void shiftColumn(t, -1)}>
+				<span class="material-symbols-outlined">chevron_left</span>
+			</button>
+			<button title="Move right (Alt+Right)" onclick={() => void shiftColumn(t, 1)}>
+				<span class="material-symbols-outlined">chevron_right</span>
+			</button>
+			<button
+				title="Delete"
+				onclick={() => {
+					if (confirm(`Delete "${t.title}"?`)) void deleteTask(t.id);
+				}}
+			>
+				<span class="material-symbols-outlined">delete</span>
+			</button>
+		</span>
 	</div>
-	{#if overdueCount > 0 || dueTodayCount > 0}
-		<div class="stats" aria-label="Task summary">
-			{#if overdueCount > 0}
-				<span class="stat over"><strong>{overdueCount}</strong> overdue</span>
-			{/if}
-			{#if dueTodayCount > 0}
-				<span class="stat today"><strong>{dueTodayCount}</strong> due today</span>
+{/snippet}
+
+{#snippet adder(status: TaskStatus, laneArea?: TaskArea | null)}
+	{@const key = cellKey(status, laneArea)}
+	{#if addingTo === key}
+		<input
+			class="add-in"
+			placeholder="Task name, Enter to add"
+			bind:value={draft}
+			{@attach (el) => el.focus()}
+			onblur={() => (addingTo = null)}
+			onkeydown={(e) => {
+				if (e.key === 'Enter') void add(status, laneArea);
+				if (e.key === 'Escape') addingTo = null;
+			}}
+		/>
+	{:else}
+		<button class="col-add" onclick={() => startAdd(key)}>
+			<span class="material-symbols-outlined">add</span>{status === 'inbox' ? 'Capture' : 'Add task'}
+		</button>
+	{/if}
+{/snippet}
+
+<div class="page">
+	<header class="page-h">
+		<AppSwitcher current="board" size="lg" />
+		<span class="cnt">{openCount} open</span>
+		<span class="vsep"></span>
+		<div class="areas" role="group" aria-label="Filter by area">
+			<button class:on={area === null} onclick={() => (area = null)}>All</button>
+			{#each AREAS as a (a.key)}
+				<button class:on={area === a.key} onclick={() => (area = area === a.key ? null : a.key)}>
+					<i style="background: {a.color}"></i>{a.label}
+				</button>
+			{/each}
+		</div>
+		<span class="sp"></span>
+		<div class="seg" role="group" aria-label="Board view">
+			<button class:on={view === 'columns'} onclick={() => setView('columns')}>
+				<span class="material-symbols-outlined">view_week</span>Columns
+			</button>
+			<button class:on={view === 'areas'} onclick={() => setView('areas')}>
+				<span class="material-symbols-outlined">table_rows</span>By area
+			</button>
+		</div>
+		<button
+			class="solid"
+			onclick={() => {
+				view = 'columns';
+				startAdd(cellKey('inbox'));
+			}}
+		>
+			<span class="material-symbols-outlined">add</span>New task
+		</button>
+	</header>
+
+	{#if view === 'columns'}
+		<div class="board">
+			{#each STATUSES as col (col.key)}
+				{@const rows = cellRows(col.key)}
+				{@const key = cellKey(col.key)}
+				<section
+					class="col"
+					class:drop={overCell === key && dragId}
+					ondragover={(e) => onCellOver(key, e)}
+					ondrop={(e) => void onDrop(col.key, undefined, e)}
+					aria-label={col.label}
+				>
+					<div class="col-h">
+						<span class="material-symbols-outlined ci {col.key}">{col.icon}</span>
+						{col.label}<span class="n">{col.key === 'done' ? doneTotal : rows.length}</span>
+						<span class="sp"></span>
+						{#if col.key === 'doing'}
+							<span class="limit" class:over={rows.length > DOING_LIMIT}>limit {DOING_LIMIT}</span>
+						{:else if col.key === 'done'}
+							<button class="link" onclick={() => (showAllDone = !showAllDone)}>
+								{showAllDone ? 'Last week' : 'Show all'}
+							</button>
+						{/if}
+					</div>
+					<div class="col-sub">{subLabel(col.key)}</div>
+					<div class="cards">
+						{#each rows as t (t.id)}
+							{@render card(t, key, area === null)}
+						{/each}
+						{#if overCell === key && dragId && !overId}<div class="ins end"></div>{/if}
+						{#if col.key !== 'done'}
+							{@render adder(col.key)}
+						{/if}
+					</div>
+				</section>
+			{/each}
+		</div>
+	{:else}
+		<div class="lanes">
+			<div class="grid" style="grid-template-columns: 160px repeat({LANE_STATUSES.length}, minmax(220px, 1fr))">
+				<div class="lh corner"></div>
+				{#each LANE_STATUSES as st (st.key)}
+					<div class="lh">
+						<span class="material-symbols-outlined ci {st.key}">{st.icon}</span>{st.label}
+						<span class="n">{st.key === 'done' ? doneTotal : cellRows(st.key).length}</span>
+					</div>
+				{/each}
+				{#each lanes as lane (lane.key ?? 'none')}
+					<div class="ln">
+						<span class="ln-name"><i style="background: {lane.color}"></i>{lane.label}</span>
+						<small>{pool.filter((t) => (t.area ?? null) === lane.key && t.status !== 'done' && t.status !== 'inbox').length} open</small>
+					</div>
+					{#each LANE_STATUSES as st (st.key)}
+						{@const key = cellKey(st.key, lane.key)}
+						<div
+							class="cell"
+							class:drop={overCell === key && dragId}
+							ondragover={(e) => onCellOver(key, e)}
+							ondrop={(e) => void onDrop(st.key, lane.key, e)}
+							role="list"
+							aria-label="{lane.label}, {st.label}"
+						>
+							{#each cellRows(st.key, lane.key) as t (t.id)}
+								{@render card(t, key, false)}
+							{/each}
+							{#if overCell === key && dragId && !overId}<div class="ins end"></div>{/if}
+							{#if st.key !== 'done'}
+								{@render adder(st.key, lane.key)}
+							{/if}
+						</div>
+					{/each}
+				{/each}
+			</div>
+			{#if inboxCount > 0}
+				<div class="note-row">
+					<span class="material-symbols-outlined">inbox</span>
+					Inbox has {inboxCount} unplanned {inboxCount === 1 ? 'task' : 'tasks'}.
+					<button class="link" onclick={() => setView('columns')}>Sort them in Columns</button>
+				</div>
 			{/if}
 		</div>
 	{/if}
 
-	<div class="board">
-		{#each cols as col (col.key)}
-			<section
-				class="col"
-				class:over={overCol === col.key && dragId}
-				ondragover={(e) => onColOver(col.key, e)}
-				ondrop={(e) => void onDrop(col.key, e)}
-				aria-label={col.label}
-			>
-				<div class="chead">
-					<span class="clabel">{col.label}</span>
-					<span class="ccount">{col.rows.length}</span>
-				</div>
-				<div class="cards">
-					{#each col.rows as t (t.id)}
-						<div
-							class="card {t.status}"
-							class:dragging={dragId === t.id}
-							class:insert={overId === t.id && dragId && dragId !== t.id}
-							draggable="true"
-							ondragstart={(e) => onDragStart(t, e)}
-							ondragend={onDragEnd}
-							ondragover={(e) => onCardOver(t.id, e)}
-							onclick={(e) => cardClick(t, e)}
-							role="button"
-							tabindex="0"
-							aria-label="Open {t.title} details"
-							onkeydown={(e) => {
-								if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('card'))
-									openTask(t.id);
-							}}
-						>
-							<input
-								class="t-in"
-								value={t.title}
-								aria-label="Task title"
-								draggable="false"
-								onmousedown={(e) => e.stopPropagation()}
-								onchange={(e) => {
-									const v = (e.target as HTMLInputElement).value.trim();
-									if (v && v !== t.title) void updateTask(t.id, { title: v });
-									else (e.target as HTMLInputElement).value = t.title;
-								}}
-							/>
-							{#if t.detail}
-								<div class="detail">{t.detail}</div>
-							{/if}
-							<div class="meta">
-								<span
-									class="due"
-									class:overdue={isOverdue(t)}
-									class:today={isDueToday(t) && t.status !== 'done'}
-									class:done={t.status === 'done'}
-								>
-									<span class="material-symbols-outlined mini">event</span>
-									{dueLabel(t.due_at)}
-								</span>
-								{#if t.remind_at != null}
-									<span class="rem" title="Reminds {stampShort(t.remind_at)}">
-										<span class="material-symbols-outlined mini">notifications</span>
-									</span>
-								{/if}
-								{#if t.priority !== 'none'}
-									<span class="pri pri-{t.priority}">{t.priority}</span>
-								{/if}
-								{#if childrenOf($tasks, t.id).length > 0}
-									<span
-										class="sub-c"
-										title="{childrenOf($tasks, t.id).filter((s) => s.status === 'done').length} of {childrenOf($tasks, t.id).length} subtasks done"
-									>
-										<span class="material-symbols-outlined mini">account_tree</span>
-										{childrenOf($tasks, t.id).filter((s) => s.status === 'done').length}/{childrenOf(
-											$tasks,
-											t.id
-										).length}
-									</span>
-								{/if}
-								{#if t.link_count > 0}
-									<span
-										class="linked"
-										title={t.link_count === 1 ? '1 linked note' : `${t.link_count} linked notes`}
-									>
-										<span class="material-symbols-outlined mini">description</span>
-										{t.link_count}
-									</span>
-								{/if}
-								<span class="ops">
-									<button class="op" title="Move left" onclick={() => void shiftColumn(t, -1)}>
-										<span class="material-symbols-outlined mini">chevron_left</span>
-									</button>
-									<button class="op" title="Move up" onclick={() => void shiftOrder(t, -1)}>
-										<span class="material-symbols-outlined mini">expand_less</span>
-									</button>
-									<button class="op" title="Move down" onclick={() => void shiftOrder(t, 1)}>
-										<span class="material-symbols-outlined mini">expand_more</span>
-									</button>
-									<button class="op" title="Move right" onclick={() => void shiftColumn(t, 1)}>
-										<span class="material-symbols-outlined mini">chevron_right</span>
-									</button>
-									<button
-										class="op del"
-										title="Delete"
-										onclick={() => {
-											if (confirm(`Delete "${t.title}"?`)) void deleteTask(t.id);
-										}}
-									>
-										<span class="material-symbols-outlined mini">delete</span>
-									</button>
-								</span>
-							</div>
-						</div>
-					{/each}
-					{#if col.rows.length === 0}
-						<div class="drop-hint">No tasks in {col.label.toLowerCase()}</div>
-					{/if}
-					{#if addingTo === col.key}
-						<div class="inline-add">
-							<input class="title-in" bind:value={newTitle} placeholder="Task name" aria-label="New task title" onkeydown={(e) => { if (e.key === 'Enter') void handleAdd(); if (e.key === 'Escape') addingTo = null; }} />
-							<div class="add-actions">
-								<input class="ctl date-in" type="date" bind:value={newDue} aria-label="Due date" />
-								<button class="cancel-btn" onclick={() => (addingTo = null)}>Cancel</button>
-								<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>{adding ? 'Adding…' : 'Add'}</button>
-							</div>
-						</div>
-					{:else}
-						<button class="add-in-column" onclick={() => startAdd(col.key)}><span class="material-symbols-outlined">add</span> Add task</button>
-					{/if}
-				</div>
-			</section>
-		{/each}
-	</div>
+	<PageFooter>
+		<span>{openCount} open</span>
+		{#if todayCount > 0}<span>{todayCount} due today</span>{/if}
+		{#if overdueCount > 0}<span class="red">{overdueCount} overdue</span>{/if}
+	</PageFooter>
 </div>
 
 <style>
-	.content {
-		max-width: 1440px;
-		margin: 0 auto;
-		width: 100%;
-		padding: 32px 24px 72px;
-	}
-	.page-heading {
-		display: flex;
-		align-items: end;
-		justify-content: space-between;
-		gap: 16px;
-		margin-bottom: 24px;
-	}
-	h1 {
-		margin: 0;
-		font-size: 24px;
-		line-height: 30px;
-		font-weight: 600;
-		letter-spacing: -0.035em;
-	}
-	.heading-count {
-		color: var(--on-surface-variant);
-		font-size: 12px;
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-	}
-
-	.title-in {
-		width: 100%;
-		background: none;
-		border: none;
-		outline: none;
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-medium);
-		height: 30px;
-	}
-	.title-in::placeholder {
-		color: var(--outline-variant);
-	}
-	.ctl {
-		height: 30px;
-		padding: 0 8px;
-		background: var(--surface-container-low);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		color: var(--on-surface-variant);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		outline: none;
-		flex-shrink: 0;
-	}
-	.ctl:focus {
-		border-color: var(--primary);
-	}
-	.date-in {
-		width: 132px;
-		color-scheme: dark;
-	}
-	.add-btn {
-		height: 30px;
-		padding: 0 14px;
-		background: var(--primary);
-		border: 1px solid var(--primary);
-		border-radius: var(--radius);
-		color: var(--on-primary);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-small);
-		font-weight: var(--font-ui-medium-weight);
-		cursor: pointer;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-	.add-btn:hover:not(:disabled) {
-		filter: brightness(1.08);
-	}
-	.add-btn:disabled {
-		opacity: 0.45;
-		cursor: default;
-	}
-
-	.stats {
-		display: flex;
-		gap: 14px;
-		margin: 0 2px 16px;
-		min-height: 16px;
-		font-size: 11px;
-		color: var(--outline);
-		font-variant-numeric: tabular-nums;
-	}
-	.stat strong {
-		color: var(--on-surface-variant);
-		font-weight: var(--font-ui-medium-weight);
-	}
-	.stat.over strong {
-		color: var(--error);
-	}
-	.stat.today strong {
-		color: var(--tertiary);
-	}
-
-	.board {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 0;
-		align-items: stretch;
-	}
-	@media (max-width: 760px) {
-		.board {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	.col {
-		padding: 0 14px;
-		min-height: 320px;
+	.page {
+		flex: 1;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		transition: background-color 0.12s ease;
 	}
-	.col:first-child { padding-left: 0; }
-	.col:last-child { padding-right: 0; }
-	.col + .col { border-left: 1px solid var(--border-default); }
-	.col.over {
-		background: var(--surface-container-low);
-	}
-	.chead {
+	.page-h {
 		display: flex;
-		align-items: baseline;
-		gap: 7px;
-		padding: 10px 2px 12px;
-		border-bottom: 1px solid var(--border-default);
-	}
-	.clabel {
-		font-size: var(--font-ui-small);
-		font-weight: var(--font-ui-medium-weight);
-		color: var(--on-surface);
-	}
-	.ccount {
-		margin-left: auto;
-		min-width: 20px;
-		text-align: center;
-		font-size: var(--font-ui-micro);
-		color: var(--on-surface-variant);
-		padding: 1px 3px;
-		font-variant-numeric: tabular-nums;
+		align-items: center;
+		gap: 12px;
+		height: 56px;
+		padding: 0 16px 0 24px;
+		border-bottom: 1px solid var(--line);
 		flex-shrink: 0;
 	}
+	.cnt {
+		color: var(--text-3);
+		white-space: nowrap;
+	}
+	.sp {
+		flex: 1;
+	}
+	.vsep {
+		width: 1px;
+		height: 18px;
+		background: var(--line-2);
+	}
+	.areas {
+		display: flex;
+		gap: 2px;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	.areas button {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		height: 28px;
+		padding: 0 10px;
+		border: none;
+		border-radius: var(--r-md);
+		background: none;
+		color: var(--text-3);
+		font: var(--fs) var(--font-ui);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.areas button:hover {
+		color: var(--text);
+	}
+	.areas button.on {
+		background: var(--raise);
+		color: var(--text);
+	}
+	.areas i,
+	.area i,
+	.ln-name i {
+		width: 7px;
+		height: 7px;
+		border-radius: 2px;
+		flex-shrink: 0;
+	}
+	.seg {
+		display: inline-flex;
+		gap: 2px;
+		padding: 2px;
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-md);
+	}
+	.seg button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 26px;
+		padding: 0 10px;
+		border: none;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-3);
+		font: var(--fs) var(--font-ui);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.seg button .material-symbols-outlined {
+		font-size: 17px;
+	}
+	.seg button.on {
+		background: var(--raise);
+		color: var(--text);
+	}
+	.solid {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 32px;
+		padding: 0 14px 0 10px;
+		border: none;
+		border-radius: var(--r-md);
+		background: var(--accent-fill);
+		color: var(--on-accent);
+		font: 600 var(--fs) var(--font-ui);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.solid:hover {
+		background: var(--accent-fill-hi);
+	}
+	.board {
+		flex: 1;
+		min-height: 0;
+		overflow: auto;
+		display: grid;
+		grid-template-columns: repeat(5, minmax(240px, 1fr));
+		gap: 10px;
+		padding: 14px 16px 16px;
+		align-items: start;
+	}
+	.col {
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: var(--r-lg);
+		display: flex;
+		flex-direction: column;
+		max-height: 100%;
+		min-height: 120px;
+	}
+	.col.drop {
+		border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+	}
+	.col-h {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 42px;
+		padding: 0 10px 0 14px;
+		font-weight: 600;
+		flex-shrink: 0;
+	}
+	.ci {
+		font-size: 18px;
+		color: var(--text-3);
+	}
+	.ci.doing {
+		color: var(--accent);
+	}
+	.ci.waiting {
+		color: var(--yellow);
+	}
+	.ci.done {
+		color: var(--green);
+	}
+	.n {
+		color: var(--text-3);
+		font-weight: 400;
+	}
+	.limit {
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+		font-weight: 400;
+	}
+	.limit.over {
+		color: var(--orange);
+	}
+	.link {
+		border: none;
+		background: none;
+		padding: 0;
+		color: var(--text-3);
+		font: var(--fs-xs) var(--font-ui);
+		cursor: pointer;
+	}
+	.link:hover {
+		color: var(--accent);
+	}
+	.col-sub {
+		padding: 0 14px 8px;
+		margin-top: -6px;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+	}
 	.cards {
-		padding: 10px 0;
+		padding: 0 8px 8px;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+		overflow-y: auto;
+		min-height: 0;
 	}
-	.add-in-column {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		width: 100%;
-		min-height: 36px;
-		padding: 0 10px;
-		border: 1px dashed transparent;
-		border-radius: var(--radius);
-		background: none;
-		color: var(--outline);
-		font: 12px var(--font-ui);
-		text-align: left;
-		cursor: pointer;
-	}
-	.add-in-column .material-symbols-outlined { font-size: 16px; }
-	.add-in-column:hover { border-color: var(--border-strong); background: var(--surface-container); color: var(--on-surface); }
-	.inline-add {
-		padding: 10px;
-		border: 1px solid var(--primary);
-		border-radius: var(--radius-md);
-		background: var(--surface-container-lowest);
-	}
-	.add-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-	.cancel-btn {
-		margin-left: auto;
-		padding: 0 6px;
-		height: 30px;
-		border: 0;
-		background: none;
-		color: var(--on-surface-variant);
-		font: 12px var(--font-ui);
-		cursor: pointer;
-	}
-	.cancel-btn:hover { color: var(--on-surface); }
-
-	.card {
+	.kc {
 		position: relative;
-		background: var(--surface-container-low);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius-md);
-		padding: 12px;
+		background: var(--raise);
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-md);
+		padding: 10px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 7px;
 		cursor: grab;
-		overflow: hidden;
-		transition: border-color 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
 	}
-	.card:hover {
-		border-color: var(--border-strong);
+	.kc:hover {
+		border-color: var(--line-3);
 	}
-	.card:active {
-		cursor: grabbing;
+	.kc.on {
+		border-color: var(--accent);
 	}
-	.card.dragging {
-		opacity: 0.35;
+	.kc.dragging {
+		opacity: 0.4;
 	}
-	.card.insert {
-		box-shadow: 0 -2px 0 var(--primary);
-	}
-	.card.done .t-in {
-		color: var(--outline);
+	.kc.done .kt {
+		color: var(--text-3);
 		text-decoration: line-through;
 	}
-	.t-in {
-		background: none;
-		border: none;
-		outline: none;
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		font-weight: var(--font-ui-medium-weight);
-		line-height: 1.45;
-		padding: 0;
-		width: 100%;
-		cursor: text;
-		border-radius: 2px;
+	.area {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		color: var(--text-2);
+		font-size: var(--fs-xs);
 	}
-	.t-in:focus-visible {
-		outline: 1px solid var(--primary);
-		outline-offset: 2px;
+	.kt {
+		color: var(--text);
+		font-size: var(--fs-md);
+		line-height: 1.4;
+		padding-right: 18px;
 	}
-	.detail {
-		margin-top: 5px;
-		font-size: var(--font-ui-micro);
-		line-height: 1.5;
-		color: var(--outline);
-		white-space: pre-wrap;
+	.wait {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
 	}
-	.meta {
-		margin-top: 12px;
+	.wait .material-symbols-outlined {
+		font-size: 15px;
+	}
+	.km {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 9px;
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
-		font-variant-numeric: tabular-nums;
+		gap: 4px 12px;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
 	}
-	.due {
+	.km span {
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
 	}
-	.due.overdue {
-		color: var(--error);
-		font-weight: var(--font-ui-medium-weight);
+	.km .material-symbols-outlined {
+		font-size: 15px;
 	}
-	.due.today {
-		color: var(--tertiary);
+	.km .over {
+		color: var(--red);
 	}
-	.due.done {
-		opacity: 0.6;
+	.km .today {
+		color: var(--accent);
 	}
-	.rem {
-		display: inline-flex;
-		color: var(--outline-variant);
-	}
-	.pri {
-		text-transform: capitalize;
+	.km .r {
+		margin-left: auto;
 	}
 	.pri-urgent {
-		color: var(--error);
-		font-weight: var(--font-ui-medium-weight);
+		color: var(--red);
 	}
 	.pri-high {
-		color: var(--tertiary);
+		color: var(--orange);
 	}
 	.pri-medium {
-		color: var(--primary);
+		color: var(--yellow);
 	}
 	.pri-low {
-		color: var(--outline);
-	}
-	.sub-c,
-	.linked {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		color: var(--outline-variant);
-	}
-	.mini {
-		font-size: 14px;
+		color: var(--blue);
 	}
 	.ops {
-		margin-left: auto;
-		display: flex;
-		opacity: 0;
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		display: none;
+		gap: 1px;
+		background: var(--raise);
+		border-radius: var(--r);
 	}
-	.card:hover .ops,
-	.card:focus-within .ops {
-		opacity: 1;
+	.kc:hover .ops,
+	.kc:focus-within .ops {
+		display: inline-flex;
 	}
-	.op {
+	.ops button {
+		display: grid;
+		place-items: center;
 		width: 22px;
 		height: 22px;
+		border: none;
+		border-radius: var(--r-sm);
+		background: none;
+		color: var(--text-3);
+		cursor: pointer;
+	}
+	.ops button:hover {
+		background: var(--press);
+		color: var(--text);
+	}
+	.ops .material-symbols-outlined {
+		font-size: 16px;
+	}
+	.ins {
+		position: absolute;
+		left: 2px;
+		right: 2px;
+		top: -6px;
+		height: 2px;
+		border-radius: 2px;
+		background: var(--accent);
+	}
+	.ins.end {
+		position: static;
+		margin: -4px 2px 0;
+	}
+	.col-add {
 		display: flex;
 		align-items: center;
-		justify-content: center;
+		gap: 8px;
+		height: 34px;
+		padding: 0 6px;
 		border: none;
+		border-radius: var(--r);
 		background: none;
-		color: var(--on-surface-variant);
-		border-radius: var(--radius);
+		color: var(--text-3);
+		font: var(--fs) var(--font-ui);
 		cursor: pointer;
-		padding: 0;
 	}
-	.op:hover {
-		background: var(--surface-container-high);
-		color: var(--on-surface);
+	.col-add:hover {
+		background: var(--hover);
+		color: var(--text);
 	}
-	.op:focus-visible {
-		outline: 1px solid var(--primary);
+	.add-in {
+		height: 36px;
+		padding: 0 10px;
+		border: 1px solid var(--accent);
+		border-radius: var(--r-md);
+		background: var(--bg);
+		color: var(--text);
+		font: var(--fs-md) var(--font-ui);
+		outline: none;
+	}
+	.lanes {
+		flex: 1;
+		min-height: 0;
+		overflow: auto;
+		padding: 0 16px 16px;
+	}
+	.grid {
+		display: grid;
+	}
+	.lh {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 44px;
+		padding: 0 10px;
+		background: var(--bg);
+		border-bottom: 1px solid var(--line);
+		font-weight: 600;
+	}
+	.ln {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		padding: 14px 10px;
+		border-bottom: 1px solid var(--line);
+	}
+	.ln-name {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-weight: 600;
+	}
+	.ln small {
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+	}
+	.cell {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-height: 64px;
+		padding: 10px 5px;
+		border-bottom: 1px solid var(--line);
+		border-left: 1px solid var(--line);
+	}
+	.cell.drop {
+		background: var(--accent-dim);
+	}
+	.cell .kc {
+		padding: 9px 10px;
+	}
+	/* Lane cells keep their add button out of the way until hovered. */
+	.cell .col-add {
+		height: 28px;
+		opacity: 0;
+	}
+	.cell:hover .col-add,
+	.cell .col-add:focus-visible {
 		opacity: 1;
 	}
-	.op.del:hover {
-		color: var(--error);
+	.note-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 14px;
+		padding: 10px 12px;
+		border: 1px dashed var(--line-2);
+		border-radius: var(--r-md);
+		color: var(--text-3);
+		font-size: var(--fs-sm);
 	}
-	.drop-hint {
-		margin: 2px;
-		padding: 32px 12px;
-		text-align: center;
-		color: var(--outline-variant);
-		font-size: var(--font-ui-micro);
-		border: 1px dashed var(--border-default);
-		border-radius: var(--radius-md);
+	.note-row .material-symbols-outlined {
+		font-size: 17px;
 	}
-	@media (max-width: 600px) {
-		.content { padding: 24px 16px 56px; }
-		.page-heading { margin-bottom: 20px; }
-		.date-in { min-width: 0; flex: 1; }
-		.col { min-height: 160px; }
-		.ops { opacity: 1; }
-	}
-	@media (max-width: 760px) {
-		.col, .col:first-child, .col:last-child { padding: 0; }
-		.col + .col { border-left: 0; border-top: 1px solid var(--border-default); margin-top: 16px; padding-top: 16px; }
-	}
-
-	button:focus-visible,
-	input:focus-visible {
-		outline: 1px solid var(--primary);
-		outline-offset: 1px;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.col,
-		.card {
-			transition: none;
-		}
+	.note-row .link {
+		font-size: var(--fs-sm);
+		color: var(--accent);
 	}
 </style>
