@@ -2,7 +2,13 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import { Compartment, Prec } from '@codemirror/state';
-	import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+	import {
+		EditorView,
+		keymap,
+		lineNumbers,
+		highlightActiveLine,
+		highlightActiveLineGutter
+	} from '@codemirror/view';
 import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
 import { headingFoldRange, listFoldRange } from './folding';
 import { findCallouts } from './callouts';
@@ -458,7 +464,10 @@ import { findCallouts } from './callouts';
 				yankFlashTheme,
 				baseTheme,
 				fontSizeCompartment.of(themeForFontSize(initialSettings.editor.fontSize)),
-				lineNumbersCompartment.of(initialSettings.editor.showLineNumbers ? lineNumbers() : []),
+				lineNumbersCompartment.of(
+					initialSettings.editor.showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []
+				),
+				highlightActiveLine(),
 				wrapCompartment.of(initialSettings.editor.wordWrap ? EditorView.lineWrapping : []),
 				EditorView.domEventHandlers({
 					keydown: (e, view) => {
@@ -540,7 +549,9 @@ import { findCallouts } from './callouts';
 			view.dispatch({
 				effects: [
 					fontSizeCompartment.reconfigure(themeForFontSize(s.editor.fontSize)),
-					lineNumbersCompartment.reconfigure(s.editor.showLineNumbers ? lineNumbers() : []),
+					lineNumbersCompartment.reconfigure(
+						s.editor.showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []
+					),
 					wrapCompartment.reconfigure(s.editor.wordWrap ? EditorView.lineWrapping : []),
 					vimCompartment.reconfigure(s.editor.vimMotions ? vim() : [])
 				]

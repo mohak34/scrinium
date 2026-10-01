@@ -1,101 +1,122 @@
+/* Scrinium design tokens. Surfaces: the reading area is --bg, chrome (sidebars,
+   tab strip, status bar) is --panel. The accent has two roles: --accent-fill is
+   the solid brand green under white text, --accent is the lifted ink of the same
+   hue for text, icons and thin lines, where the fill would be unreadable. */
 :root {
-	--background: #0a0a0a;
-	--sidebar-bg: #030303;
-	--surface: #121318;
-	--surface-dim: #121318;
-	--surface-bright: #38393e;
-	--surface-container-lowest: #0d0e13;
-	--surface-container-low: #1a1b20;
-	--surface-container: #1e1f25;
-	--surface-container-high: #292a2f;
-	--surface-container-highest: #34343a;
-	--on-surface: #e3e1e9;
-	--on-surface-variant: #c3c5d7;
-	--inverse-surface: #e3e1e9;
-	--inverse-on-surface: #2f3036;
-	--outline: #8d90a0;
-	--outline-variant: #434654;
-	--surface-tint: #b5c4ff;
-	--primary: #b5c4ff;
-	--on-primary: #00297b;
-	--primary-container: #648aff;
-	--on-primary-container: #00236d;
-	--inverse-primary: #1a53d6;
-	--secondary: #c1c4e4;
-	--on-secondary: #2b2f47;
-	--secondary-container: #41455f;
-	--on-secondary-container: #b0b3d2;
-	--tertiary: #ffb786;
-	--on-tertiary: #502400;
-	--tertiary-container: #df7313;
-	--on-tertiary-container: #461f00;
-	--error: #ffb4ab;
-	--on-error: #690005;
-	--error-container: #93000a;
-	--on-error-container: #ffdad6;
-	--success: #81c995;
-	--primary-fixed: #dce1ff;
-	--primary-fixed-dim: #b5c4ff;
-	--on-primary-fixed: #00164d;
-	--on-primary-fixed-variant: #003cad;
-	--secondary-fixed: #dee0ff;
-	--secondary-fixed-dim: #c1c4e4;
-	--on-secondary-fixed: #161a31;
-	--on-secondary-fixed-variant: #41455f;
-	--tertiary-fixed-dim: #ffb786;
-	--on-tertiary-fixed: #311300;
-	--on-tertiary-fixed-variant: #723600;
+	color-scheme: dark;
 
-	--border-default: #1a1a1a;
-	--border-raised: #202020;
-	--border-strong: #262626;
+	--bg: #0a0a0a;
+	--panel: #030303;
+	--raise: #111111;
+	--hover: #161616;
+	--press: #1c1c1c;
+	--line: #1a1a1a;
+	--line-2: #262626;
+	--line-3: #333333;
 
-	--radius-sm: 0.125rem;
-	--radius-default: 0.25rem;
-	--radius: 0.25rem;
-	--radius-md: 0.375rem;
-	--radius-lg: 0.5rem;
-	--radius-xl: 0.75rem;
+	--text: #e8e6e3;
+	--text-2: #a8a5a0;
+	--text-3: #6c6965;
+	--text-4: #3d3b39;
+
+	--accent: #5db8aa;
+	--accent-fill: #175e54;
+	--accent-fill-hi: #2d716f;
+	--accent-deep: #014240;
+	--on-accent: #ffffff;
+	--accent-dim: color-mix(in srgb, var(--accent-fill) 42%, transparent);
+	--sel: color-mix(in srgb, var(--accent-fill) 70%, transparent);
+
+	--blue: #8fb3ff;
+	--green: #9fd4a3;
+	--rose: #f2a0a8;
+	--violet: #c4a8ff;
+	--red: #ff7a85;
+	--orange: #f0a35e;
+	--yellow: #e8c872;
+	--sand: #d6c3a1;
+
+	--font-read: 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif;
+	--font-ui: 'Space Grotesk Variable', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+	--fs-xs: 11.5px;
+	--fs-sm: 12.5px;
+	--fs: 13.5px;
+	--fs-md: 14px;
+	--fs-lg: 16px;
+
+	--r-sm: 4px;
+	--r: 6px;
+	--r-md: 8px;
+	--r-lg: 10px;
+	--r-xl: 12px;
+
+	--shadow: 0 18px 50px rgba(0, 0, 0, 0.85);
+	--scrim: rgba(0, 0, 0, 0.62);
+
+	/* Legacy names, mapped onto the tokens above. New code uses the tokens. */
+	--background: var(--bg);
+	--sidebar-bg: var(--panel);
+	--surface: var(--bg);
+	--surface-container-lowest: var(--panel);
+	--surface-container-low: var(--hover);
+	--surface-container: var(--raise);
+	--surface-container-high: var(--press);
+	--surface-container-highest: var(--line-2);
+	--on-surface: var(--text);
+	--on-surface-variant: var(--text-2);
+	--outline: var(--text-3);
+	--outline-variant: var(--text-4);
+	--primary: var(--accent);
+	--on-primary: var(--on-accent);
+	--primary-container: var(--accent-fill);
+	--primary-fixed: var(--accent);
+	--on-primary-container: var(--on-accent);
+	--secondary-container: var(--press);
+	--tertiary: var(--orange);
+	--error: var(--red);
+	--error-container: color-mix(in srgb, var(--red) 16%, transparent);
+	--on-error-container: var(--red);
+	--success: var(--green);
+	--border-default: var(--line);
+	--border-raised: var(--line-2);
+	--border-strong: var(--line-3);
+	--radius-sm: var(--r-sm);
+	--radius: var(--r);
+	--radius-md: var(--r-md);
+	--radius-lg: var(--r-lg);
+	--radius-xl: var(--r-xl);
 	--radius-full: 9999px;
-	--radius-checkbox: 3px;
-
-	--spacing-unit: 4px;
-	--sidebar-width: 260px;
-	--editor-max-width: 720px;
 	--gutter: 16px;
 	--panel-padding: 12px;
 	--stack-gap: 8px;
-
-	--font-ui: 'Inter Variable', 'Inter', system-ui, sans-serif;
---font-mono: 'JetBrains Mono', ui-monospace, monospace;
---font-editor-title-size: 22px;
---font-editor-title-lh: 32px;
---font-editor-title-weight: 500;
---font-editor-title-tracking: -0.01em;
---font-editor-body-size: 15px;
---font-editor-body-lh: 25.5px;
---font-editor-body-weight: 400;
---font-ui-medium: 13px;
---font-ui-medium-lh: 18px;
---font-ui-medium-weight: 500;
---font-ui-small: 12px;
---font-ui-small-lh: 16px;
---font-ui-small-weight: 400;
---font-ui-micro: 11px;
---font-ui-micro-lh: 14px;
---font-ui-micro-weight: 400;
---font-label-caps: 10px;
---font-label-caps-lh: 12px;
---font-label-caps-weight: 500;
---label-caps-spacing: 0.05em;
-
-	--shadow-pop: 0 4px 12px rgba(0 0 0 0.4);
-	--selection-bg: #111111;
-	--overlay-dim: rgba(0 0 0 0.2);
-	--overlay: rgba(0, 0, 0, 0.2);
-	--sb-thumb: #2a2d38;
-	--sb-thumb-hover: #434654;
+	--sidebar-width: 260px;
+	--editor-max-width: 720px;
+	--font-ui-medium: var(--fs);
+	--font-ui-medium-lh: 18px;
+	--font-ui-medium-weight: 500;
+	--font-ui-small: var(--fs-sm);
+	--font-ui-small-lh: 17px;
+	--font-ui-small-weight: 400;
+	--font-ui-micro: var(--fs-xs);
+	--font-ui-micro-lh: 15px;
+	--font-ui-large: var(--fs-lg);
+	--font-ui-large-weight: 600;
+	--font-label-caps: var(--fs-xs);
+	--font-label-caps-lh: 14px;
+	--font-label-caps-weight: 600;
+	--label-caps-spacing: 0;
+	--font-editor-title-size: 22px;
+	--font-editor-title-lh: 32px;
+	--font-editor-title-weight: 600;
+	--font-editor-title-tracking: -0.01em;
+	--shadow-pop: var(--shadow);
+	--selection-bg: var(--sel);
+	--overlay: var(--scrim);
+	--overlay-dim: var(--scrim);
 }
+
 *,
 *::before,
 *::after {
@@ -107,11 +128,27 @@ body {
 	margin: 0;
 	padding: 0;
 	height: 100%;
-	background: var(--background);
-	color: var(--on-surface);
-	font-family: var(--font-ui);
+	background: var(--bg);
+	color: var(--text);
+	font: var(--fs) / 1.45 var(--font-ui);
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+	font-family: inherit;
+}
+
+::selection {
+	background: var(--sel);
+}
+
+:focus-visible {
+	outline: 1.5px solid var(--accent);
+	outline-offset: 1px;
 }
 
 .material-symbols-outlined,
@@ -123,9 +160,14 @@ body {
 	flex-shrink: 0;
 }
 
+/* Filled glyph for the active state of an icon (current app, checked task). */
+.material-symbols-outlined.fill {
+	font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
 ::-webkit-scrollbar {
-	width: 4px;
-	height: 4px;
+	width: 6px;
+	height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -133,10 +175,20 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-	background: var(--sb-thumb);
-	border-radius: 10px;
+	background: var(--line-2);
+	border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: var(--sb-thumb-hover);
+	background: var(--line-3);
+}
+
+/* Shared keycap used in menus, palette rows and the shortcut sheet. */
+.kbd {
+	font: 500 var(--fs-xs) / 17px var(--font-ui);
+	color: var(--text-3);
+	border: 1px solid var(--line-2);
+	border-radius: var(--r-sm);
+	padding: 0 5px;
+	white-space: nowrap;
 }

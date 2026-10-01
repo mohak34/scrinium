@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import '@fontsource-variable/inter';
+	import '@fontsource-variable/atkinson-hyperlegible-next/wght.css';
+	import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css';
+	import '@fontsource-variable/space-grotesk';
+	import '@fontsource-variable/jetbrains-mono';
 	import '@material-symbols/font-400';
 	import '$lib/design/theme.css';
 	import ReminderToasts from '$lib/components/ReminderToasts.svelte';

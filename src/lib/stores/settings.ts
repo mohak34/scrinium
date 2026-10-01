@@ -32,7 +32,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
 	editor: {
-		fontSize: 15,
+		fontSize: 17,
 		showLineNumbers: true,
 		wordWrap: true,
 		vimMotions: true
