@@ -80,11 +80,8 @@ ALLOWED_EMAILS=you@gmail.com
 ```
 
 Add `http://localhost:5173/api/auth/callback/google` to that Google OAuth
-client's authorized redirect URIs, then create the auth tables:
-
-```bash
-bunx @better-auth/cli migrate
-```
+client's authorized redirect URIs. The auth tables are created on first
+start.
 
 > [!NOTE]
 > Development uses bun (the lockfile is `bun.lock`). Anything that runs on a

@@ -1,10 +1,18 @@
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, ServerInit } from '@sveltejs/kit';
 import { redirect } from '@sveltejs/kit';
+import { getMigrations } from 'better-auth/db/migration';
 import { auth } from '$lib/server/auth';
 import { emailForBearerToken } from '$lib/server/mobileAuth';
 import { env } from '$env/dynamic/private';
 
-const PUBLIC_PATHS = ['/login', '/api/auth', '/s', '/api/share'];
+// Bring the better-auth tables up to date once at startup. Idempotent: it
+// only creates missing tables/columns, so deploys need no migrate CLI.
+export const init: ServerInit = async () => {
+	const { runMigrations } = await getMigrations(auth.options);
+	await runMigrations();
+};
+
+const PUBLIC_PATHS =['/login', '/api/auth', '/s', '/api/share'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// Segment-boundary match: '/api/share' must not accidentally publicize

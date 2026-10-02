@@ -38,7 +38,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -euo pipefail
-          # Keepalives: npm/migrate print nothing for minutes while fetching,
+          # Keepalives: npm prints nothing for minutes while fetching,
           # and the tunnel/NAT path severs silent connections (~5 min idle).
           # These packets keep the channel alive through quiet phases.
           # (Unquoted $SSH_OPTS below is intentional word splitting.)
@@ -53,14 +53,11 @@ jobs:
             --exclude data --exclude vault --exclude .opencode \
             --exclude '.env' --exclude '.env.*' \
             ./ "$VPS_USER@$VPS_HOST:/opt/scrinium/app/"
-          echo "--- remote install/migrate/restart ---"
+          echo "--- remote install/restart ---"
           ssh $SSH_OPTS \
             "$VPS_USER@$VPS_HOST" \
             'cd /opt/scrinium/app && \
              npm install --omit=dev --legacy-peer-deps && \
-             npm install --prefix /opt/scrinium/app/.deploy-cli --no-save --omit=dev --legacy-peer-deps @better-auth/cli@1.4.21 && \
-             echo "--- migrate as scrinium ---" && \
-             sudo -u scrinium -H timeout --kill-after=10s 120s /opt/scrinium/app/.deploy-cli/node_modules/.bin/better-auth migrate --cwd /opt/scrinium/app --yes && \
              sudo systemctl restart scrinium.service && \
              sleep 2 && \
              systemctl is-active scrinium.service'
