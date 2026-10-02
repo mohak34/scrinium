@@ -159,8 +159,9 @@ State channels you will touch:
   helpers bail out in normal mode via `inVimNormal`, editor Esc drops to
   normal mode, normal-mode Esc enters preview, and app-level Esc exits
   preview via `exitPreview` so keyboard flow never strands on the mouse;
-  no status bar - the mode lives in the tab bar left of the save dot
-  (shared `stores/vim.ts`), notice toasts and a `/`+`:` command line
+  no CodeMirror status panel - the mode lives at the right end of the app
+  StatusBar next to the save state (shared `stores/vim.ts`; caret position
+  comes from `stores/editor.ts`), notice toasts and a `/`+`:` command line
   are editor chrome driven by vim's dialog/mode-change signals),
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
@@ -189,7 +190,31 @@ State channels you will touch:
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
   authed `GET/POST /api/shares` + `DELETE /api/shares/[id]`, public
   `GET/POST /api/share/[id]` (+ `/assets/...` for images) and the `/s/[id]`
-  viewer (ShareModal.svelte manages links from the tab bar).
+  viewer (ShareModal.svelte manages links from the note bar).
+- `src/lib/design/theme.css` — the only design tokens: surfaces (`--bg`
+  reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto
+  accent split into `--accent-fill` (solid #175e54 under white text) and
+  `--accent` (lifted ink #5db8aa for text, icons, thin lines; the fill is
+  unreadable as text on near-black), fonts (`--font-read` Atkinson
+  Hyperlegible Next, `--font-ui` Space Grotesk, `--font-mono` JetBrains Mono).
+  The old Material-style names (`--primary`, `--surface-container-*`,
+  `--on-surface*`) are aliases kept for components not yet moved over; new
+  code uses the tokens. Never fill with `--accent` under text.
+- App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in
+  `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
+  `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`
+  (crumbs + preview/PDF/more/Share/right-panel toggle), `StatusBar.svelte`,
+  `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,
+  NoteTasks, Tags, FileInfo in that order), `PageFooter.svelte`.
+- Tasks: `src/lib/taskModel.ts` is the single list of statuses (`inbox`,
+  `todo` = "This week", `doing`, `waiting`, `done`), areas and priorities,
+  shared by the API validation and the UI. Rows live in sqlite (`tasks`,
+  `task_links`), not the vault. `waiting_since` is stamped by `updateTask`
+  when a task enters Waiting. `GET /api/tasks?note=` lists tasks linked to a
+  note; note renames move `task_links` with the file like shares.
+  `/tasks` (list + filters), `/tasks/kanban` (columns or by-area lanes, both
+  drag and drop), `/tasks/calendar` (month grid + day agenda, drop to
+  schedule) share `TaskDrawer.svelte` docked by `tasks/+layout.svelte`.
 
 ## Auth & access
 
@@ -234,10 +259,9 @@ State channels you will touch:
   .env*` — notes and secrets are never shipped.
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
-- The `design/revamp` theme was merged into `main` (`d7bcb00`): added
-  `src/lib/design/theme.css`, `@fontsource-variable/inter`,
-  `@material-symbols/font-400`. `DESIGN.md` / `DESIGN_CODE.md` are gitignored
-  reference docs for that theme.
+- Fonts ship as packages (`@fontsource-variable/atkinson-hyperlegible-next`,
+  `space-grotesk`, `jetbrains-mono`) plus `@material-symbols/font-400`, whose
+  outlined font carries the FILL axis used by the `.fill` icon class.
 - The vault and `data/` live OUTSIDE `app/` on the box and are never touched
   by deploys.
 - Full background (VPS, Oracle Cloud firewall gotchas, Caddy, systemd,

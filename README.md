@@ -31,16 +31,26 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
   not just "whoever has a Google account".
 - **Task checkboxes** — click to toggle `[ ]` ↔ `[x]`; on the active line the
   raw brackets come back and the caret crosses them freely.
-- **Tasks** — manage due dates and status in a task list, Kanban board, or
-  calendar. Open a task for details; the calendar can also show Google events.
+- **Tasks, Board and Calendar** — tasks carry a status (Inbox, This week,
+  Doing, Waiting, Done), an area (College, Learning, Work, Life), priority,
+  due date, reminder, subtasks and linked notes. The board shows status
+  columns or one row per area; the calendar shows tasks next to Google
+  events and schedules a task when you drop it on a day.
+- **App switcher** — the title in the top-left corner of every page opens
+  Notes, Tasks, Board and Calendar with a live summary of each;
+  `Ctrl+Shift+1` to `4` jumps straight there.
 - **Wikilinks + backlinks** — `[[Note]]`, `[[Note|alias]]`, `[[Note#section]]`
-  render as clickable pills with `[[` autocomplete; clicking an unresolved
-  link creates the note. The sidebar lists every note linking to the open one.
-- **A small editor chrome** — file tree, tabs, search, command palette,
-  settings page (editor prefs stay local; manage mobile API tokens there).
+  render as links with `[[` autocomplete; clicking an unresolved link creates
+  the note. The right panel lists the outline, every note linking to the open
+  one, the tasks linked to it, its tags and its properties.
+- **A small editor chrome** — file tree with pinned notes, tabs, a note bar
+  (share, PDF, preview), a status bar (position, words, save state, vim mode),
+  search, command palette and a settings page (editor prefs stay local;
+  manage mobile API tokens there). Dark theme only: Atkinson Hyperlegible
+  Next for notes, Space Grotesk for the interface, JetBrains Mono for code.
 - **Attachment preview** — view images in an in-app overlay.
 - **Share links** — per-note public read-only links (`/s/…`) with optional
-  password protection; manage them from the tab bar Share button. Links show
+  password protection; manage them from the Share button in the note bar. Links show
   the note's live content and die when revoked or the note is deleted.
 - **Thin by design** — one process, one small sqlite cache, no graph view, no
   plugin marketplace, no bloat. The architecture stays open to a
