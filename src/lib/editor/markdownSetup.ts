@@ -99,6 +99,17 @@ export const baseTheme = EditorView.theme(
 			padding: '0 0.35em'
 		},
 		'.cm-cursor, .cm-dropCursor': { borderLeft: '2px solid var(--accent)' },
+		// Vim normal-mode block cursor in the accent, hollow when blurred.
+		'& .cm-fat-cursor': {
+			background: 'var(--accent) !important',
+			color: 'var(--bg) !important',
+			outline: 'none !important'
+		},
+		'&:not(.cm-focused) .cm-fat-cursor': {
+			background: 'none !important',
+			outline: '1px solid var(--accent) !important',
+			color: 'inherit !important'
+		},
 		'.cm-selectionBackground': { backgroundColor: 'var(--sel) !important' },
 		'.cm-searchMatch': {
 			backgroundColor: 'color-mix(in srgb, var(--yellow) 22%, transparent)',

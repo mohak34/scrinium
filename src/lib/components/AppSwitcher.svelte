@@ -14,6 +14,9 @@
 
 	let open = $state(false);
 	let wrapEl = $state<HTMLDivElement>();
+	// The menu is fixed-positioned so collapsing sidebars (overflow hidden)
+	// never clip it; coordinates come from the trigger at open time.
+	let pos = $state({ top: 0, left: 0 });
 	let active = $state(0);
 	let nextEvent = $state<string | null>(null);
 
@@ -77,6 +80,8 @@
 		e.stopPropagation();
 		open = !open;
 		if (open) {
+			const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+			pos = { top: r.bottom + 6, left: r.left };
 			active = APPS.findIndex((a) => a.key === current);
 			if ($tasks.length === 0) void loadTasks();
 			void loadNextEvent();
@@ -127,7 +132,7 @@
 		<span class="material-symbols-outlined chev">expand_more</span>
 	</button>
 	{#if open}
-		<div class="menu" role="menu" aria-label="Switch app">
+		<div class="menu" role="menu" aria-label="Switch app" style="top: {pos.top}px; left: {pos.left}px">
 			{#each APPS as a, i (a.key)}
 				<button
 					class="item"
@@ -193,9 +198,7 @@
 		transform: rotate(180deg);
 	}
 	.menu {
-		position: absolute;
-		top: calc(100% + 6px);
-		left: -6px;
+		position: fixed;
 		z-index: 1000;
 		width: 320px;
 		background: var(--panel);
