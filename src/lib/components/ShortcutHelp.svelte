@@ -155,11 +155,9 @@
 		margin-top: 10px;
 	}
 	.section-title {
-		font-size: var(--font-label-caps);
-		font-weight: var(--font-label-caps-weight);
-		letter-spacing: var(--label-caps-spacing);
-		text-transform: uppercase;
-		color: var(--outline);
+		font-size: var(--fs-sm);
+		font-weight: 600;
+		color: var(--text);
 		margin-bottom: 2px;
 	}
 	.row {

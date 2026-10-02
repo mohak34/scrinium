@@ -39,8 +39,9 @@
 		font-size: var(--font-ui-small);
 	}
 	.signin {
-		background: var(--primary);
-		color: var(--on-primary);
+		background: var(--accent-fill);
+		color: var(--on-accent);
+		font-weight: 600;
 		border: none;
 		padding: 0.65rem 1.25rem;
 		border-radius: var(--radius);
@@ -49,6 +50,6 @@
 		cursor: pointer;
 	}
 	.signin:hover {
-		background: var(--primary-fixed);
+		background: var(--accent-fill-hi);
 	}
 </style>

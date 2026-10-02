@@ -255,12 +255,9 @@
 		border-bottom: 1px solid var(--border-default);
 	}
 	.glabel {
-		font-size: var(--font-label-caps);
-		line-height: var(--font-label-caps-lh);
-		font-weight: var(--font-label-caps-weight);
-		letter-spacing: var(--label-caps-spacing);
-		text-transform: uppercase;
-		color: var(--outline);
+		font-size: var(--fs);
+		font-weight: 600;
+		color: var(--text);
 	}
 	.gcount {
 		font-size: var(--font-label-caps);

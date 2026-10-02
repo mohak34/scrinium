@@ -49,11 +49,9 @@
 			hint: 'Show or hide the backlinks panel',
 			run: () => onToggleRightSidebar()
 		},
-		{
-			label: 'Open tasks',
-			hint: 'Agenda and kanban board',
-			run: () => goto('/tasks')
-		},
+		{ label: 'Go to Tasks', hint: 'Ctrl+Shift+2', run: () => goto('/tasks') },
+		{ label: 'Go to Board', hint: 'Ctrl+Shift+3', run: () => goto('/tasks/kanban') },
+		{ label: 'Go to Calendar', hint: 'Ctrl+Shift+4', run: () => goto('/tasks/calendar') },
 		{
 			label: 'Open trash',
 			hint: 'View and restore deleted notes',
@@ -287,74 +285,71 @@
 		position: fixed;
 		inset: 0;
 		z-index: 900;
-		background: var(--overlay);
+		background: var(--scrim);
 		display: flex;
 		align-items: flex-start;
 		justify-content: center;
-		padding-top: 15vh;
+		padding-top: 13vh;
 	}
 	.palette {
-		width: min(520px, 90vw);
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-pop);
+		width: min(600px, 92vw);
+		background: var(--panel);
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-xl);
+		box-shadow: var(--shadow);
 		overflow: hidden;
 	}
 	.palette-input {
 		width: 100%;
+		height: 52px;
 		background: none;
 		border: none;
-		border-bottom: 1px solid var(--border-default);
-		color: var(--on-surface);
-		font-family: var(--font-ui);
-		font-size: var(--font-ui-medium);
-		padding: 12px var(--panel-padding);
+		border-bottom: 1px solid var(--line);
+		color: var(--text);
+		font: var(--fs-lg) var(--font-ui);
+		padding: 0 18px;
 		outline: none;
 	}
 	.palette-input::placeholder {
-		color: var(--on-surface-variant);
+		color: var(--text-3);
 	}
 	.list {
-		max-height: 320px;
+		max-height: 380px;
 		overflow-y: auto;
-		padding: 4px;
+		padding: 6px;
 	}
 	.item {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--stack-gap);
+		gap: 12px;
 		width: 100%;
+		min-height: 38px;
 		text-align: left;
 		background: none;
 		border: none;
-		color: var(--on-surface-variant);
-		font-family: var(--font-ui);
-		padding: 8px 12px;
-		border-radius: var(--radius);
+		color: var(--text-2);
+		padding: 0 12px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 	}
 	.item.selected {
-		background: var(--surface-container-high);
-	}
-	.item.selected .label {
-		color: var(--on-surface);
+		background: var(--hover);
 	}
 	.item.muted {
 		cursor: default;
-		color: var(--outline);
+		color: var(--text-3);
 	}
 	.label {
-		font-size: var(--font-ui-medium);
-		color: var(--on-surface);
+		font-size: var(--fs-md);
+		color: var(--text);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.hint {
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
+		font-size: var(--fs-xs);
+		color: var(--text-3);
 		flex-shrink: 0;
 	}
 </style>
