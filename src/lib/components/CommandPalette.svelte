@@ -3,6 +3,7 @@
 	import { get } from 'svelte/store';
 	import { searchNotes, activePath, downloadNote, type SearchResult } from '$lib/stores/vault';
 	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
+	import { openSettings } from '$lib/stores/settingsDialog';
 	import { signOut } from '$lib/auth-client';
 
 	interface Props {
@@ -55,12 +56,12 @@
 		{
 			label: 'Open trash',
 			hint: 'View and restore deleted notes',
-			run: () => goto('/trash')
+			run: () => openSettings('trash')
 		},
 		{
 			label: 'Open settings',
-			hint: 'Configure editor and account',
-			run: () => goto('/settings')
+			hint: 'Editor, keyboard, account',
+			run: () => openSettings()
 		},
 		{ label: 'Sign out', hint: 'End this session', run: () => signOut() },
 		{

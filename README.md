@@ -26,7 +26,7 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
 - **Title = filename** — the first `# ` heading and the note's filename stay
   in sync; edit one and the other follows.
 - **Trash** — deletes go to `.trash/` on disk with their original path
-  recorded; restore or purge from the `/trash` page.
+  recorded; restore or purge from Settings > Trash.
 - **Google OAuth sign-in** — backed by an explicit `ALLOWED_EMAILS` allowlist,
   not just "whoever has a Google account".
 - **Task checkboxes** — click to toggle `[ ]` ↔ `[x]`; on the active line the
@@ -45,8 +45,8 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
   one, the tasks linked to it, its tags and its properties.
 - **A small editor chrome** — file tree with pinned notes, tabs, a note bar
   (share, PDF, preview), a status bar (position, words, save state, vim mode),
-  search, command palette and a settings page (editor prefs stay local;
-  manage mobile API tokens there). Dark theme only: Atkinson Hyperlegible
+  search, command palette and a settings dialog (editor prefs stay local;
+  trash and mobile API tokens live there too). Dark theme only: Atkinson Hyperlegible
   Next for notes, Space Grotesk for the interface, JetBrains Mono for code.
 - **Attachment preview** — view images in an in-app overlay.
 - **Share links** — per-note public read-only links (`/s/…`) with optional

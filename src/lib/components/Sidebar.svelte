@@ -31,6 +31,7 @@
 	} from '$lib/stores/filetree';
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest } from '$lib/stores/actions';
+	import { openSettings } from '$lib/stores/settingsDialog';
 	import { signOut } from '$lib/auth-client';
 	import AppSwitcher from './AppSwitcher.svelte';
 
@@ -340,10 +341,10 @@
 	<div class="footer">
 		<span class="count">{noteCount} {noteCount === 1 ? 'note' : 'notes'}</span>
 		<span class="sp"></span>
-		<button class="icon-btn" title="Trash" onclick={() => goto('/trash')}>
+		<button class="icon-btn" title="Trash" onclick={() => openSettings('trash')}>
 			<span class="material-symbols-outlined">delete</span>
 		</button>
-		<button class="icon-btn" title="Settings" onclick={() => goto('/settings')}>
+		<button class="icon-btn" title="Settings" onclick={() => openSettings()}>
 			<span class="material-symbols-outlined">settings</span>
 		</button>
 		<button class="icon-btn" title="Sign out" onclick={signOut}>

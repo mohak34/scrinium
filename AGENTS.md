@@ -182,9 +182,15 @@ State channels you will touch:
   tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,
   settings.ts (editor prefs persisted to localStorage).
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
-  Sidebar, TabBar.
-- `src/routes/` — `/` (+page.svelte shell), `/login`, `/settings` (account +
-  mobile tokens + editor prefs), `/trash` (grouped restore/purge page),
+  Sidebar, TabBar. `settings/SettingsDialog.svelte` is the one settings and
+  trash surface: a modal mounted in the root layout, opened through
+  `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
+  and the palette. Pages: Editor, Keyboard (vim toggle + the shortcut list
+  from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,
+  Account (Google Calendar status), Mobile devices, Trash, About. While open
+  it swallows keydown in the capture phase so app shortcuts never fire
+  underneath; Esc closes it.
+- `src/routes/` — `/` (+page.svelte shell), `/login`,
   api/{auth,notes,tree,search,assets,attachments,tokens,trash,backlinks}. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
@@ -228,8 +234,8 @@ State channels you will touch:
   issues a random 256-bit token. Only its SHA-256 hash is stored in the
   `api_tokens` table. API requests send `Authorization: Bearer <token>`;
   `hooks.server.ts` falls back to the token lookup when no cookie session
-  exists. Tokens never expire server-side — list and revoke them from the
-  settings page via `GET/DELETE /api/tokens`.
+  exists. Tokens never expire server-side — list and revoke them in
+  Settings > Mobile devices via `GET/DELETE /api/tokens`.
 - Auth gates a shared vault: today all allowlisted users see the same files.
   Per-user vaults are a feature to build, not a config switch.
 - Public routes (`/s`, `/api/share`) are allowlisted in `hooks.server.ts`

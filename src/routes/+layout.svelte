@@ -7,6 +7,7 @@
 	import '@material-symbols/font-400';
 	import '$lib/design/theme.css';
 	import ReminderToasts from '$lib/components/ReminderToasts.svelte';
+	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { APPS } from '$lib/apps';
@@ -52,3 +53,6 @@
 
 {@render children()}
 <ReminderToasts />
+{#if !page.url.pathname.startsWith('/login') && !page.url.pathname.startsWith('/s/')}
+	<SettingsDialog />
+{/if}
