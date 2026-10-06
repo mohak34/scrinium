@@ -14,51 +14,74 @@
 	} from '$lib/stores/tasks';
 	import { areaMeta } from '$lib/taskModel';
 	import { connectCalendar } from '$lib/auth-client';
+	import { eventOnDay, eventStart, type CalendarEvent } from '$lib/calendar';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 
-	// Google events as returned by GET /api/calendar/events (read-only).
-	interface GEvent {
-		id: string;
-		title: string;
-		start: number;
-		end: number;
-		allDay: boolean;
-	}
-
 	const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-	let today = new Date();
+	const today = new Date();
 	let viewYear = $state(today.getFullYear());
 	let viewMonth = $state(today.getMonth());
 	let selected = $state(dayKey(today.getFullYear(), today.getMonth(), today.getDate()));
-	let gev = $state<GEvent[]>([]);
-	let needConnect = $state(false);
+	let gev = $state<CalendarEvent[]>([]);
+	let calendarState = $state<'loading' | 'connected' | 'disconnected' | 'error'>('loading');
+	// Bumped on focus and on a timer so events added elsewhere (phone, an
+	// agent) show up without a reload.
+	let refresh = $state(0);
+	let connectFailed = $state(false);
+	let shownMonth = '';
 
-	// Google overlay for the visible grid. Local tasks render regardless;
-	// a failed fetch just leaves the overlay empty.
+	// Google overlay for the visible grid. Local tasks render regardless. A
+	// refresh keeps the old events on screen until the new ones arrive; a
+	// month change clears them so last month's events never sit on this grid.
 	$effect(() => {
-		const y = viewYear;
-		const m = viewMonth;
-		const [from, to] = gridRange(y, m);
-		let dead = false;
+		const [from, to] = gridRange(viewYear, viewMonth);
+		void refresh;
+		const month = `${viewYear}-${viewMonth}`;
+		if (month !== shownMonth) {
+			shownMonth = month;
+			gev = [];
+			calendarState = 'loading';
+		}
+		const ctl = new AbortController();
 		(async () => {
 			try {
 				const res = await fetch(`/api/calendar/events?from=${from}&to=${to}`, {
-					credentials: 'include'
+					cache: 'no-store',
+					signal: ctl.signal
 				});
-				if (!res.ok || dead) return;
-				const data = (await res.json()) as { events?: GEvent[]; needsConnect?: boolean };
-				gev = Array.isArray(data.events) ? data.events : [];
-				needConnect = data.needsConnect === true;
+				if (!res.ok) throw new Error(`calendar ${res.status}`);
+				const data = (await res.json()) as { events: CalendarEvent[]; needsConnect?: boolean };
+				if (ctl.signal.aborted) return;
+				gev = data.events;
+				calendarState = data.needsConnect ? 'disconnected' : 'connected';
 			} catch {
-				// Offline or Google down - overlay stays empty.
+				if (!ctl.signal.aborted) calendarState = 'error';
 			}
 		})();
-		return () => {
-			dead = true;
-		};
+		return () => ctl.abort();
 	});
+
+	async function connect() {
+		connectFailed = false;
+		try {
+			await connectCalendar();
+		} catch {
+			connectFailed = true;
+		}
+	}
+
+	const calendarNote = $derived(
+		connectFailed
+			? 'Google Calendar connection failed'
+			: {
+					loading: 'Loading Google Calendar',
+					connected: 'Google Calendar connected',
+					disconnected: 'Google Calendar not connected',
+					error: 'Google Calendar unavailable'
+				}[calendarState]
+	);
 
 	function gridRange(y: number, m: number): [number, number] {
 		const first = new Date(y, m, 1);
@@ -68,7 +91,7 @@
 		return [from, to];
 	}
 
-	function fmtTime(ts: number): string {
+	function fmtTime(ts: number | string): string {
 		try {
 			return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 		} catch {
@@ -78,6 +101,21 @@
 
 	onMount(() => {
 		void loadTasks();
+		connectFailed = new URLSearchParams(location.search).has('calendarError');
+		const again = () => {
+			if (document.visibilityState !== 'visible') return;
+			const n = new Date();
+			todayKey = dayKey(n.getFullYear(), n.getMonth(), n.getDate());
+			refresh++;
+		};
+		window.addEventListener('focus', again);
+		document.addEventListener('visibilitychange', again);
+		const timer = setInterval(again, 5 * 60000);
+		return () => {
+			window.removeEventListener('focus', again);
+			document.removeEventListener('visibilitychange', again);
+			clearInterval(timer);
+		};
 	});
 
 	function dayKey(y: number, m: number, d: number): string {
@@ -141,15 +179,14 @@
 		return [...list].sort((a, b) => (a.due_at ?? 0) - (b.due_at ?? 0));
 	});
 
+	// Multi-day events show on every day they cover.
 	const eventsByDay = $derived.by(() => {
-		const map = new Map<string, GEvent[]>();
-		for (const e of gev) {
-			const k = keyOf(e.start);
-			if (!map.has(k)) map.set(k, []);
-			map.get(k)!.push(e);
-		}
-		for (const list of map.values()) {
-			list.sort((a, b) => a.start - b.start);
+		const sorted = [...gev].sort((a, b) => eventStart(a) - eventStart(b));
+		const map = new Map<string, CalendarEvent[]>();
+		for (const c of cells) {
+			const day = new Date(c.y, c.m, c.d);
+			const list = sorted.filter((e) => eventOnDay(e, day));
+			if (list.length) map.set(c.key, list);
 		}
 		return map;
 	});
@@ -180,7 +217,8 @@
 		}
 	});
 
-	const todayKey = dayKey(today.getFullYear(), today.getMonth(), today.getDate());
+	// Follows the clock so a tab left open overnight highlights the new day.
+	let todayKey = $state(dayKey(today.getFullYear(), today.getMonth(), today.getDate()));
 
 	function shiftMonth(dir: 1 | -1) {
 		const d = new Date(viewYear, viewMonth + dir, 1);
@@ -270,8 +308,8 @@
 			</button>
 			<button class="line" onclick={goToday}>Today</button>
 			<span class="sp"></span>
-			{#if needConnect}
-				<button class="line" onclick={() => void connectCalendar()}>
+			{#if calendarState === 'disconnected' || connectFailed}
+				<button class="line" onclick={() => void connect()}>
 					<span class="material-symbols-outlined">add_link</span>Connect Google Calendar
 				</button>
 			{/if}
@@ -310,8 +348,8 @@
 				>
 					<span class="dn">{c.d}</span>
 					{#each evs.slice(0, shown) as e (e.id)}
-						<span class="ev g" title="{e.title} (Google)">
-							{#if !e.allDay}<span class="tm">{fmtTime(e.start)}</span>{/if}{e.title}
+						<span class="ev g" style:--ev={e.color} title="{e.title} ({e.calendar})">
+							{#if !e.allDay && eventStart(e) >= dayStart(c.key)}<span class="tm">{fmtTime(e.start)}</span>{/if}{e.title}
 						</span>
 					{/each}
 					{#each list.slice(0, Math.max(0, shown - evs.length)) as t (t.id)}
@@ -341,7 +379,7 @@
 		</div>
 		<PageFooter>
 			<span>{undated.length} without a date</span>
-			<span>{needConnect ? 'Google Calendar not connected' : 'Google Calendar connected'}</span>
+			<span>{calendarNote}</span>
 		</PageFooter>
 	</div>
 
@@ -352,11 +390,13 @@
 		</div>
 		<div class="ag-scroll">
 			{#each selectedEvents as e (e.id)}
-				<div class="ag-row g" title="Google Calendar event, read only">
-					<span class="tm">{e.allDay ? 'All day' : fmtTime(e.start)}</span>
+				<div class="ag-row g" style:--ev={e.color} title="Google Calendar event, read only">
+					<span class="tm">
+						{e.allDay ? 'All day' : eventStart(e) >= dayStart(selected) ? fmtTime(e.start) : 'Continued'}
+					</span>
 					<div>
 						<div class="tt">{e.title}</div>
-						<div class="src"><span class="material-symbols-outlined">event</span>Google</div>
+						<div class="src"><span class="material-symbols-outlined">event</span>{e.calendar}</div>
 					</div>
 				</div>
 			{/each}
@@ -608,12 +648,12 @@
 		border-color: var(--text-3);
 	}
 	.ev.g {
-		background: color-mix(in srgb, var(--blue) 13%, transparent);
+		background: color-mix(in srgb, var(--ev, var(--blue)) 13%, transparent);
 		color: #c5d6ff;
 		display: block;
 	}
 	.ev.g .tm {
-		color: var(--blue);
+		color: var(--ev, var(--blue));
 		margin-right: 6px;
 	}
 	.more {
@@ -655,7 +695,7 @@
 		align-items: start;
 	}
 	.ag-row.g {
-		box-shadow: inset 2px 0 0 var(--blue);
+		box-shadow: inset 2px 0 0 var(--ev, var(--blue));
 	}
 	.ag-row.t {
 		box-shadow: inset 2px 0 0 var(--accent);

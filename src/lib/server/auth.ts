@@ -30,9 +30,8 @@ export const auth = betterAuth({
 			clientSecret: env.GOOGLE_CLIENT_SECRET as string,
 			// Calendar read-only so the tasks calendar can overlay events.
 			// accessType offline stores a refresh token for server-side calls.
-			// Anyone who consented before this scope existed must revoke the
-			// app grant once (Google account settings) and log in again -
-			// Google only issues the refresh token on a fresh consent.
+			// A grant without the scope or refresh token is repaired by
+			// connectCalendar (auth-client.ts), which forces a consent screen.
 			scope: [
 				'openid',
 				'email',

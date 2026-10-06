@@ -4,23 +4,31 @@
 
 	let email = $state<string | null>(null);
 	let loading = $state(true);
-	// The events endpoint reports needsConnect when the Google grant lacks
-	// the calendar scope, so a 1 ms window is the probe. null while checking
-	// or when Google is unreachable: no row state beats a wrong one.
+	// null while checking or when Google is unreachable: no row state beats
+	// a wrong one.
 	let calendar = $state<'connected' | 'disconnected' | null>(null);
+	let connectFailed = $state(false);
 
 	onMount(async () => {
-		const now = Date.now();
-		const [session, events] = await Promise.all([
+		const [session, status] = await Promise.all([
 			fetch('/api/auth/get-session').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-			fetch(`/api/calendar/events?from=${now}&to=${now + 1}`)
-				.then((r) => (r.ok ? r.json() : null))
+			fetch('/api/calendar/status')
+				.then((r) => (r.ok ? (r.json() as Promise<{ connected: boolean }>) : null))
 				.catch(() => null)
 		]);
 		email = session?.user?.email ?? null;
 		loading = false;
-		if (events) calendar = events.needsConnect ? 'disconnected' : 'connected';
+		if (status) calendar = status.connected ? 'connected' : 'disconnected';
 	});
+
+	async function connect() {
+		connectFailed = false;
+		try {
+			await connectCalendar();
+		} catch {
+			connectFailed = true;
+		}
+	}
 </script>
 
 <div class="row">
@@ -37,12 +45,12 @@
 	<span class="material-symbols-outlined cal">calendar_month</span>
 	<div class="txt">
 		<span class="lbl">Google Calendar</span>
-		<span class="hint">Read-only events on the task calendar</span>
+		<span class="hint">{connectFailed ? 'Could not reach Google. Try again' : 'Read-only events from your selected calendars'}</span>
 	</div>
 	{#if calendar === 'connected'}
 		<span class="state"><span class="dot"></span>Connected</span>
 	{:else if calendar === 'disconnected'}
-		<button class="btn" onclick={() => void connectCalendar()}>
+		<button class="btn" onclick={() => void connect()}>
 			<span class="material-symbols-outlined">add_link</span>Connect
 		</button>
 	{/if}
