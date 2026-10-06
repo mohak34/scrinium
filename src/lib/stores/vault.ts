@@ -125,40 +125,82 @@ export async function downloadNote(path: string) {
 	}
 }
 
-let pendingSave: { path: string; content: string } | null = null;
+// Unsaved note text by path. One entry per note, so a failed save for one
+// note is never overwritten by edits to another.
+const pending = new Map<string, string>();
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+// Saves run one at a time: an older PUT can never land after a newer one.
+let saving: Promise<void> = Promise.resolve();
+let retryMs = 0;
 
 export function scheduleSave(path: string, content: string) {
-	pendingSave = { path, content };
+	pending.set(path, content);
 	saveStatus.set('saving');
 	clearTimeout(saveTimer);
-	saveTimer = setTimeout(() => {
-		void doSave();
-	}, 500);
+	saveTimer = setTimeout(() => void doSave(), 500);
 }
 
-async function doSave() {
-	if (!pendingSave) return;
-	const { path, content } = pendingSave;
-	pendingSave = null;
-	clearTimeout(saveTimer);
-	try {
-		const res = await fetch(`/api/notes/${encPath(path)}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'text/plain' },
-			body: content
-		});
-		saveStatus.set(res.ok ? 'saved' : 'error');
-		if (res.ok) loadTree();
-	} catch {
-		saveStatus.set('error');
+// Write every pending note. A failed write goes back in the queue (unless
+// newer text for that note arrived meanwhile) and retries with backoff, so a
+// network blip shows "error" but never drops keystrokes. keepalive lets the
+// request outlive a closing tab (browsers cap those bodies near 64 KB).
+function doSave(keepalive = false): Promise<void> {
+	saving = saving.then(async () => {
+		clearTimeout(saveTimer);
+		let failed = false;
+		for (const [path, content] of [...pending]) {
+			pending.delete(path);
+			let ok = false;
+			try {
+				const res = await fetch(`/api/notes/${encPath(path)}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'text/plain' },
+					body: content,
+					keepalive: keepalive && content.length < 60000
+				});
+				ok = res.ok;
+			} catch {}
+			if (!ok) {
+				failed = true;
+				if (!pending.has(path)) pending.set(path, content);
+			}
+		}
+		if (failed) {
+			saveStatus.set('error');
+			retryMs = Math.min(retryMs ? retryMs * 2 : 2000, 30000);
+			saveTimer = setTimeout(() => void doSave(), retryMs);
+			return;
+		}
+		retryMs = 0;
+		if (pending.size === 0) saveStatus.set('saved');
+		void loadTree();
+	});
+	return saving;
+}
+
+// Finish saving immediately. Call before switching notes, renaming, moving,
+// deleting or leaving the page so the debounce can never drop keystrokes.
+export async function flushSave(keepalive = false) {
+	await doSave(keepalive);
+}
+
+// Pending text follows a rename so a late save never recreates the old file.
+function remapPending(from: string, to: string) {
+	for (const [path, content] of [...pending]) {
+		if (path !== from && !path.startsWith(from + '/')) continue;
+		pending.delete(path);
+		pending.set(to + path.slice(from.length), content);
 	}
 }
 
-// Finish saving the current note immediately. Call before switching notes or
-// leaving the page so the debounce can never drop unsaved keystrokes.
-export async function flushSave() {
-	if (pendingSave) await doSave();
+// Set when a rename moves the open note, so the page keeps the editor as is
+// (cursor, undo, keystrokes typed during the request) instead of reloading.
+let activeRename: { from: string; to: string } | null = null;
+
+export function takeActiveRename(from: string | null, to: string | null): boolean {
+	const hit = !!activeRename && activeRename.from === from && activeRename.to === to;
+	activeRename = null;
+	return hit;
 }
 
 // --- Title <-> filename sync ---
@@ -337,20 +379,24 @@ export async function linkUnlinkedMention(sourcePath: string, targetPath: string
 	return true;
 }
 
-// Centralized rename that keeps tabs/activePath/pinned in sync.
-// Callers still handle filetree collapsed state via renameDir.
+// Centralized rename/move that keeps tabs/activePath/pinned and pending
+// saves in sync. Callers still handle filetree collapsed state via renameDir.
 export async function renameNote(oldPath: string, newPath: string): Promise<boolean> {
 	if (oldPath === newPath) return true;
+	await flushSave();
 	const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ newPath })
-	});
-	await loadTree();
-	if (res.ok) {
+	}).catch(() => null);
+	const ok = !!res?.ok;
+	if (ok) {
+		remapPending(oldPath, newPath);
 		const current = get(activePath);
 		if (current && (current === oldPath || current.startsWith(oldPath + '/'))) {
-			activePath.set(newPath + current.slice(oldPath.length));
+			const next = newPath + current.slice(oldPath.length);
+			activeRename = { from: current, to: next };
+			activePath.set(next);
 		}
 		openTabs.update((tabs) =>
 			tabs.map((t) => {
@@ -367,12 +413,18 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 			})
 		);
 	}
-	return res.ok;
+	await loadTree();
+	return ok;
 }
 
 export async function deletePath(path: string) {
-	await fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' });
+	// Save first so the trashed copy has the latest text.
+	await flushSave();
+	const res = await fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' }).catch(() => null);
 	await loadTree();
+	if (!res?.ok) return;
+	// Keystrokes typed while the request ran must not recreate the file.
+	for (const p of [...pending.keys()]) if (p === path || p.startsWith(path + '/')) pending.delete(p);
 	const current = get(activePath);
 	if (current && (current === path || current.startsWith(path + '/'))) {
 		activePath.set(null);
@@ -380,31 +432,11 @@ export async function deletePath(path: string) {
 	openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
 }
 
-// Drag-and-drop move: same fs.rename underneath, but the target is a folder
-// (or null for the vault root) and the basename is preserved. Keeps the open
-// note's editor pinned to the note when it (or an ancestor folder) moves.
+// Drag-and-drop move: a rename whose target is a folder (or null for the
+// vault root) with the basename kept.
 export async function movePath(from: string, toDir: string | null): Promise<boolean> {
 	const name = from.split('/').pop()!;
-	const newPath = toDir ? `${toDir}/${name}` : name;
-	if (newPath === from) return true;
-	const res = await fetch(`/api/notes/${encPath(from)}`, {
-		method: 'PATCH',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ newPath })
-	});
-	await loadTree();
-	const current = get(activePath);
-	if (current && (current === from || current.startsWith(from + '/'))) {
-		activePath.set(newPath + current.slice(from.length));
-	}
-	openTabs.update((tabs) =>
-		tabs.map((t) => {
-			if (t === from) return newPath;
-			if (t.startsWith(from + '/')) return newPath + t.slice(from.length);
-			return t;
-		})
-	);
-	return res.ok;
+	return renameNote(from, toDir ? `${toDir}/${name}` : name);
 }
 
 // --- Trash ---

@@ -36,6 +36,13 @@ db.exec(`
 	);
 `);
 
+// SQL for "`col` is `path` itself or anything inside the folder `path`",
+// bound with underArgs(path). A binary range, not LIKE: LIKE ignores case
+// and treats _ and % as wildcards, so renaming "cs_589" would also drag
+// "csX589/..." along. '0' is the character after '/'.
+export const under = (col: string) => `(${col} = ? OR (${col} >= ? AND ${col} < ?))`;
+export const underArgs = (path: string) => [path, `${path}/`, `${path}0`];
+
 export function upsertNoteMeta(relPath: string, title: string, updatedAt: number) {
 	db.prepare(
 		`INSERT INTO note_meta (path, title, updated_at) VALUES (?, ?, ?)
@@ -44,13 +51,13 @@ export function upsertNoteMeta(relPath: string, title: string, updatedAt: number
 }
 
 export function deleteNoteMetaByPrefix(relPath: string) {
-	db.prepare(`DELETE FROM note_meta WHERE path = ? OR path LIKE ?`).run(relPath, `${relPath}/%`);
+	db.prepare(`DELETE FROM note_meta WHERE ${under('path')}`).run(...underArgs(relPath));
 }
 
 export function renameNoteMeta(oldPath: string, newPath: string) {
 	const rows = db
-		.prepare(`SELECT path FROM note_meta WHERE path = ? OR path LIKE ?`)
-		.all(oldPath, `${oldPath}/%`) as { path: string }[];
+		.prepare(`SELECT path FROM note_meta WHERE ${under('path')}`)
+		.all(...underArgs(oldPath)) as { path: string }[];
 	for (const row of rows) {
 		const renamed = newPath + row.path.slice(oldPath.length);
 		db.prepare(`UPDATE note_meta SET path = ? WHERE path = ?`).run(renamed, row.path);
@@ -63,13 +70,13 @@ export function indexNote(relPath: string, title: string, body: string) {
 }
 
 export function deleteNoteIndexByPrefix(relPath: string) {
-	db.prepare(`DELETE FROM note_fts WHERE path = ? OR path LIKE ?`).run(relPath, `${relPath}/%`);
+	db.prepare(`DELETE FROM note_fts WHERE ${under('path')}`).run(...underArgs(relPath));
 }
 
 export function renameNoteIndex(oldPath: string, newPath: string) {
 	const rows = db
-		.prepare(`SELECT path, title, body FROM note_fts WHERE path = ? OR path LIKE ?`)
-		.all(oldPath, `${oldPath}/%`) as { path: string; title: string; body: string }[];
+		.prepare(`SELECT path, title, body FROM note_fts WHERE ${under('path')}`)
+		.all(...underArgs(oldPath)) as { path: string; title: string; body: string }[];
 	for (const row of rows) {
 		const renamed = newPath + row.path.slice(oldPath.length);
 		db.prepare(`DELETE FROM note_fts WHERE path = ?`).run(row.path);
@@ -441,15 +448,18 @@ export function listTasksForNote(notePath: string): TaskRow[] {
 
 // Keep links pointing at the file after a note or folder rename, same as shares.
 export function renameTaskLinks(oldPath: string, newPath: string) {
-	db.prepare(
-		`UPDATE OR IGNORE task_links SET note_path = ? || substr(note_path, ?)
-		 WHERE note_path = ? OR note_path LIKE ?`
-	).run(newPath, oldPath.length + 1, oldPath, `${oldPath}/%`);
+	const rows = db
+		.prepare(`SELECT DISTINCT note_path FROM task_links WHERE ${under('note_path')}`)
+		.all(...underArgs(oldPath)) as { note_path: string }[];
+	const move = db.prepare(`UPDATE OR IGNORE task_links SET note_path = ? WHERE note_path = ?`);
 	// Rows left behind were already linked at the new path; drop the duplicates.
-	db.prepare(`DELETE FROM task_links WHERE note_path = ? OR note_path LIKE ?`).run(
-		oldPath,
-		`${oldPath}/%`
-	);
+	const drop = db.prepare(`DELETE FROM task_links WHERE note_path = ?`);
+	db.transaction(() => {
+		for (const { note_path } of rows) {
+			move.run(newPath + note_path.slice(oldPath.length), note_path);
+			drop.run(note_path);
+		}
+	})();
 }
 
 export function listTaskLinks(taskId: string): string[] {

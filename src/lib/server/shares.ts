@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { db } from './db';
+import { db, under, underArgs } from './db';
 import { renderNoteToHtml } from '$lib/print/renderNote';
 import { resolveAssetUrl } from '$lib/editor/livePreview';
 
@@ -137,8 +137,8 @@ export function deleteShare(id: string): boolean {
 // Called from the notes API so shares track the file, not a stale path.
 export function renameShares(oldPath: string, newPath: string) {
 	const rows = db
-		.prepare(`SELECT id, note_path FROM shares WHERE note_path = ? OR note_path LIKE ?`)
-		.all(oldPath, `${oldPath}/%`) as { id: string; note_path: string }[];
+		.prepare(`SELECT id, note_path FROM shares WHERE ${under('note_path')}`)
+		.all(...underArgs(oldPath)) as { id: string; note_path: string }[];
 	for (const row of rows) {
 		const renamed = newPath + row.note_path.slice(oldPath.length);
 		db.prepare(`UPDATE shares SET note_path = ? WHERE id = ?`).run(renamed, row.id);
@@ -146,10 +146,7 @@ export function renameShares(oldPath: string, newPath: string) {
 }
 
 export function deleteSharesByPrefix(relPath: string) {
-	db.prepare(`DELETE FROM shares WHERE note_path = ? OR note_path LIKE ?`).run(
-		relPath,
-		`${relPath}/%`
-	);
+	db.prepare(`DELETE FROM shares WHERE ${under('note_path')}`).run(...underArgs(relPath));
 }
 
 // The local images a shared note shows, in render order: `urls` as written

@@ -54,10 +54,19 @@ export async function readAsset(relPath: string): Promise<Buffer> {
 	}
 }
 
+// Write to a temp file beside the note, then rename over it: a crash or a
+// full disk mid-write leaves the old note intact instead of a truncated one.
 export async function writeNote(relPath: string, content: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
 	await fs.mkdir(path.dirname(fullPath), { recursive: true });
-	await fs.writeFile(fullPath, content, 'utf-8');
+	const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${process.pid}.${Date.now()}.tmp`);
+	try {
+		await fs.writeFile(tmp, content, 'utf-8');
+		await fs.rename(tmp, fullPath);
+	} catch (e) {
+		await fs.rm(tmp, { force: true });
+		throw e;
+	}
 }
 
 export async function createFolder(relPath: string): Promise<void> {
