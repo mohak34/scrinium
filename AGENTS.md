@@ -242,8 +242,10 @@ State channels you will touch:
 
 - `ALLOWED_EMAILS` in `.env` is the actual allowlist. Google's consent screen
   only proves who is who; `isAllowedEmail` in `src/lib/server/auth.ts`
-  (used by both `databaseHooks.user.create` and `/api/auth/mobile`) rejects
-  everyone not listed. Do not remove it.
+  (used by `databaseHooks.user.create`, `/api/auth/mobile`, and
+  `hooks.server.ts` on every request for sessions and bearer tokens)
+  rejects everyone not listed. Removing an email and restarting the app
+  locks out its live sessions and tokens too. Do not remove it.
 - **Mobile API tokens**: `POST /api/auth/mobile` verifies a Google ID token
   (audience = `GOOGLE_CLIENT_ID`; the Android app requests its token with
   that ID as `serverClientId`, so no separate Android credential exists) and

@@ -1,11 +1,24 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { signInWithGoogle } from '$lib/auth-client';
+
+	// ?error= from the hooks (session for an email no longer allowed) or
+	// from better-auth's OAuth callback (sign-up rejected by the allowlist).
+	const error = $derived(page.url.searchParams.get('error'));
+	const message = $derived(
+		!error
+			? ''
+			: error === 'not_allowed' || error === 'unable_to_create_user'
+				? 'That Google account is not on the allowlist.'
+				: 'Sign-in failed. Try again.'
+	);
 </script>
 
 <div class="login-wrap">
 	<div class="login-card">
 		<h1>Scrinium</h1>
 		<p>Sign in with the Google account on the allowlist.</p>
+		{#if message}<p class="err">{message}</p>{/if}
 		<button class="signin" onclick={signInWithGoogle}>Continue with Google</button>
 	</div>
 </div>
@@ -37,6 +50,9 @@
 		color: var(--on-surface-variant);
 		margin: 0 0 1.5rem;
 		font-size: var(--font-ui-small);
+	}
+	.err {
+		color: var(--red);
 	}
 	.signin {
 		background: var(--accent-fill);
