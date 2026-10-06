@@ -81,29 +81,36 @@ export function renameNoteIndex(oldPath: string, newPath: string) {
 	}
 }
 
-// Long-lived API tokens for the mobile client. Only the SHA-256 hash is
-// stored - the raw token is returned once at issue time and never persisted
-// anywhere the server can read back.
+// Long-lived API tokens for the mobile client and agents (MCP). Only the
+// SHA-256 hash is stored - the raw token is returned once at issue time and
+// never persisted anywhere the server can read back. label names the holder
+// ("Muse"); phone tokens from /api/auth/mobile have none.
 db.exec(`
 	CREATE TABLE IF NOT EXISTS api_tokens (
 		token_hash TEXT PRIMARY KEY,
 		user_email TEXT NOT NULL,
 		created_at INTEGER NOT NULL,
-		last_used_at INTEGER
+		last_used_at INTEGER,
+		label TEXT
 	);
 `);
+{
+	const cols = db.prepare(`PRAGMA table_info(api_tokens)`).all() as { name: string }[];
+	if (!cols.some((c) => c.name === 'label')) db.exec(`ALTER TABLE api_tokens ADD COLUMN label TEXT`);
+}
 
 export interface ApiTokenRow {
 	token_hash: string;
 	user_email: string;
 	created_at: number;
 	last_used_at: number | null;
+	label: string | null;
 }
 
-export function insertApiToken(tokenHash: string, userEmail: string) {
+export function insertApiToken(tokenHash: string, userEmail: string, label: string | null = null) {
 	db.prepare(
-		`INSERT INTO api_tokens (token_hash, user_email, created_at) VALUES (?, ?, ?)`
-	).run(tokenHash, userEmail.toLowerCase(), Date.now());
+		`INSERT INTO api_tokens (token_hash, user_email, created_at, label) VALUES (?, ?, ?, ?)`
+	).run(tokenHash, userEmail.toLowerCase(), Date.now(), label);
 }
 
 export function findApiToken(tokenHash: string): ApiTokenRow | undefined {

@@ -25,7 +25,7 @@
 			label: 'Account',
 			pages: [
 				{ key: 'account', title: 'Account', icon: 'person' },
-				{ key: 'devices', title: 'Mobile devices', icon: 'smartphone' }
+				{ key: 'devices', title: 'Devices and agents', icon: 'devices' }
 			]
 		},
 		{
