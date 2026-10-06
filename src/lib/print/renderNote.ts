@@ -153,10 +153,15 @@ export function renderNoteToHtml(
 	}
 	const spans: Span[] = [];
 
-	// 1. Display math first so $$ never spans code.
+	// 1. Display math first so $$ never spans code. Only math on lines of
+	// its own widens to whole lines; a mid-line `$$x$$` keeps the prose
+	// around it.
 	for (const r of findMathBlockRanges(state)) {
-		const [from, to] = fullLines(r.from, r.to);
-		spans.push({ from, to, html: katexBlock(r.source), block: true });
+		const own =
+			!state.doc.sliceString(state.doc.lineAt(r.from).from, r.from).trim() &&
+			!state.doc.sliceString(r.to, state.doc.lineAt(r.to).to).trim();
+		const [from, to] = own ? fullLines(r.from, r.to) : [r.from, r.to];
+		spans.push({ from, to, html: katexBlock(r.source), block: own });
 	}
 
 	// 2 + 3. Fenced code (non-math) and inline code from the tree.

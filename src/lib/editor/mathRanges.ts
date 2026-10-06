@@ -33,12 +33,13 @@ function overlaps(aFrom: number, aTo: number, bFrom: number, bTo: number): boole
 	return aFrom <= bTo && bFrom <= aTo;
 }
 
-// Own-line `$$` fence starts outside fenced code, plus all fenced ranges.
+// Own-line `$$` fence starts outside code, plus every code range (fenced,
+// indented and inline): `$$` written inside code is literal text.
 function scanDoc(state: EditorState): { fences: number[]; fenced: Array<[number, number]> } {
 	const fenced: Array<[number, number]> = [];
 	syntaxTree(state).iterate({
 		enter: (node) => {
-			if (node.name === 'FencedCode') {
+			if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'InlineCode') {
 				fenced.push([node.from, node.to]);
 				return false;
 			}
@@ -87,7 +88,9 @@ export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
 		const a = fences[i];
 		const b = fences[i + 1];
 		const content = docText.slice(a + 2, b);
-		if (!content.trim() || content.length > 2000) {
+		// A pair never spans code: a stray `$$` above a code block must not
+		// swallow it.
+		if (!content.trim() || content.length > 2000 || fenced.some(([f, t]) => f > a && t < b)) {
 			i += 1;
 			continue;
 		}
@@ -136,7 +139,10 @@ export function inMathRegion(state: EditorState, pos: number): boolean {
 	}
 	const line = state.doc.lineAt(pos);
 	const before = line.text.slice(0, pos - line.from);
-	if (before.replace(/\\\$/g, '').replace(/\$\$/g, '').includes('$')) return true;
+	// Inside inline math only while a `$` is open: an odd count. A closed
+	// `$x$` earlier on the line leaves the rest of the line as prose.
+	const singles = before.replace(/\\\$/g, '').replace(/\$\$/g, '').split('$').length - 1;
+	if (singles % 2 === 1) return true;
 	// Unclosed `$$` opener earlier in the doc (a display block being typed).
 	// Closed blocks and fenced code don't count toward the parity. Any `$$`
 	// occurrence counts here (own-line or mid-line) - pairing lives in

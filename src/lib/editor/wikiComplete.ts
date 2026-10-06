@@ -9,6 +9,7 @@
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import type { EditorView } from '@codemirror/view';
 import { wikiCtxField } from './livePreview';
+import { resolveWikilink } from './wikilinks';
 
 const TRIGGER = /\[\[([^\][#|\n]*)$/;
 
@@ -34,13 +35,16 @@ export function wikiCompletionSource(context: CompletionContext): CompletionResu
 			.slice(0, 30)
 			.map((p) => {
 				const stem = (p.split('/').pop() ?? p).replace(/\.md$/i, '');
+				// When another note shares the name, the bare name would
+				// resolve to that one: link by path instead.
+				const target = resolveWikilink(stem, notes) === p ? stem : p.replace(/\.md$/i, '');
 				return {
 					label: stem,
 					detail: p.includes('/') ? p : undefined,
 					apply: (view: EditorView, _c: unknown, afrom: number, ato: number) => {
 						view.dispatch({
-							changes: { from: afrom, to: ato, insert: `${stem}]]` },
-							selection: { anchor: afrom + stem.length + 2 }
+							changes: { from: afrom, to: ato, insert: `${target}]]` },
+							selection: { anchor: afrom + target.length + 2 }
 						});
 					}
 				};
