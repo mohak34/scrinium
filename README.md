@@ -107,8 +107,12 @@ Tools: notes (`list_notes`, `search_notes`, `read_note`, `create_note`,
 `delete_note`, `list_trash`, `restore_from_trash`, `share_note`), tags and
 links (`list_tags`, `find_notes_by_tag`, `get_backlinks`) and tasks
 (`list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`,
-`link_task_to_note`, `unlink_task_from_note`). Dates are ISO 8601 with a UTC
-offset.
+`link_task_to_note`, `unlink_task_from_note`, and `get_agenda` for overdue,
+today, next 7 days, doing, waiting and inbox in one call). Dates are ISO 8601
+with a UTC offset.
+
+Every change an agent makes is listed under its token's Activity button for
+30 days.
 
 ## Deployment
 

@@ -181,7 +181,9 @@ State channels you will touch:
   mcp.ts (MCP tools for agents; each tool calls the REST routes through
   SvelteKit's in-process `fetch`, so validation and index/link bookkeeping
   live only in the routes - add a tool by wrapping a route, never by
-  touching the vault or db directly).
+  touching the vault or db directly; write tools call `onWrite` after
+  success, which the route records in `agent_actions` for bearer callers -
+  a new write tool must call it too).
 - `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
   tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,
   settings.ts (editor prefs persisted to localStorage).
@@ -245,7 +247,8 @@ State channels you will touch:
   Settings > Devices and agents via `GET/DELETE /api/tokens`.
 - **Agent tokens**: the same table. `POST /api/tokens { label }` (browser
   session only) mints a labeled token for an MCP client; the raw value is
-  shown once. Phone tokens have no label.
+  shown once. Phone tokens have no label. `GET /api/tokens/activity`
+  lists what an agent token changed (30 days, dropped on revoke).
 - Auth gates a shared vault: today all allowlisted users see the same files.
   Per-user vaults are a feature to build, not a config switch.
 - Public routes (`/s`, `/api/share`) are allowlisted in `hooks.server.ts`

@@ -35,6 +35,7 @@ export function revokeBearerToken(bearer: string) {
 	revokeApiToken(hash(bearer));
 }
 
-function hash(raw: string): string {
+// Same hash the api_tokens table is keyed by.
+export function hash(raw: string): string {
 	return createHash('sha256').update(raw).digest('hex');
 }

@@ -125,6 +125,44 @@ export function touchApiToken(tokenHash: string) {
 
 export function revokeApiToken(tokenHash: string) {
 	db.prepare(`DELETE FROM api_tokens WHERE token_hash = ?`).run(tokenHash);
+	db.prepare(`DELETE FROM agent_actions WHERE token_hash = ?`).run(tokenHash);
+}
+
+// What each agent token changed through MCP, newest first, for Settings >
+// Devices and agents. A trust log, not an audit trail: rows older than 30
+// days are pruned on insert and revoking a token drops its rows.
+db.exec(`
+	CREATE TABLE IF NOT EXISTS agent_actions (
+		id INTEGER PRIMARY KEY,
+		token_hash TEXT NOT NULL,
+		tool TEXT NOT NULL,
+		target TEXT NOT NULL,
+		at INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_agent_actions_token ON agent_actions(token_hash, at);
+`);
+
+export interface AgentAction {
+	tool: string;
+	target: string;
+	at: number;
+}
+
+export function logAgentAction(tokenHash: string, tool: string, target: string) {
+	const now = Date.now();
+	db.prepare(`DELETE FROM agent_actions WHERE at < ?`).run(now - 30 * 86400000);
+	db.prepare(`INSERT INTO agent_actions (token_hash, tool, target, at) VALUES (?, ?, ?, ?)`).run(
+		tokenHash,
+		tool,
+		target.slice(0, 300),
+		now
+	);
+}
+
+export function listAgentActions(tokenHash: string, limit = 50): AgentAction[] {
+	return db
+		.prepare(`SELECT tool, target, at FROM agent_actions WHERE token_hash = ? ORDER BY at DESC, id DESC LIMIT ?`)
+		.all(tokenHash, limit) as AgentAction[];
 }
 
 export function listApiTokensForEmail(email: string): ApiTokenRow[] {
