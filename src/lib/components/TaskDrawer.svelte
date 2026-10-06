@@ -80,9 +80,21 @@
 	const kids = $derived(task ? childrenOf($tasks, task.id) : []);
 	const doneKids = $derived(kids.filter((k) => k.status === 'done').length);
 
-	// Drafts reset whenever a different task opens.
+	// Drafts reset whenever a different task opens, and follow edits made
+	// elsewhere (list row, board, an agent) unless that box has focus.
 	let titleDraft = $state('');
 	let detailDraft = $state('');
+	let titleEl = $state<HTMLTextAreaElement>();
+	let detailEl = $state<HTMLTextAreaElement>();
+	let waitingEl = $state<HTMLInputElement>();
+	const typingIn = (el: HTMLElement | undefined) => !!el && document.activeElement === el;
+	$effect(() => {
+		const t = task;
+		if (!t || t.id !== syncedId) return;
+		if (!typingIn(titleEl)) titleDraft = t.title;
+		if (!typingIn(detailEl)) detailDraft = t.detail;
+		if (!typingIn(waitingEl)) waitingDraft = t.waiting_on ?? '';
+	});
 	let syncedId: string | null = null;
 	let links = $state<string[]>([]);
 	$effect(() => {
@@ -90,6 +102,7 @@
 			syncedId = task.id;
 			titleDraft = task.title;
 			detailDraft = task.detail;
+			waitingDraft = task.waiting_on ?? '';
 			linkQuery = '';
 			subDraft = '';
 			links = [];
@@ -112,7 +125,12 @@
 		if ($openTaskId) {
 			void loadTree();
 			const key = (e: KeyboardEvent) => {
-				if (e.key === 'Escape') closeTask();
+				if (e.key !== 'Escape') return;
+				// Title, notes and waiting-on save on change, which only fires
+				// on blur: blur first so Esc never throws a draft away.
+				const el = document.activeElement;
+				if (el instanceof HTMLElement && el.closest('.drawer') && el.matches('input, textarea')) el.blur();
+				closeTask();
 			};
 			window.addEventListener('keydown', key);
 			return () => window.removeEventListener('keydown', key);
@@ -205,9 +223,6 @@
 	const STATUS_SHORT: Record<string, string> = { todo: 'Week' };
 
 	let waitingDraft = $state('');
-	$effect(() => {
-		waitingDraft = task?.waiting_on ?? '';
-	});
 
 	function saveWaiting(t: Task) {
 		const v = waitingDraft.trim() || null;
@@ -256,6 +271,7 @@
 			<textarea
 				class="title"
 				rows="1"
+				bind:this={titleEl}
 				bind:value={titleDraft}
 				aria-label="Task title"
 				onkeydown={(e) => {
@@ -288,6 +304,7 @@
 						<input
 							class="ctl grow"
 							placeholder="Who or what"
+							bind:this={waitingEl}
 							bind:value={waitingDraft}
 							onchange={() => saveWaiting(task)}
 						/>
@@ -497,6 +514,7 @@
 					class="detail"
 					rows="5"
 					placeholder="Details, context, links"
+					bind:this={detailEl}
 					bind:value={detailDraft}
 					aria-label="Task notes"
 					onchange={() => saveDetail(task)}

@@ -2,13 +2,16 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getTask, updateTask, deleteTask } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
+import { parseStamp } from '$lib/server/taskInput';
 
-// Walk the parent chain to reject a reparent that would cycle.
+// Walk the whole parent chain to reject a reparent that would cycle. No hop
+// cap: a cap let a 26-deep chain close a loop. The seen set stops on any
+// cycle already in the data.
 function wouldCycle(id: string, parentId: string | null): boolean {
-	let cur: string | null = parentId;
-	for (let i = 0; i < 25 && cur; i++) {
+	const seen = new Set<string>();
+	for (let cur = parentId; cur && !seen.has(cur); cur = getTask(cur)?.parent_id ?? null) {
 		if (cur === id) return true;
-		cur = getTask(cur)?.parent_id ?? null;
+		seen.add(cur);
 	}
 	return false;
 }
@@ -55,15 +58,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (wouldCycle(id, parentId)) throw error(400, 'Bad parent');
 		patch.parent_id = parentId;
 	}
-	if (body.due_at !== undefined) {
-		if (body.due_at !== null && typeof body.due_at !== 'number') throw error(400, 'Bad due date');
-		patch.due_at = body.due_at;
-	}
-	if (body.remind_at !== undefined) {
-		if (body.remind_at !== null && typeof body.remind_at !== 'number')
-			throw error(400, 'Bad reminder');
-		patch.remind_at = body.remind_at;
-	}
+	if (body.due_at !== undefined) patch.due_at = parseStamp(body.due_at, 'due date');
+	if (body.remind_at !== undefined) patch.remind_at = parseStamp(body.remind_at, 'reminder');
 	if (body.position !== undefined) {
 		if (typeof body.position !== 'number' || !Number.isFinite(body.position))
 			throw error(400, 'Bad position');

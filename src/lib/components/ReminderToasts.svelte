@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { openTask, updateTask, openTaskId, stampShort, type Task } from '$lib/stores/tasks';
+	import { openTask, updateTask, stampShort, type Task } from '$lib/stores/tasks';
 
 	interface Fired extends Task {
 		firedAt: number;
@@ -20,13 +20,13 @@
 			return;
 		}
 		if (due.length === 0) return;
-		const open = $openTaskId;
+		// The server marks these fired as it returns them, so every one is
+		// shown: none is skipped for being open in a drawer that may not even
+		// be on screen, and none is cut by a cap.
 		fired = [
-			...due
-				.filter((t) => t.id !== open && !fired.some((f) => f.id === t.id))
-				.map((t) => ({ ...t, firedAt: Date.now() })),
+			...due.filter((t) => !fired.some((f) => f.id === t.id)).map((t) => ({ ...t, firedAt: Date.now() })),
 			...fired
-		].slice(0, 5);
+		];
 	}
 
 	function dismiss(id: string) {
@@ -88,6 +88,8 @@
 		flex-direction: column;
 		gap: 8px;
 		width: min(360px, calc(100vw - 32px));
+		max-height: calc(100vh - 32px);
+		overflow-y: auto;
 	}
 	.toast {
 		display: flex;
