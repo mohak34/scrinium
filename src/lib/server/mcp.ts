@@ -8,7 +8,10 @@ import type { TrashEntry } from './vault';
 // REST routes through SvelteKit's in-process fetch, so validation, search
 // indexing, share/task-link rename tracking and the trash index stay in one
 // place. The caller's Authorization header rides along on each call.
+// onWrite fires after each successful change so the route can keep the
+// agent activity log; read-only tools never call it.
 type Fetch = typeof fetch;
+export type OnWrite = (tool: string, target: string) => void;
 
 const keys = <T extends readonly { key: string }[]>(list: T) =>
 	list.map((x) => x.key) as [T[number]['key'], ...T[number]['key'][]];
@@ -34,7 +37,7 @@ Tasks are separate from notes. Status: ${STATUSES.map((s) => `${s.key} (${s.hint
 
 Dates are ISO 8601 with a UTC offset. An all-day due date is midnight in the user's local time, e.g. 2026-10-07T00:00:00-04:00. Timestamps in results are UTC.
 
-Before creating a task, search with list_tasks(query) to avoid duplicates. delete_note moves notes to the trash, where restore_from_trash can bring them back.`;
+For "what is on today" questions call get_agenda once. Before creating a task, search with list_tasks(query) to avoid duplicates. delete_note moves notes to the trash, where restore_from_trash can bring them back.`;
 
 const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
 const ms = (v: string | null | undefined) => (v == null ? v : Date.parse(v));
@@ -65,7 +68,7 @@ const result = (data: unknown) => ({
 
 const enc = (p: string) => p.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
 
-export function createMcpServer(fetch: Fetch, origin: string) {
+export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite = () => {}) {
 	// Throws the route's error message so the SDK reports it as a tool error.
 	async function call(path: string, init?: RequestInit & { body?: string }): Promise<Response> {
 		const res = await fetch(path, {
@@ -137,6 +140,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 			if (!path.endsWith('.md')) throw new Error('Note paths end in .md');
 			if (await exists(path)) throw new Error(`${path} already exists. Use update_note or append_to_note.`);
 			await writeNote(path, content);
+			onWrite('create_note', path);
 			return result(`Created ${path}`);
 		}
 	);
@@ -151,6 +155,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 		async ({ path, content }) => {
 			await readNote(path);
 			await writeNote(path, content);
+			onWrite('update_note', path);
 			return result(`Updated ${path}`);
 		}
 	);
@@ -167,6 +172,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 			const count = content.split(old_text).length - 1;
 			if (count !== 1) throw new Error(`old_text found ${count} times in ${path}; it must match exactly once.`);
 			await writeNote(path, content.replace(old_text, () => new_text));
+			onWrite('edit_note', path);
 			return result(`Edited ${path}`);
 		}
 	);
@@ -183,6 +189,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 			const cur = res.ok ? await res.text() : '';
 			const sep = cur === '' || cur.endsWith('\n') ? '' : '\n';
 			await writeNote(path, cur + sep + text + (text.endsWith('\n') ? '' : '\n'));
+			onWrite('append_to_note', path);
 			return result(res.ok ? `Appended to ${path}` : `Created ${path}`);
 		}
 	);
@@ -199,6 +206,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 			const cut = to.lastIndexOf('/');
 			if (cut > 0) await send('POST', `/api/notes/${enc(to.slice(0, cut))}`, { folder: true });
 			await send('PATCH', `/api/notes/${enc(path)}`, { newPath: to });
+			onWrite('move_note', `${path} -> ${to}`);
 			return result(`Moved ${path} to ${new_path}`);
 		}
 	);
@@ -208,6 +216,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 		{ description: 'Create a folder (and any missing parents).', inputSchema: { path: NotePath } },
 		async ({ path }) => {
 			await send('POST', `/api/notes/${enc(path)}`, { folder: true });
+			onWrite('create_folder', path);
 			return result(`Created folder ${path}`);
 		}
 	);
@@ -221,6 +230,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 		},
 		async ({ path }) => {
 			await send('DELETE', `/api/notes/${enc(path)}`);
+			onWrite('delete_note', path);
 			return result(`Moved ${path} to trash`);
 		}
 	);
@@ -242,7 +252,11 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 			description: 'Restore a trashed item to its original path (or a free name next to it).',
 			inputSchema: { trash_name: z.string().min(1).describe('trash_name from list_trash') }
 		},
-		async ({ trash_name }) => result(await (await send('POST', '/api/trash/restore', { trashName: trash_name })).json())
+		async ({ trash_name }) => {
+			const out = (await (await send('POST', '/api/trash/restore', { trashName: trash_name })).json()) as { path: string };
+			onWrite('restore_from_trash', out.path);
+			return result(out);
+		}
 	);
 
 	server.registerTool(
@@ -280,6 +294,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 		},
 		async ({ path, password }) => {
 			const share = (await (await send('POST', '/api/shares', { path, password })).json()) as { id: string };
+			onWrite('share_note', path);
 			return result({ url: `${origin}/s/${share.id}`, password_protected: !!password });
 		}
 	);
@@ -363,6 +378,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 				await send('POST', '/api/tasks', { title, ...rest, due_at: ms(due), remind_at: ms(remind_at) })
 			).json()) as TaskRow;
 			for (const p of note_paths ?? []) await send('POST', `/api/tasks/${row.id}/links`, { note_path: p });
+			onWrite('create_task', row.title);
 			return result(taskOut({ ...row, link_count: note_paths?.length ?? 0 }));
 		}
 	);
@@ -378,6 +394,7 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 			if (due !== undefined) patch.due_at = ms(due);
 			if (remind_at !== undefined) patch.remind_at = ms(remind_at);
 			const row = (await (await send('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch)).json()) as TaskRow;
+			onWrite('update_task', row.title);
 			return result(taskOut(row));
 		}
 	);
@@ -390,8 +407,10 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 			annotations: { destructiveHint: true }
 		},
 		async ({ id }) => {
-			if (!(await allTasks()).some((t) => t.id === id)) throw new Error(`404: Task ${id} not found`);
+			const task = (await allTasks()).find((t) => t.id === id);
+			if (!task) throw new Error(`404: Task ${id} not found`);
 			await send('DELETE', `/api/tasks/${encodeURIComponent(id)}`);
+			onWrite('delete_task', task.title);
 			return result(`Deleted task ${id}`);
 		}
 	);
@@ -399,20 +418,64 @@ export function createMcpServer(fetch: Fetch, origin: string) {
 	server.registerTool(
 		'link_task_to_note',
 		{ description: 'Link a task to a note.', inputSchema: { id: z.string(), note_path: NotePath } },
-		async ({ id, note_path }) =>
-			result(await (await send('POST', `/api/tasks/${encodeURIComponent(id)}/links`, { note_path })).json())
+		async ({ id, note_path }) => {
+			const links = await (await send('POST', `/api/tasks/${encodeURIComponent(id)}/links`, { note_path })).json();
+			onWrite('link_task_to_note', note_path);
+			return result(links);
+		}
 	);
 
 	server.registerTool(
 		'unlink_task_from_note',
 		{ description: 'Remove a link between a task and a note.', inputSchema: { id: z.string(), note_path: NotePath } },
-		async ({ id, note_path }) =>
-			result(
-				await getJson(
-					`/api/tasks/${encodeURIComponent(id)}/links?note_path=${encodeURIComponent(note_path)}`,
-					{ method: 'DELETE' }
-				)
-			)
+		async ({ id, note_path }) => {
+			const links = await getJson(
+				`/api/tasks/${encodeURIComponent(id)}/links?note_path=${encodeURIComponent(note_path)}`,
+				{ method: 'DELETE' }
+			);
+			onWrite('unlink_task_from_note', note_path);
+			return result(links);
+		}
+	);
+
+	server.registerTool(
+		'get_agenda',
+		{
+			description:
+				'Everything open that matters now, in one call: overdue, due today, due in the next 7 days, in progress, waiting (with days waited) and the inbox. Done tasks are left out. Use it for "what is on my plate" questions.',
+			inputSchema: {
+				timezone: z
+					.string()
+					.refine((tz) => Intl.supportedValuesOf('timeZone').includes(tz) || tz === 'UTC', 'Unknown time zone')
+					.describe('The user\'s IANA time zone, e.g. "America/New_York". Decides what "today" is.')
+			},
+			annotations: readOnly
+		},
+		async ({ timezone }) => {
+			// Compare calendar days in the user's zone: en-CA formats as YYYY-MM-DD.
+			const dayOf = (t: number) => new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(t);
+			const now = Date.now();
+			const today = dayOf(now);
+			const weekEnd = dayOf(now + 7 * 86400000);
+			const open = (await allTasks()).filter((t) => t.status !== 'done');
+			const dated = open.filter((t) => t.due_at != null).sort((a, b) => a.due_at! - b.due_at!);
+			const day = (t: TaskRow) => dayOf(t.due_at!);
+			return result({
+				today,
+				timezone,
+				overdue: dated.filter((t) => day(t) < today).map(taskOut),
+				due_today: dated.filter((t) => day(t) === today).map(taskOut),
+				next_7_days: dated.filter((t) => day(t) > today && day(t) <= weekEnd).map(taskOut),
+				doing: open.filter((t) => t.status === 'doing').map(taskOut),
+				waiting: open
+					.filter((t) => t.status === 'waiting')
+					.map((t) => ({
+						...taskOut(t),
+						days_waiting: t.waiting_since == null ? null : Math.floor((now - t.waiting_since) / 86400000)
+					})),
+				inbox: open.filter((t) => t.status === 'inbox').map(taskOut)
+			});
+		}
 	);
 
 	return server;
