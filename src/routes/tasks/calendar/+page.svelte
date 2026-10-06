@@ -20,7 +20,7 @@
 
 	const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-	let today = new Date();
+	const today = new Date();
 	let viewYear = $state(today.getFullYear());
 	let viewMonth = $state(today.getMonth());
 	let selected = $state(dayKey(today.getFullYear(), today.getMonth(), today.getDate()));
@@ -103,7 +103,10 @@
 		void loadTasks();
 		connectFailed = new URLSearchParams(location.search).has('calendarError');
 		const again = () => {
-			if (document.visibilityState === 'visible') refresh++;
+			if (document.visibilityState !== 'visible') return;
+			const n = new Date();
+			todayKey = dayKey(n.getFullYear(), n.getMonth(), n.getDate());
+			refresh++;
 		};
 		window.addEventListener('focus', again);
 		document.addEventListener('visibilitychange', again);
@@ -214,7 +217,8 @@
 		}
 	});
 
-	const todayKey = dayKey(today.getFullYear(), today.getMonth(), today.getDate());
+	// Follows the clock so a tab left open overnight highlights the new day.
+	let todayKey = $state(dayKey(today.getFullYear(), today.getMonth(), today.getDate()));
 
 	function shiftMonth(dir: 1 | -1) {
 		const d = new Date(viewYear, viewMonth + dir, 1);
