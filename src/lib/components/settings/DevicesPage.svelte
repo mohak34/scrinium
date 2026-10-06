@@ -204,7 +204,7 @@
 		font-size: 12.5px;
 		word-break: break-all;
 	}
-	.btn.ghost.on {
+	:global(.dlg) .btn.ghost.on {
 		color: var(--accent);
 	}
 	.log {
