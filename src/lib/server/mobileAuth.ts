@@ -11,8 +11,10 @@ const client = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 export async function verifyGoogleIdToken(idToken: string): Promise<string | null> {
 	try {
 		const ticket = await client.verifyIdToken({ idToken, audience: env.GOOGLE_CLIENT_ID });
-		const email = ticket.getPayload()?.email;
-		return email ? email.toLowerCase() : null;
+		const payload = ticket.getPayload();
+		// An unverified address proves nothing about who holds it.
+		if (!payload?.email || payload.email_verified !== true) return null;
+		return payload.email.toLowerCase();
 	} catch {
 		return null;
 	}
