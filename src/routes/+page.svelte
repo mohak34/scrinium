@@ -23,7 +23,8 @@
 		closeTab,
 		togglePin,
 		scheduleTitleSync,
-		externalContentUpdate
+		externalContentUpdate,
+		takeActiveRename
 	} from '$lib/stores/vault';
 	import { settings } from '$lib/stores/settings';
 	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
@@ -32,6 +33,10 @@
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
 	let lastLoadedPath = $state<string | null>('');
+	// The note whose text the editor shows. Lags activePath while the next
+	// note loads, so keystrokes in that window save to the note they were
+	// typed into, never to the one still loading.
+	let shownPath: string | null = null;
 
 	// Loading the active note's content happens here so that ANY activePath
 	// change - opening a note, or closeTab switching to a neighbour - reloads
@@ -40,8 +45,17 @@
 	$effect(() => {
 		const path = $activePath;
 		if (path === lastLoadedPath) return;
+		const prev = lastLoadedPath;
 		lastLoadedPath = path;
+		// The open note was renamed or moved (title sync, tree rename, drag):
+		// same note, new path. Keep the editor; reloading would jump the
+		// cursor and drop keystrokes typed during the rename.
+		if (takeActiveRename(prev, path)) {
+			shownPath = path;
+			return;
+		}
 		if (!path) {
+			shownPath = null;
 			currentContent = '';
 			return;
 		}
@@ -51,6 +65,7 @@
 			if ($activePath === path) {
 				currentContent = content;
 				editorRef?.setDoc(content, true);
+				shownPath = path;
 			}
 		})();
 	});
@@ -175,7 +190,7 @@
 
 		// Best-effort: save any pending edits if the tab is closed mid-debounce.
 		window.addEventListener('pagehide', () => {
-			void flushSave();
+			void flushSave(true);
 		});
 		return () => {
 			window.removeEventListener('keydown', key);
@@ -321,7 +336,7 @@
 
 	function onChange(newContent: string) {
 		currentContent = newContent;
-		const path = get(activePath);
+		const path = shownPath;
 		if (path) {
 			scheduleSave(path, newContent);
 			scheduleTitleSync(path, newContent);

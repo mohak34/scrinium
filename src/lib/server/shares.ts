@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { db } from './db';
+import { db, under, underArgs } from './db';
 
 // Public read-only share links. A share points at a live vault path - opening
 // the link always renders the note's CURRENT content, not a snapshot. Files
@@ -135,8 +135,8 @@ export function deleteShare(id: string): boolean {
 // Called from the notes API so shares track the file, not a stale path.
 export function renameShares(oldPath: string, newPath: string) {
 	const rows = db
-		.prepare(`SELECT id, note_path FROM shares WHERE note_path = ? OR note_path LIKE ?`)
-		.all(oldPath, `${oldPath}/%`) as { id: string; note_path: string }[];
+		.prepare(`SELECT id, note_path FROM shares WHERE ${under('note_path')}`)
+		.all(...underArgs(oldPath)) as { id: string; note_path: string }[];
 	for (const row of rows) {
 		const renamed = newPath + row.note_path.slice(oldPath.length);
 		db.prepare(`UPDATE shares SET note_path = ? WHERE id = ?`).run(renamed, row.id);
@@ -144,8 +144,5 @@ export function renameShares(oldPath: string, newPath: string) {
 }
 
 export function deleteSharesByPrefix(relPath: string) {
-	db.prepare(`DELETE FROM shares WHERE note_path = ? OR note_path LIKE ?`).run(
-		relPath,
-		`${relPath}/%`
-	);
+	db.prepare(`DELETE FROM shares WHERE ${under('note_path')}`).run(...underArgs(relPath));
 }

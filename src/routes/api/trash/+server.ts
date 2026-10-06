@@ -1,12 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { listTrash, purgeFromTrash, emptyTrash } from '$lib/server/vault';
-import {
-	deleteNoteMetaByPrefix,
-	deleteNoteIndexByPrefix,
-	upsertNoteMeta,
-	indexNote
-} from '$lib/server/db';
 
 export const GET: RequestHandler = async () => {
 	const entries = await listTrash();
@@ -26,8 +20,9 @@ export const DELETE: RequestHandler = async ({ url, request }) => {
 	} catch {}
 	const name = trashName ?? bodyName;
 	if (name) {
+		// Metadata left the cache when the item was trashed; the name here is
+		// a trash name, not a vault path, so there is nothing else to drop.
 		await purgeFromTrash(name);
-		deleteNoteMetaByPrefix(name.replace(/^\d+-/, ''));
 		return json({ ok: true });
 	}
 	// No name = empty entire trash (explicit action). Require ?all=1 to avoid accidents.

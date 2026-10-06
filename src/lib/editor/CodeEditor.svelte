@@ -64,6 +64,9 @@ import { findCallouts } from './callouts';
 	const wrapCompartment = new Compartment();
 	const fontSizeCompartment = new Compartment();
 	const vimCompartment = new Compartment();
+	// One view serves every note, so undo history is swapped out on a note
+	// switch: Ctrl+Z must never pull the previous note's text into this one.
+	const historyCompartment = new Compartment();
 
 	function themeForFontSize(size: number) {
 		return EditorView.theme({
@@ -364,7 +367,7 @@ import { findCallouts } from './callouts';
 						}
 					})
 				),
-				history(),
+				historyCompartment.of(history()),
 				keymap.of([
 					{ key: 'Mod-b', run: toggleWrap('**') },
 					{ key: 'Mod-i', run: toggleWrap('*') },
@@ -587,10 +590,12 @@ import { findCallouts } from './callouts';
 	});
 
 	// If the parent swaps to a different note, reset the doc without treating
-	// it as a user edit (no spurious save).
+	// it as a user edit (no spurious save). resetCursor marks a note switch:
+	// the old note's undo history is dropped with its text.
 	export function setDoc(newValue: string, resetCursor = false) {
 		if (!view) return;
 		suppressChange = true;
+		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure([]) });
 		view.dispatch({
 			changes: { from: 0, to: view.state.doc.length, insert: newValue },
 			// Note switches park the cursor on line 1; same-note pushes
@@ -598,6 +603,7 @@ import { findCallouts } from './callouts';
 			selection: resetCursor ? { anchor: 0 } : undefined,
 			effects: resetCursor ? [EditorView.scrollIntoView(0)] : []
 		});
+		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
 		// Note switches also take focus so typing starts immediately.
 		if (resetCursor) view.focus();
 		suppressChange = false;

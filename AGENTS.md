@@ -86,7 +86,16 @@ Scrinium is small, but there are a few footguns specific to it.
    `syncFilenameToTitle` in `src/lib/stores/vault.ts`). Both directions guard
    against loops by comparing sanitized values before acting; a rename also
    flushes pending saves first. Don't add a second path that renames notes
-   without going through `renameNote`, or tabs/pins/activePath drift.
+   without going through `renameNote` (moves included), or tabs/pins/
+   activePath and queued saves drift. A rename of the open note sets
+   `takeActiveRename` so the page keeps the editor instead of reloading.
+8. **Autosave is a per-path queue.** `scheduleSave` keys unsaved text by
+   note path; saves run one at a time and failed ones retry. Anything that
+   renames, moves or deletes a note must `flushSave()` first. The editor is
+   one view for every note: a note switch goes through `setDoc(text, true)`,
+   which also drops undo history - never swap docs another way.
+9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
+   (case-insensitive, `_` and `%` are wildcards).
 6. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
    and record the original path in `.trash/index.json`. If you touch trash
    internals, keep that file in sync or restore falls back to guessing from
