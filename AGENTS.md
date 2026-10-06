@@ -252,8 +252,8 @@ State channels you will touch:
 
 ## Deployment / production facts
 
-- Live at `https://scrinium.mohak.dev` on the VPS reachable at
-  `$VPS_USER@$VPS_HOST` (VPS_IP).
+- Live at `https://scrinium.mohak.dev` on the VPS (SSH target is the
+  `VPS_USER@VPS_HOST` pair stored in the Actions secrets).
 - Deploys run through GitHub Actions (`.github/workflows/deploy.yml`): every
   push to `main` typechecks, builds, rsyncs to `/opt/scrinium/app`, runs
   `npm install --omit=dev --legacy-peer-deps` (recompiles native
