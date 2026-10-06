@@ -177,7 +177,11 @@ State channels you will touch:
   + api_tokens table), shares.ts (public share links: random id → live vault
   path, optional scrypt password hash; rename/delete follow the file),
   auth.ts (better-auth, Google, allowlist), indexer.ts,
-  mobileAuth.ts (Google ID-token verification + API-token issue/verify).
+  mobileAuth.ts (Google ID-token verification + API-token issue/verify),
+  mcp.ts (MCP tools for agents; each tool calls the REST routes through
+  SvelteKit's in-process `fetch`, so validation and index/link bookkeeping
+  live only in the routes - add a tool by wrapping a route, never by
+  touching the vault or db directly).
 - `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
   tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,
   settings.ts (editor prefs persisted to localStorage).
@@ -187,11 +191,14 @@ State channels you will touch:
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
   and the palette. Pages: Editor, Keyboard (vim toggle + the shortcut list
   from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,
-  Account (Google Calendar status), Mobile devices, Trash, About. While open
+  Account (Google Calendar status), Devices and agents (MCP URL, agent
+  tokens, phone tokens), Trash, About. While open
   it swallows keydown in the capture phase so app shortcuts never fire
   underneath; Esc closes it.
 - `src/routes/` — `/` (+page.svelte shell), `/login`,
-  api/{auth,notes,tree,search,assets,attachments,tokens,trash,backlinks}. Mobile-only
+  api/{auth,notes,tree,search,assets,attachments,tokens,trash,backlinks}.
+  `/api/mcp` is the stateless MCP endpoint (streamable HTTP, JSON
+  responses) behind the normal /api gate. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
   authed `GET/POST /api/shares` + `DELETE /api/shares/[id]`, public
@@ -235,7 +242,10 @@ State channels you will touch:
   `api_tokens` table. API requests send `Authorization: Bearer <token>`;
   `hooks.server.ts` falls back to the token lookup when no cookie session
   exists. Tokens never expire server-side — list and revoke them in
-  Settings > Mobile devices via `GET/DELETE /api/tokens`.
+  Settings > Devices and agents via `GET/DELETE /api/tokens`.
+- **Agent tokens**: the same table. `POST /api/tokens { label }` (browser
+  session only) mints a labeled token for an MCP client; the raw value is
+  shown once. Phone tokens have no label.
 - Auth gates a shared vault: today all allowlisted users see the same files.
   Per-user vaults are a feature to build, not a config switch.
 - Public routes (`/s`, `/api/share`) are allowlisted in `hooks.server.ts`

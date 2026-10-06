@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { auth } from '$lib/server/auth';
 import { listApiTokensForEmail, revokeApiToken } from '$lib/server/db';
+import { issueApiToken } from '$lib/server/mobileAuth';
 
 export const GET: RequestHandler = async ({ request }) => {
 	const session = await auth.api.getSession({ headers: request.headers });
@@ -13,9 +14,22 @@ export const GET: RequestHandler = async ({ request }) => {
 		rows.map((r) => ({
 			token_hash: r.token_hash,
 			created_at: r.created_at,
-			last_used_at: r.last_used_at
+			last_used_at: r.last_used_at,
+			label: r.label
 		}))
 	);
+};
+
+// Mint a token for an agent (MCP client) from a browser session. The raw
+// token is returned once; only its hash is kept.
+export const POST: RequestHandler = async ({ request }) => {
+	const session = await auth.api.getSession({ headers: request.headers });
+	const email = session?.user?.email;
+	if (!email) throw error(401, 'Unauthorized');
+	const body = await request.json().catch(() => null);
+	const label = typeof body?.label === 'string' ? body.label.trim().slice(0, 60) : '';
+	if (!label) throw error(400, 'Label is required');
+	return json({ token: issueApiToken(email, label) }, { status: 201 });
 };
 
 export const DELETE: RequestHandler = async ({ request }) => {

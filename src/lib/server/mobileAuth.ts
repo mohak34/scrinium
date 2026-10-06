@@ -18,9 +18,9 @@ export async function verifyGoogleIdToken(idToken: string): Promise<string | nul
 	}
 }
 
-export function issueApiToken(email: string): string {
+export function issueApiToken(email: string, label: string | null = null): string {
 	const raw = randomBytes(32).toString('base64url');
-	insertApiToken(hash(raw), email);
+	insertApiToken(hash(raw), email, label);
 	return raw;
 }
 
