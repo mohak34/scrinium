@@ -195,7 +195,8 @@ State channels you will touch:
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
   authed `GET/POST /api/shares` + `DELETE /api/shares/[id]`, public
-  `GET/POST /api/share/[id]` (+ `/assets/...` for images) and the `/s/[id]`
+  `GET/POST /api/share/[id]` (+ `/assets/<n>`: the n-th image the note
+  references, from `shareImages` in shares.ts - never a vault path) and the `/s/[id]`
   viewer (ShareModal.svelte manages links from the note bar).
 - `src/lib/design/theme.css` — the only design tokens: surfaces (`--bg`
   reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto

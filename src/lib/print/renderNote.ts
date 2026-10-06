@@ -119,8 +119,16 @@ function renderCallouts(html: string): string {
 	});
 }
 
-export function renderNoteToHtml(src: string, notePath: string): string {
+// assetUrl maps a local image reference (as written in the markdown) to the
+// URL the <img> loads; the default is the auth-gated /api/assets. The share
+// viewer passes its own so a shared note only reaches its own images.
+export function renderNoteToHtml(
+	src: string,
+	notePath: string,
+	assetUrl?: (url: string) => string | null
+): string {
 	const noteDir = notePath.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/')) : null;
+	const resolve = assetUrl ?? ((url: string) => resolveAssetUrl(url, noteDir));
 	// Properties are metadata, not content: drop the block before the
 	// pipeline so `---` never renders as a rule plus stray paragraphs.
 	src = stripFrontmatter(src);
@@ -317,10 +325,16 @@ export function renderNoteToHtml(src: string, notePath: string): string {
 	});
 	// 6. Relative image URLs resolve against the note's folder (same rule as
 	// the editor) - otherwise they 404 against /print and only alt shows.
-	html = html.replace(/<img([^>]*?)src="([^"]*)"/g, (m, rest, url) => {
+	// markdown-it hands back the src HTML-escaped and percent-encoded; undo
+	// both so "my image.png" resolves to the file, not "my%20image.png".
+	html = html.replace(/<img([^>]*?)src="([^"]*)"/g, (m, rest, url: string) => {
 		if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('/')) return m;
-		const resolved = resolveAssetUrl(url, noteDir);
-		return resolved ? `<img${rest}src="${resolved}"` : m;
+		let raw = url.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+		try {
+			raw = decodeURI(raw);
+		} catch {}
+		const resolved = resolve(raw);
+		return resolved == null ? m : `<img${rest}src="${resolved.replace(/"/g, '&quot;')}"`;
 	});
 	return renderCallouts(html);
 }
