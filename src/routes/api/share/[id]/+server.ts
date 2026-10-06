@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import type { RequestHandler } from './$types';
 import { readNote, safeResolve } from '$lib/server/vault';
 import { effectiveTitle } from '$lib/editor/frontmatter';
-import { getShareSecret, mintProofToken, verifySharePassword } from '$lib/server/shares';
+import { getShareSecret, mintProofToken, shareImages, verifySharePassword } from '$lib/server/shares';
 
 // Public, no session needed (hooks.server.ts allowlists /api/share).
 // A share is a live view: the markdown returned is the note's CURRENT file
@@ -34,6 +34,9 @@ async function payload(id: string, password: string | null) {
 		notePath: secret.note_path.split('/').pop() ?? secret.note_path,
 		updatedAt,
 		hasPassword: !!secret.password_hash,
+		// Image references the viewer may load, by index into
+		// /api/share/<id>/assets/<n>.
+		images: shareImages(markdown, secret.note_path).urls,
 		// Proof token for loading the note's images without putting the
 		// password in <img> URLs. Open shares pass none.
 		proof: secret.password_hash ? mintProofToken(secret.id) : ''

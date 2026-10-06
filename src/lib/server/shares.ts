@@ -1,5 +1,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { db } from './db';
+import { renderNoteToHtml } from '$lib/print/renderNote';
+import { resolveAssetUrl } from '$lib/editor/livePreview';
 
 // Public read-only share links. A share points at a live vault path - opening
 // the link always renders the note's CURRENT content, not a snapshot. Files
@@ -148,4 +150,24 @@ export function deleteSharesByPrefix(relPath: string) {
 		relPath,
 		`${relPath}/%`
 	);
+}
+
+// The local images a shared note shows, in render order: `urls` as written
+// in the markdown (the viewer's lookup key), `paths` the vault files they
+// resolve to against the note's real folder. The public asset route serves
+// paths[i] and nothing else, so a share link never opens the rest of the
+// vault, and the viewer never learns the note's folder.
+export function shareImages(markdown: string, notePath: string): { urls: string[]; paths: string[] } {
+	const dir = notePath.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/')) : null;
+	const urls: string[] = [];
+	const paths: string[] = [];
+	renderNoteToHtml(markdown, notePath, (url) => {
+		const resolved = resolveAssetUrl(url, dir);
+		if (resolved?.startsWith('/api/assets/') && !urls.includes(url)) {
+			urls.push(url);
+			paths.push(resolved.slice('/api/assets/'.length).split('/').map(decodeURIComponent).join('/'));
+		}
+		return null;
+	});
+	return { urls, paths };
 }

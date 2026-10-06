@@ -13,6 +13,7 @@
 		updatedAt: number | null;
 		hasPassword: boolean;
 		proof: string;
+		images: string[];
 	}
 
 	let status = $state<'loading' | 'locked' | 'ready' | 'error'>('loading');
@@ -28,16 +29,14 @@
 	const ZOOM_STEP = 10;
 	let zoom = $state(100);
 
-	// renderNoteToHtml points relative images at the auth-gated /api/assets.
-	// Repoint them at this share's gated asset endpoint; password shares
-	// attach the proof token from the unlock, never the password itself.
-	function rewriteAssets(html: string, proof: string): string {
-		const prefix = `/api/share/${encodeURIComponent(id)}/assets/`;
-		const suffix = proof ? `?proof=${encodeURIComponent(proof)}` : '';
-		return html.replaceAll('/api/assets/', `${prefix}`).replace(
-			new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^"\\s<>]+)`, 'g'),
-			(_, rest: string) => `${prefix}${rest}${suffix}`
-		);
+	// Local images load through this share's asset route by index (the
+	// server lists the ones the note references). Password shares attach the
+	// proof token from the unlock, never the password itself.
+	function shareAsset(p: SharePayload, url: string): string {
+		const i = p.images.indexOf(url);
+		if (i < 0) return '';
+		const proof = p.proof ? `?proof=${encodeURIComponent(p.proof)}` : '';
+		return `/api/share/${encodeURIComponent(id)}/assets/${i}${proof}`;
 	}
 
 	// "just now", "3h ago", "2d ago" - absolute date past a week.
@@ -56,7 +55,8 @@
 	const html = $derived.by(() => {
 		if (!payload) return '';
 		try {
-			return rewriteAssets(renderNoteToHtml(payload.markdown, payload.notePath), payload.proof);
+			const p = payload;
+			return renderNoteToHtml(p.markdown, p.notePath, (url) => shareAsset(p, url));
 		} catch {
 			return '';
 		}
