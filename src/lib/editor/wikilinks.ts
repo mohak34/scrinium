@@ -15,7 +15,7 @@ export interface Wikilink {
 	alias: string | null;
 }
 
-const WIKILINK_RE = /\[\[([^\][#|\n]+)(?:#([^\]|]*))?(?:\|([^\]]*))?\]\]/g;
+const WIKILINK_RE = /\[\[([^\][#|\n]+)(?:#([^\]|\n]*))?(?:\|([^\]\n]*))?\]\]/g;
 
 /** Parse one `[[...]]` occurrence. Null when malformed or empty. */
 export function parseWikilinkText(inner: string): {

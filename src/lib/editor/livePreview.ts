@@ -126,11 +126,11 @@ export function setPreviewMode(view: EditorView, on: boolean) {
 	view.dispatch({ effects: previewModeEffect.of(on) });
 }
 
+// CodeMirror reuses an equal widget's DOM after edits shift the line, so
+// the click reads its position from the DOM at click time, never from a
+// position captured at build time.
 class CheckboxWidget extends WidgetType {
-	constructor(
-		readonly checked: boolean,
-		readonly pos: number
-	) {
+	constructor(readonly checked: boolean) {
 		super();
 	}
 	eq(other: CheckboxWidget) {
@@ -143,9 +143,11 @@ class CheckboxWidget extends WidgetType {
 		box.className = 'cm-task-checkbox';
 		box.onmousedown = (e) => {
 			e.preventDefault();
-			const replacement = this.checked ? '[ ]' : '[x]';
+			const pos = view.posAtDOM(box);
+			const cur = view.state.sliceDoc(pos, pos + 3);
+			if (!/^\[[ xX]\]$/.test(cur)) return;
 			view.dispatch({
-				changes: { from: this.pos, to: this.pos + 3, insert: replacement }
+				changes: { from: pos, to: pos + 3, insert: cur === '[ ]' ? '[x]' : '[ ]' }
 			});
 		};
 		return box;
@@ -295,7 +297,7 @@ class ImageWidget extends WidgetType {
 		super();
 	}
 	eq(other: ImageWidget) {
-		return other.url === this.url;
+		return other.url === this.url && other.alt === this.alt && other.noteDir === this.noteDir;
 	}
 	toDOM() {
 		const img = document.createElement('img');
@@ -362,7 +364,7 @@ const HIDEABLE_MARKS = new Set([
 	'CodeMark', // the backtick(s) around inline code
 	'CodeInfo', // the language name in ```python
 	'LinkMark', // the "[", "]", "(", ")" of a link
-	'URL' // the URL text itself inside [text](url)
+	'URL' // the URL text itself inside [text](url) - never a bare link
 ]);
 
 interface PendingDecoration {
@@ -524,9 +526,13 @@ function buildDecorations(view: EditorView): DecorationSet {
 					// marker when the line is pretty; inner LinkMark/URL
 					// hides would overlap that replace. Same for wikilink
 					// widgets over the inner `[x]` LinkMarks.
+					// A bare URL or <autolink> is the link text itself: hiding
+					// it would blank the link. Only [text](url) hides its URL.
+					const linkPart = node.name === 'LinkMark' || node.name === 'URL';
+					const parent = node.node.parent?.name;
 					if (
-						(node.name === 'LinkMark' || node.name === 'URL') &&
-						(inCalloutHeader(node.from, node.to) || inWikilink(node.from, node.to))
+						(linkPart && (inCalloutHeader(node.from, node.to) || inWikilink(node.from, node.to))) ||
+						(node.name === 'URL' && parent !== 'Link' && parent !== 'Image')
 					) {
 						// fall through to nothing (skip)
 					} else {
@@ -571,7 +577,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 					pending.push({
 						from: node.from,
 						to: node.to,
-						deco: Decoration.replace({ widget: new CheckboxWidget(checked, node.from) })
+						deco: Decoration.replace({ widget: new CheckboxWidget(checked) })
 					});
 				}
 
@@ -611,7 +617,10 @@ function buildDecorations(view: EditorView): DecorationSet {
 				// would overlap this replacement and break the RangeSetBuilder.
 				if (node.name === 'Image' && !active && !inFm(node.from)) {
 					const urlNode = node.node.getChild('URL');
-					if (urlNode) {
+					// A plugin may not replace across a line break, and alt
+					// text can wrap: leave a multi-line image as raw text.
+					const oneLine = view.state.doc.lineAt(node.from).number === view.state.doc.lineAt(node.to).number;
+					if (urlNode && oneLine) {
 						const firstMark = node.node.getChild('LinkMark');
 						const secondMark = firstMark?.nextSibling;
 						const alt =

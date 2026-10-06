@@ -62,6 +62,8 @@ export function findTagsInText(text: string): Tag[] {
 	let m: RegExpExecArray | null;
 	while ((m = TAG_RE.exec(text)) !== null) {
 		const from = m.index + m[1].length;
+		// `[text](#heading)` is a link to a heading, not a tag.
+		if (m[1] === '(' && text[m.index - 1] === ']') continue;
 		let name = m[2].replace(/[-_]+$/, '');
 		if (!name || /\/$/.test(name)) continue;
 		const to = from + 1 + name.length;

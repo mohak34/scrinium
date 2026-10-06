@@ -550,8 +550,26 @@ import { findCallouts } from './callouts';
 			]
 		});
 
+		// Yank notices and `/`/`:` dialogs arrive on the vim facade's
+		// "dialog" signal; mode changes on "vim-mode-change". Turning vim off
+		// and on builds a new facade, so hook whichever one is live.
+		let hooked: ReturnType<typeof getCM> = null;
+		const hookVim = () => {
+			const cm = view ? getCM(view) : null;
+			if (!cm || cm === hooked) return;
+			cm.on('dialog', onVimDialog);
+			cm.on('vim-mode-change', onVimMode);
+			hooked = cm;
+		};
+
+		// Vim is only reconfigured when its toggle flips: a fresh vim() on
+		// every settings change (font size, wrap) would reset its mode and
+		// registers mid-edit.
+		let vimWas = initialSettings.editor.vimMotions;
 		const unsubscribe = settings.subscribe((s) => {
 			if (!view) return;
+			const vimChanged = s.editor.vimMotions !== vimWas;
+			vimWas = s.editor.vimMotions;
 			view.dispatch({
 				effects: [
 					fontSizeCompartment.reconfigure(themeForFontSize(s.editor.fontSize)),
@@ -559,19 +577,13 @@ import { findCallouts } from './callouts';
 						s.editor.showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []
 					),
 					wrapCompartment.reconfigure(s.editor.wordWrap ? EditorView.lineWrapping : []),
-					vimCompartment.reconfigure(s.editor.vimMotions ? vim() : [])
+					...(vimChanged ? [vimCompartment.reconfigure(s.editor.vimMotions ? vim() : [])] : [])
 				]
 			});
 			vimOn = s.editor.vimMotions;
+			hookVim();
 			syncVimMode();
 		});
-
-		// Yank notices and `/`/`:` dialogs arrive on the vim facade's
-		// "dialog" signal; mode changes on "vim-mode-change". The facade
-		// exists once the vim plugin is constructed alongside the view.
-		getCM(view)?.on('dialog', onVimDialog);
-		getCM(view)?.on('vim-mode-change', onVimMode);
-		syncVimMode();
 
 		// The adapter removes hosted dialogs on close; an empty command
 		// line hides itself.

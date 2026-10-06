@@ -183,7 +183,9 @@ export function computeListEnter(
 	lineFrom: number,
 	head: number
 ): ListEnterEdit | null {
-	const m = /^(\s*)([-*+]|\d+[.)])(.*)$/.exec(lineText);
+	// The marker must be followed by whitespace (or end the line): `---`,
+	// `**bold**`, `3.14` and `-5` are not list items.
+	const m = /^(\s*)([-*+]|\d+[.)])(\s.*|)$/.exec(lineText);
 	if (!m) return null;
 	const indent = m[1];
 	const marker = m[2];
