@@ -18,7 +18,8 @@
 		AREAS,
 		type Task,
 		type TaskArea,
-		type TaskStatus
+		type TaskStatus,
+		type TaskUpdate as TaskPatch
 	} from '$lib/stores/tasks';
 	import { areaMeta, DOING_LIMIT } from '$lib/taskModel';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
@@ -148,7 +149,10 @@
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 	}
 
-	// Position between neighbours so a drop never renumbers the column.
+	// Position between neighbours so a drop rarely renumbers the column.
+	// Positions start near Date.now(), where doubles only resolve ~1e-4, so
+	// repeated drops into one gap run out of room: then the midpoint equals
+	// a neighbour and the cell is renumbered (renumber below).
 	function positionAt(rows: Task[], targetId: string | null): number {
 		let idx = rows.length;
 		if (targetId) {
@@ -157,10 +161,27 @@
 		}
 		const prev = rows[idx - 1]?.position;
 		const next = rows[idx]?.position;
-		if (prev != null && next != null) return (prev + next) / 2;
+		if (prev != null && next != null) {
+			const mid = (prev + next) / 2;
+			return mid === prev || mid === next ? NaN : mid;
+		}
 		if (prev != null) return prev + 1000;
 		if (next != null) return next - 1000;
 		return Date.now();
+	}
+
+	// Rewrite a cell's positions as even steps, `moving` placed before
+	// `targetId` (or last). Only for the rare exhausted gap.
+	async function renumber(rows: Task[], moving: Task, targetId: string | null, patch: TaskPatch) {
+		const order = [...rows];
+		const at = targetId ? order.findIndex((t) => t.id === targetId) : -1;
+		order.splice(at === -1 ? order.length : at, 0, moving);
+		const base = Date.now();
+		for (const [i, t] of order.entries()) {
+			const position = base + i * 1000;
+			if (t.id === moving.id) await updateTask(t.id, { ...patch, position });
+			else if (t.position !== position) await updateTask(t.id, { position });
+		}
 	}
 
 	async function onDrop(status: TaskStatus, laneArea: TaskArea | null | undefined, e: DragEvent) {
@@ -171,11 +192,15 @@
 		if (!id) return;
 		const moving = $tasks.find((t) => t.id === id);
 		if (!moving) return;
+		const sameCell = moving.status === status && (laneArea === undefined || (moving.area ?? null) === laneArea);
+		// Dropped back onto itself: nothing moves.
+		if (targetId === id && sameCell) return;
 		const rows = cellRows(status, laneArea).filter((t) => t.id !== id);
-		const position = positionAt(rows, targetId);
-		const patch: Parameters<typeof updateTask>[1] = { status, position };
+		const patch: TaskPatch = { status };
 		if (laneArea !== undefined) patch.area = laneArea;
-		await updateTask(id, patch);
+		const position = positionAt(rows, targetId === id ? null : targetId);
+		if (Number.isNaN(position)) await renumber(rows, moving, targetId, patch);
+		else await updateTask(id, { ...patch, position });
 	}
 
 	// Keyboard and button fallbacks for drag and drop.
@@ -185,13 +210,28 @@
 		if (next) await updateTask(t.id, { status: next, position: Date.now() });
 	}
 
-	async function shiftOrder(t: Task, dir: 1 | -1) {
-		const rows = cellRows(t.status);
+	// Swap with the neighbour in the same cell (the lane, in By area). Done
+	// is ordered by completion time, so there is nothing to reorder there.
+	async function shiftOrder(t: Task, dir: 1 | -1, laneArea: TaskArea | null | undefined) {
+		if (t.status === 'done') return;
+		const rows = cellRows(t.status, laneArea);
 		const i = rows.findIndex((x) => x.id === t.id);
 		const other = rows[i + dir];
 		if (!other) return;
+		if (other.position === t.position) {
+			const rest = rows.filter((x) => x.id !== t.id);
+			const before = dir === 1 ? rest[i + 1]?.id ?? null : other.id;
+			await renumber(rest, t, before, {});
+			return;
+		}
 		await updateTask(t.id, { position: other.position });
 		await updateTask(other.id, { position: t.position });
+	}
+
+	// The lane a card's cell key names: undefined in Columns view.
+	function laneOf(key: string): TaskArea | null | undefined {
+		if (!key.includes('|')) return undefined;
+		return (key.split('|')[1] || null) as TaskArea | null;
 	}
 
 	function subCount(t: Task): string | null {
@@ -225,8 +265,8 @@
 			if (e.key === 'Enter') openTask(t.id);
 			else if (e.altKey && e.key === 'ArrowLeft') void shiftColumn(t, -1);
 			else if (e.altKey && e.key === 'ArrowRight') void shiftColumn(t, 1);
-			else if (e.altKey && e.key === 'ArrowUp') void shiftOrder(t, -1);
-			else if (e.altKey && e.key === 'ArrowDown') void shiftOrder(t, 1);
+			else if (e.altKey && e.key === 'ArrowUp') void shiftOrder(t, -1, laneOf(key));
+			else if (e.altKey && e.key === 'ArrowDown') void shiftOrder(t, 1, laneOf(key));
 		}}
 	>
 		{#if overId === t.id && dragId && dragId !== t.id}<div class="ins"></div>{/if}

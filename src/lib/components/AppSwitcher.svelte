@@ -37,8 +37,9 @@
 		const today = open.filter((t) => isDueToday(t)).length;
 		const doing = open.filter((t) => t.status === 'doing').length;
 		const waiting = open.filter((t) => t.status === 'waiting').length;
+		// A date-only task due today sits at midnight, already past: still next.
 		const nextTask = open
-			.filter((t) => t.due_at != null && t.due_at >= Date.now())
+			.filter((t) => t.due_at != null && (t.due_at >= Date.now() || isDueToday(t)))
 			.sort((a, b) => a.due_at! - b.due_at!)[0];
 		const notes = countNotes($tree);
 		const tabs = $openTabs.length;

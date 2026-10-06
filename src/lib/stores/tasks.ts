@@ -104,21 +104,30 @@ export async function createTask(input: NewTaskInput): Promise<Task | null> {
 	return row;
 }
 
+// Latest request number per task. A response only paints when it answers
+// the newest edit, so a slow earlier PATCH can't overwrite a later one
+// (double-clicking status: doing then done).
+const editSeq = new Map<string, number>();
+
 export async function updateTask(id: string, patch: TaskUpdate): Promise<Task | null> {
-	// Optimistic: paint first, roll back on failure.
-	const before = get(tasks);
+	// Optimistic: paint first, roll back this row only on failure, so tasks
+	// created or edited meanwhile survive the rollback.
+	const n = (editSeq.get(id) ?? 0) + 1;
+	editSeq.set(id, n);
+	const before = get(tasks).find((t) => t.id === id);
 	tasks.update((all) => all.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
 		method: 'PATCH',
 		credentials: 'include',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(patch)
-	});
-	if (!res.ok) {
-		tasks.set(before);
+	}).catch(() => null);
+	const row = res?.ok ? ((await res.json()) as Task) : null;
+	if (editSeq.get(id) !== n) return row;
+	if (!row) {
+		if (before) tasks.update((all) => all.map((t) => (t.id === id ? before : t)));
 		return null;
 	}
-	const row = (await res.json()) as Task;
 	tasks.update((all) => all.map((t) => (t.id === id ? row : t)));
 	return row;
 }
@@ -142,9 +151,10 @@ export async function deleteTask(id: string): Promise<boolean> {
 	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
 		method: 'DELETE',
 		credentials: 'include'
-	});
-	if (!res.ok) {
-		tasks.set(before);
+	}).catch(() => null);
+	if (!res?.ok) {
+		// Put back only the subtree, not the whole list as it was.
+		tasks.update((all) => [...all, ...before.filter((t) => doomed.has(t.id))]);
 		return false;
 	}
 	return true;
@@ -157,6 +167,13 @@ export function startOfToday(): number {
 	return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
 }
 
+// Next local midnight. Not startOfToday() + 24 h: DST days are 23 or 25
+// hours long.
+export function startOfTomorrow(): number {
+	const n = new Date();
+	return new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1).getTime();
+}
+
 export function isOverdue(t: Task): boolean {
 	if (t.status === 'done' || t.due_at == null) return false;
 	return t.due_at < startOfToday();
@@ -164,8 +181,7 @@ export function isOverdue(t: Task): boolean {
 
 export function isDueToday(t: Task): boolean {
 	if (t.due_at == null) return false;
-	const day = 24 * 60 * 60 * 1000;
-	return t.due_at >= startOfToday() && t.due_at < startOfToday() + day;
+	return t.due_at >= startOfToday() && t.due_at < startOfTomorrow();
 }
 
 export function dueLabel(dueAt: number | null): string {

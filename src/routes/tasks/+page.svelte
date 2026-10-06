@@ -10,6 +10,7 @@
 		topLevel,
 		childrenOf,
 		startOfToday,
+		startOfTomorrow,
 		isOverdue,
 		isDueToday,
 		dueLabel,
@@ -47,14 +48,13 @@
 		void loadTasks();
 	});
 
-	const tomorrow = () => startOfToday() + 86400000;
 
 	function matchesFilter(t: Task, f: TaskFilter): boolean {
 		if (f === 'completed') return t.status === 'done';
 		if (t.status === 'done') return false;
 		if (f === 'today') return isDueToday(t);
 		if (f === 'overdue') return isOverdue(t);
-		if (f === 'upcoming') return t.due_at != null && t.due_at >= tomorrow();
+		if (f === 'upcoming') return t.due_at != null && t.due_at >= startOfTomorrow();
 		if (f === 'undated') return t.due_at == null;
 		return true;
 	}
@@ -86,7 +86,7 @@
 			{
 				key: 'upcoming',
 				label: 'Upcoming',
-				rows: byDue.filter((t) => t.due_at != null && t.due_at >= tomorrow())
+				rows: byDue.filter((t) => t.due_at != null && t.due_at >= startOfTomorrow())
 			},
 			{ key: 'nodate', label: 'No date', rows: byDue.filter((t) => t.due_at == null) }
 		].filter((g) => g.rows.length > 0);

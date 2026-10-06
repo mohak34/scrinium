@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types';
 import { listTasks, listTasksForNote, insertTask, getTask } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
+import { parseStamp } from '$lib/server/taskInput';
 
 // Auth is already enforced in src/hooks.server.ts for everything under /api.
 
@@ -16,18 +17,6 @@ function cleanText(v: unknown, max: number): string | null {
 	if (typeof v !== 'string') return null;
 	const t = v.trim().slice(0, max);
 	return t ? t : null;
-}
-
-function cleanDue(v: unknown): number | null {
-	if (v == null || v === '') return null;
-	const n = typeof v === 'string' ? Date.parse(v) : typeof v === 'number' ? v : NaN;
-	return Number.isFinite(n) ? n : null;
-}
-
-function cleanStamp(v: unknown): number | null {
-	if (v == null || v === '') return null;
-	const n = typeof v === 'number' ? v : NaN;
-	return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 // ?note=<path> narrows to tasks linked to that note (the note's right panel).
@@ -59,8 +48,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		area: isArea(body?.area) ? body.area : null,
 		waiting_on: cleanText(body?.waiting_on, 120),
 		parent_id,
-		due_at: cleanDue(body?.due_at),
-		remind_at: cleanStamp(body?.remind_at)
+		due_at: body?.due_at === undefined ? null : parseStamp(body.due_at, 'due date'),
+		remind_at: body?.remind_at === undefined ? null : parseStamp(body.remind_at, 'reminder')
 	});
 	return json(row, { status: 201 });
 };

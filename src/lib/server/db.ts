@@ -376,11 +376,21 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 }
 
 export function deleteTask(id: string) {
-	// Subtasks belong to their parent - remove the whole subtree, links with it.
-	const kids = db.prepare(`SELECT id FROM tasks WHERE parent_id = ?`).all(id) as { id: string }[];
-	for (const k of kids) deleteTask(k.id);
-	db.prepare(`DELETE FROM task_links WHERE task_id = ?`).run(id);
-	db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+	// Subtasks belong to their parent - remove the whole subtree, links with
+	// it. Iterative with a seen set, so even a cyclic parent chain ends.
+	const doomed = new Set<string>([id]);
+	const kidsOf = db.prepare(`SELECT id FROM tasks WHERE parent_id = ?`);
+	for (const cur of doomed) {
+		for (const k of kidsOf.all(cur) as { id: string }[]) doomed.add(k.id);
+	}
+	const dropLinks = db.prepare(`DELETE FROM task_links WHERE task_id = ?`);
+	const dropTask = db.prepare(`DELETE FROM tasks WHERE id = ?`);
+	db.transaction(() => {
+		for (const t of doomed) {
+			dropLinks.run(t);
+			dropTask.run(t);
+		}
+	})();
 }
 
 // Tasks that reference a note, for the note's right panel.
