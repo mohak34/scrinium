@@ -89,13 +89,6 @@ Scrinium is small, but there are a few footguns specific to it.
    without going through `renameNote` (moves included), or tabs/pins/
    activePath and queued saves drift. A rename of the open note sets
    `takeActiveRename` so the page keeps the editor instead of reloading.
-8. **Autosave is a per-path queue.** `scheduleSave` keys unsaved text by
-   note path; saves run one at a time and failed ones retry. Anything that
-   renames, moves or deletes a note must `flushSave()` first. The editor is
-   one view for every note: a note switch goes through `setDoc(text, true)`,
-   which also drops undo history - never swap docs another way.
-9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
-   (case-insensitive, `_` and `%` are wildcards).
 6. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
    and record the original path in `.trash/index.json`. If you touch trash
    internals, keep that file in sync or restore falls back to guessing from
@@ -104,6 +97,13 @@ Scrinium is small, but there are a few footguns specific to it.
    without their margins, so `margin: X 0` on `.cm-math-block` / `.cm-image`
    desyncs the height map — gutter numbers, cursor coords and arrow targets
    all shift below the widget, compounding per block. Put spacing in padding.
+8. **Autosave is a per-path queue.** `scheduleSave` keys unsaved text by
+   note path; saves run one at a time and failed ones retry. Anything that
+   renames, moves or deletes a note must `flushSave()` first. The editor is
+   one view for every note: a note switch goes through `setDoc(text, true)`,
+   which also drops undo history - never swap docs another way.
+9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
+   (case-insensitive, `_` and `%` are wildcards).
 
 ## Commands
 
