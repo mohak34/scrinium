@@ -177,6 +177,12 @@ State channels you will touch:
   + api_tokens table), shares.ts (public share links: random id → live vault
   path, optional scrypt password hash; rename/delete follow the file),
   auth.ts (better-auth, Google, allowlist), indexer.ts,
+  google.ts (read-only Calendar overlay: refreshes the stored Google token,
+  reads every calendar ticked in Google's sidebar with pagination; only a
+  revoked grant or missing scope means "reconnect", outages are a 502).
+  `src/lib/calendar.ts` keeps all-day events as date-only strings so the
+  browser picks the local day - never `Date.parse` a Google `date` on the
+  server, it lands a day early west of UTC.
   mobileAuth.ts (Google ID-token verification + API-token issue/verify).
 - `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
   tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,

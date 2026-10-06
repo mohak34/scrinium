@@ -34,8 +34,9 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
 - **Tasks, Board and Calendar** — tasks carry a status (Inbox, This week,
   Doing, Waiting, Done), an area (College, Learning, Work, Life), priority,
   due date, reminder, subtasks and linked notes. The board shows status
-  columns or one row per area; the calendar shows tasks next to Google
-  events and schedules a task when you drop it on a day.
+  columns or one row per area; the calendar shows tasks next to read-only
+  events from every calendar you have ticked in Google Calendar (refreshed
+  on focus) and schedules a task when you drop it on a day.
 - **App switcher** — the title in the top-left corner of every page opens
   Notes, Tasks, Board and Calendar with a live summary of each;
   `Ctrl+Shift+1` to `4` jumps straight there.
