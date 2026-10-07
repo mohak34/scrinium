@@ -249,11 +249,26 @@ export function hideNote() {
 
 // Load a note into the editor: its unsaved text when a save failed, else
 // the server copy. Runs in the queue, so no write of the note is in flight
-// and text that failed to save is back in pending before it is read.
+// and text that failed to save is back in pending before it is read. Skipped
+// when the user moved on before it ran. A failed load of the note still
+// selected switches back to the note the editor holds (or none), so the
+// chrome never names a note whose keystrokes save elsewhere. Never rejects.
 export function showNote(path: string): Promise<void> {
 	return enqueue(async () => {
+		if (get(activePath) !== path) return;
 		await writePending();
-		const content = pending.get(path) ?? (await loadNote(path));
+		let content = pending.get(path);
+		if (content === undefined) {
+			try {
+				content = await loadNote(path);
+			} catch (e) {
+				console.error(e);
+				if (get(activePath) !== path) return;
+				if (shown) openTab(shown);
+				else activePath.set(null);
+				return;
+			}
+		}
 		if (editorHost?.show(path, content)) shown = path;
 	});
 }

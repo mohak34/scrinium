@@ -112,7 +112,10 @@ Scrinium is small, but there are a few footguns specific to it.
    loads in the queue and prefers the note's unsaved text over the server
    copy (so a failed save never reopens stale), then `setDoc(text, true)`,
    which also drops undo history - never swap docs another way. Keystrokes
-   save to `shownNote()`, which lags `activePath` until the load lands.
+   save to `shownNote()`, which lags `activePath` until the load lands. A
+   load the user already left is skipped; a failed load of the selected
+   note sets `activePath` back to `shownNote()` (or none), so the chrome
+   never names a note other than the one being typed into.
 9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
 
