@@ -212,11 +212,11 @@ async function restore(trashName: string): Promise<string> {
 	let targetFull = safeResolve(targetRel);
 	try {
 		await fs.access(targetFull);
-		// Find a free name like "name (1).md"
+		// Find a free name like "name (1).md"; never fall through to the taken original.
 		const dir = path.dirname(targetFull);
 		const ext = path.extname(targetFull);
 		const base = path.basename(targetFull, ext);
-		for (let i = 1; i < 100; i++) {
+		for (let i = 1; ; i++) {
 			const candBase = `${base} (${i})${ext}`;
 			const candRel = targetRel.includes('/')
 				? `${targetRel.slice(0, targetRel.lastIndexOf('/'))}/${candBase}`
