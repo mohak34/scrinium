@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { error } from '@sveltejs/kit';
@@ -56,10 +57,11 @@ export async function readAsset(relPath: string): Promise<Buffer> {
 
 // Write to a temp file beside the note, then rename over it: a crash or a
 // full disk mid-write leaves the old note intact instead of a truncated one.
+// The temp name is random so concurrent writes to one note never share it.
 export async function writeNote(relPath: string, content: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
 	await fs.mkdir(path.dirname(fullPath), { recursive: true });
-	const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${process.pid}.${Date.now()}.tmp`);
+	const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${randomUUID()}.tmp`);
 	try {
 		await fs.writeFile(tmp, content, 'utf-8');
 		await fs.rename(tmp, fullPath);
