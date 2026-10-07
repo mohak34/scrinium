@@ -19,7 +19,7 @@ import katex from 'katex';
 import { EditorState } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { markdownLanguage } from '$lib/editor/markdownSetup';
-import { findMathBlockRanges } from '$lib/editor/mathRanges';
+import { findMathBlockRanges, inlineMathRegex } from '$lib/editor/mathRanges';
 import {
 	calloutChevronSvg,
 	calloutIconSvg,
@@ -213,23 +213,14 @@ export function renderNoteToHtml(
 
 	// 4. Inline math on what's left (no code remains except raw fences of
 	// unclosed blocks, which the tree guard below still skips).
-	const inlineRe = /(?<!\$)\$(?!\$)([^$\n]{1,200}?)(?<!\\)\$(?!\$)/g;
+	const inlineRe = inlineMathRegex();
 	const liveState = EditorState.create({ doc: text, extensions: [markdownLanguage()] });
 	const inlineSpans: Span[] = [];
 	let m: RegExpExecArray | null;
-	inlineRe.lastIndex = 0;
 	while ((m = inlineRe.exec(text)) !== null) {
 		const start = m.index;
 		const end = start + m[0].length;
 		const content = m[1];
-		if (!content.trim() || /^\s|\s$/.test(content)) {
-			inlineRe.lastIndex = start + 1;
-			continue;
-		}
-		if (!/[A-Za-z\\]/.test(content)) {
-			inlineRe.lastIndex = start + 1;
-			continue;
-		}
 		const inner = syntaxTree(liveState).resolveInner(Math.min(start, text.length), 0);
 		let cur: typeof inner | null = inner;
 		let inCode = false;

@@ -240,8 +240,9 @@ State channels you will touch:
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
   and the palette. Pages: Editor, Keyboard (vim toggle + the shortcut list
   from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,
-  Account (Google Calendar status), Devices and agents (MCP URL, agent
-  tokens, phone tokens), Trash, About. While open
+  Account (Google Calendar status), Devices (phone tokens, the unlabeled
+  ones), Agents (MCP URL, labeled agent tokens and their activity), Trash,
+  About. While open
   it swallows keydown in the capture phase so app shortcuts never fire
   underneath; Esc closes it.
 - `src/routes/` — `/` (+page.svelte shell), `/login`,
@@ -296,7 +297,7 @@ State channels you will touch:
   `api_tokens` table. API requests send `Authorization: Bearer <token>`;
   `hooks.server.ts` falls back to the token lookup when no cookie session
   exists. Tokens never expire server-side — list and revoke them in
-  Settings > Devices and agents via `GET/DELETE /api/tokens`.
+  Settings > Devices (phones) or Agents via `GET/DELETE /api/tokens`.
 - **Agent tokens**: the same table. `POST /api/tokens { label }` (browser
   session only) mints a labeled token for an MCP client; the raw value is
   shown once. Phone tokens have no label. `GET /api/tokens/activity`

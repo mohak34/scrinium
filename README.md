@@ -97,7 +97,7 @@ start.
 ## Connecting an agent
 
 Scrinium speaks MCP (Model Context Protocol) over streamable HTTP at
-`https://<your-host>/api/mcp`. In Settings > Devices and agents, create a
+`https://<your-host>/api/mcp`. In Settings > Agents, create a
 token named after the agent, copy it, and give the agent the URL plus the
 token as `Authorization: Bearer <token>`. Revoke it on the same page.
 

@@ -8,6 +8,7 @@ export type SettingsPage =
 	| 'attachments'
 	| 'account'
 	| 'devices'
+	| 'agents'
 	| 'trash'
 	| 'about';
 

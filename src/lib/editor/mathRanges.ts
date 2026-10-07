@@ -23,6 +23,15 @@ import { syntaxTree } from '@codemirror/language';
 import type { EditorState } from '@codemirror/state';
 import { parseFrontmatter } from './frontmatter';
 
+/**
+ * Inline `$...$` on one line, pandoc's rule: no space just inside either
+ * `$`, no escaped `\$` as a delimiter, and a closing `$` followed by a digit
+ * is a price ("$5-$10"), not math. So `$0$` renders and "$5 and $10" stays
+ * text. Fresh per call: the `g` flag carries lastIndex. Shared by the editor
+ * and the print/share renderer.
+ */
+export const inlineMathRegex = () => /(?<![\\$])\$(?!\$)([^\s$](?:[^$\n]{0,198}?[^\s$\\])?)\$(?![$\d])/g;
+
 export interface MathBlockRange {
 	from: number;
 	to: number;

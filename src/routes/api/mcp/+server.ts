@@ -6,7 +6,7 @@ import { hash } from '$lib/server/mobileAuth';
 import { logAgentAction } from '$lib/server/db';
 
 // Remote MCP endpoint (streamable HTTP) for agents. Auth is the usual /api
-// gate in hooks.server.ts: a bearer token from Settings > Devices and agents.
+// gate in hooks.server.ts: a bearer token from Settings > Agents.
 // Stateless: a fresh server per request, plain JSON responses, no sessions.
 const handle: RequestHandler = async ({ request, fetch, url }) => {
 	// Behind Caddy url.origin is plain http; the auth URL is the public one.
