@@ -460,7 +460,7 @@
 		</div>
 	{/if}
 
-	<PageFooter>
+	<PageFooter actions>
 		<span>{openCount} open</span>
 		{#if todayCount > 0}<span>{todayCount} due today</span>{/if}
 		{#if overdueCount > 0}<span class="red">{overdueCount} overdue</span>{/if}

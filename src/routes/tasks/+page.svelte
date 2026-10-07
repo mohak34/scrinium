@@ -24,6 +24,7 @@
 	import { areaMeta } from '$lib/taskModel';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
+	import AppActions from '$lib/components/AppActions.svelte';
 	import { onMount } from 'svelte';
 
 	let newTitle = $state('');
@@ -203,6 +204,7 @@
 				</button>
 			{/each}
 		</nav>
+		<div class="side-foot"><AppActions /></div>
 	</aside>
 
 	<main class="main">
@@ -376,6 +378,18 @@
 		display: flex;
 		align-items: center;
 		padding: 0 16px;
+		flex-shrink: 0;
+	}
+	/* Pinned to the bottom, level with the page footer like the notes sidebar. */
+	.side-foot {
+		margin-top: auto;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 2px;
+		height: 26px;
+		padding: 0 6px;
+		border-top: 1px solid var(--line);
 		flex-shrink: 0;
 	}
 	.filters {

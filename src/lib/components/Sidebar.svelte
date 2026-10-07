@@ -31,9 +31,8 @@
 	} from '$lib/stores/filetree';
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest } from '$lib/stores/actions';
-	import { openSettings } from '$lib/stores/settingsDialog';
-	import { signOut } from '$lib/auth-client';
 	import AppSwitcher from './AppSwitcher.svelte';
+	import AppActions from './AppActions.svelte';
 
 	interface Props {
 		onSelect: (path: string) => void;
@@ -341,15 +340,7 @@
 	<div class="footer">
 		<span class="count">{noteCount} {noteCount === 1 ? 'note' : 'notes'}</span>
 		<span class="sp"></span>
-		<button class="icon-btn" title="Trash" onclick={() => openSettings('trash')}>
-			<span class="material-symbols-outlined">delete</span>
-		</button>
-		<button class="icon-btn" title="Settings" onclick={() => openSettings()}>
-			<span class="material-symbols-outlined">settings</span>
-		</button>
-		<button class="icon-btn" title="Sign out" onclick={signOut}>
-			<span class="material-symbols-outlined">logout</span>
-		</button>
+		<AppActions />
 	</div>
 	{#if menu}
 		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
@@ -461,14 +452,6 @@
 		padding: 0 6px 0 16px;
 		border-top: 1px solid var(--line);
 		flex-shrink: 0;
-	}
-	/* Lines up with the editor status bar across the bottom edge. */
-	.footer .icon-btn {
-		width: 22px;
-		height: 22px;
-	}
-	.footer .icon-btn .material-symbols-outlined {
-		font-size: 16px;
 	}
 	.count {
 		color: var(--text-3);

@@ -1,11 +1,14 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import AppActions from './AppActions.svelte';
 
 	// Bottom strip for Tasks, Board and Calendar, matching the notes status bar.
-	let { children }: { children: Snippet } = $props();
+	// `actions` puts Trash/Settings/Sign out at the left on pages without a sidebar.
+	let { children, actions = false }: { children: Snippet; actions?: boolean } = $props();
 </script>
 
 <footer>
+	{#if actions}<span class="actions"><AppActions /></span>{/if}
 	<span class="sp"></span>
 	{@render children()}
 </footer>
@@ -26,6 +29,11 @@
 	}
 	.sp {
 		flex: 1;
+	}
+	.actions {
+		display: flex;
+		gap: 2px;
+		margin-left: -8px;
 	}
 	footer :global(.red) {
 		color: var(--red);
