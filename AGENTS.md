@@ -92,9 +92,7 @@ Scrinium is small, but there are a few footguns specific to it.
 6. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
    and record the original path in `.trash/.index.json`. If you touch trash
    internals, keep that file in sync or restore falls back to guessing from
-   the timestamp-prefixed name. Trash move/restore/purge run one at a time
-   through `withTrashLock` (they pick free names and rewrite the index), so
-   a new trash operation goes through it too.
+   the timestamp-prefixed name.
 7. **Vertical margins on block widgets.** CodeMirror measures block widgets
    without their margins, so `margin: X 0` on `.cm-math-block` / `.cm-image`
    desyncs the height map — gutter numbers, cursor coords and arrow targets
@@ -106,6 +104,13 @@ Scrinium is small, but there are a few footguns specific to it.
    which also drops undo history - never swap docs another way.
 9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
+10. **Vault mutations go through `withVaultLock`** in `src/lib/server/vault.ts`.
+    Writes, mkdirs, renames, trash, restore and purge run one at a time, so a
+    "target is free" check and the move onto it can't be split by another
+    request (`fs.rename` silently replaces files). A new function that
+    changes the vault takes the lock; locked functions never call each other,
+    or the queue deadlocks. The lock is per process: one app process per
+    vault.
 
 ## Commands
 

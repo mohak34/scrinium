@@ -29,6 +29,18 @@ export function safeResolve(relPath: string): string {
 	return resolved;
 }
 
+// Every vault mutation (write, mkdir, rename, trash, restore, purge) runs one
+// at a time through this in-process queue. Renames and restores check that the
+// target is free and then move onto it; without the queue a concurrent write or
+// rename can land on that target in between and get overwritten. Locked
+// functions must never call each other, or the queue deadlocks.
+let vaultQueue: Promise<unknown> = Promise.resolve();
+function withVaultLock<T>(fn: () => Promise<T>): Promise<T> {
+	const run = vaultQueue.then(fn);
+	vaultQueue = run.catch(() => {});
+	return run;
+}
+
 export async function readNote(relPath: string): Promise<string> {
 	const fullPath = safeResolve(relPath);
 	try {
@@ -41,8 +53,10 @@ export async function readNote(relPath: string): Promise<string> {
 
 export async function writeAsset(relPath: string, data: Buffer): Promise<void> {
 	const fullPath = safeResolve(relPath);
-	await fs.mkdir(path.dirname(fullPath), { recursive: true });
-	await fs.writeFile(fullPath, data);
+	return withVaultLock(async () => {
+		await fs.mkdir(path.dirname(fullPath), { recursive: true });
+		await fs.writeFile(fullPath, data);
+	});
 }
 
 export async function readAsset(relPath: string): Promise<Buffer> {
@@ -60,41 +74,36 @@ export async function readAsset(relPath: string): Promise<Buffer> {
 // The temp name is random so concurrent writes to one note never share it.
 export async function writeNote(relPath: string, content: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
-	await fs.mkdir(path.dirname(fullPath), { recursive: true });
-	const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${randomUUID()}.tmp`);
-	try {
-		await fs.writeFile(tmp, content, 'utf-8');
-		await fs.rename(tmp, fullPath);
-	} catch (e) {
-		await fs.rm(tmp, { force: true });
-		throw e;
-	}
+	return withVaultLock(async () => {
+		await fs.mkdir(path.dirname(fullPath), { recursive: true });
+		const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${randomUUID()}.tmp`);
+		try {
+			await fs.writeFile(tmp, content, 'utf-8');
+			await fs.rename(tmp, fullPath);
+		} catch (e) {
+			await fs.rm(tmp, { force: true });
+			throw e;
+		}
+	});
 }
 
 export async function createFolder(relPath: string): Promise<void> {
-	await fs.mkdir(safeResolve(relPath), { recursive: true });
+	const fullPath = safeResolve(relPath);
+	return withVaultLock(async () => {
+		await fs.mkdir(fullPath, { recursive: true });
+	});
 }
 
+// fs.rename replaces an existing file (or empty folder), so the free check
+// and the move must not interleave with other mutations: hold the vault lock.
 export async function renamePath(oldRelPath: string, newRelPath: string): Promise<void> {
 	const from = safeResolve(oldRelPath);
 	const to = safeResolve(newRelPath);
 	if (from === to) return;
-	try {
-		await fs.access(to);
-		throw error(409, 'Target already exists');
-	} catch (e: unknown) {
-		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-	}
-	await fs.rename(from, to);
-}
-
-// Trash operations pick free names and read-modify-write the index, so they
-// run one at a time; otherwise two deletes in the same millisecond collide.
-let trashQueue: Promise<unknown> = Promise.resolve();
-function withTrashLock<T>(fn: () => Promise<T>): Promise<T> {
-	const run = trashQueue.then(fn);
-	trashQueue = run.catch(() => {});
-	return run;
+	return withVaultLock(async () => {
+		if (await exists(to)) throw error(409, 'Target already exists');
+		await fs.rename(from, to);
+	});
 }
 
 async function exists(full: string): Promise<boolean> {
@@ -108,7 +117,7 @@ async function exists(full: string): Promise<boolean> {
 }
 
 export function moveToTrash(relPath: string): Promise<void> {
-	return withTrashLock(() => trash(relPath));
+	return withVaultLock(() => trash(relPath));
 }
 
 async function trash(relPath: string): Promise<void> {
@@ -192,7 +201,7 @@ export async function listTrash(): Promise<TrashEntry[]> {
 }
 
 export function restoreFromTrash(trashName: string): Promise<string> {
-	return withTrashLock(() => restore(trashName));
+	return withVaultLock(() => restore(trashName));
 }
 
 async function restore(trashName: string): Promise<string> {
@@ -247,7 +256,7 @@ async function restore(trashName: string): Promise<string> {
 }
 
 export function purgeFromTrash(trashName: string): Promise<void> {
-	return withTrashLock(() => purge(trashName));
+	return withVaultLock(() => purge(trashName));
 }
 
 async function purge(trashName: string): Promise<void> {
