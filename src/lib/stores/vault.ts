@@ -157,7 +157,11 @@ export function scheduleSave(path: string, content: string) {
 async function writePending(keepalive = false): Promise<boolean> {
 	clearTimeout(saveTimer);
 	let failed = false;
-	for (const [path, content] of [...pending]) {
+	for (const path of [...pending.keys()]) {
+		// Read the text now, not from a snapshot: edits typed while an
+		// earlier note's PUT was in flight are the ones to send.
+		const content = pending.get(path);
+		if (content === undefined) continue;
 		pending.delete(path);
 		let ok = false;
 		try {
@@ -177,6 +181,7 @@ async function writePending(keepalive = false): Promise<boolean> {
 	if (failed) {
 		saveStatus.set('error');
 		retryMs = Math.min(retryMs ? retryMs * 2 : 2000, 30000);
+		clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => void doSave(), retryMs);
 		return false;
 	}
