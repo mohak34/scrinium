@@ -90,7 +90,7 @@ Scrinium is small, but there are a few footguns specific to it.
    activePath and queued saves drift. A rename of the open note sets
    `takeActiveRename` so the page keeps the editor instead of reloading.
 6. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
-   and record the original path in `.trash/index.json`. If you touch trash
+   and record the original path in `.trash/.index.json`. If you touch trash
    internals, keep that file in sync or restore falls back to guessing from
    the timestamp-prefixed name.
 7. **Vertical margins on block widgets.** CodeMirror measures block widgets
@@ -104,6 +104,13 @@ Scrinium is small, but there are a few footguns specific to it.
    which also drops undo history - never swap docs another way.
 9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
+10. **Vault mutations go through `withVaultLock`** in `src/lib/server/vault.ts`.
+    Writes, mkdirs, renames, trash, restore and purge run one at a time, so a
+    "target is free" check and the move onto it can't be split by another
+    request (`fs.rename` silently replaces files). A new function that
+    changes the vault takes the lock; locked functions never call each other,
+    or the queue deadlocks. The lock is per process: one app process per
+    vault.
 
 ## Commands
 
@@ -182,7 +189,7 @@ State channels you will touch:
   live selection state so a stale range can never paint),
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
-  move/list/restore/purge backed by `.trash/index.json`), db.ts (sqlite cache
+  move/list/restore/purge backed by `.trash/.index.json`), db.ts (sqlite cache
   + api_tokens table), shares.ts (public share links: random id → live vault
   path, optional scrypt password hash; rename/delete follow the file),
   auth.ts (better-auth, Google, allowlist), indexer.ts,
