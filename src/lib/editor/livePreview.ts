@@ -33,7 +33,7 @@ import {
 } from '@codemirror/view';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { findMathBlockRanges } from './mathRanges';
+import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
 import { parseFrontmatter } from './frontmatter';
 import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
 import {
@@ -729,24 +729,14 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// multi-line replaces must not go through this ViewPlugin. Skip anything
 	// inside code or inside a block-math range - an inline replace overlapping
 	// a block replace corrupts the RangeSetBuilder.
-	const inlineRegex = /(?<!\$)\$(?!\$)([^$\n]{1,200}?)(?<!\\)\$(?!\$)/g;
+	const inlineRegex = inlineMathRegex();
 	let m: RegExpExecArray | null;
-	inlineRegex.lastIndex = 0;
 	while ((m = inlineRegex.exec(docText)) !== null) {
 		const start = m.index;
 		const end = start + m[0].length;
 		const content = m[1];
-		if (!content.trim() || /^\s|\s$/.test(content)) {
-			inlineRegex.lastIndex = start + 1;
-			continue;
-		}
 		// Frontmatter values are YAML, never math.
 		if (inFm(start)) {
-			inlineRegex.lastIndex = start + 1;
-			continue;
-		}
-		// Skip prices and bare numbers: need at least one letter or backslash.
-		if (!/[A-Za-z\\]/.test(content)) {
 			inlineRegex.lastIndex = start + 1;
 			continue;
 		}
