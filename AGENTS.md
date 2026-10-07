@@ -90,9 +90,11 @@ Scrinium is small, but there are a few footguns specific to it.
    activePath and queued saves drift. A rename of the open note sets
    `takeActiveRename` so the page keeps the editor instead of reloading.
 6. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
-   and record the original path in `.trash/index.json`. If you touch trash
+   and record the original path in `.trash/.index.json`. If you touch trash
    internals, keep that file in sync or restore falls back to guessing from
-   the timestamp-prefixed name.
+   the timestamp-prefixed name. Trash move/restore/purge run one at a time
+   through `withTrashLock` (they pick free names and rewrite the index), so
+   a new trash operation goes through it too.
 7. **Vertical margins on block widgets.** CodeMirror measures block widgets
    without their margins, so `margin: X 0` on `.cm-math-block` / `.cm-image`
    desyncs the height map — gutter numbers, cursor coords and arrow targets
@@ -182,7 +184,7 @@ State channels you will touch:
   live selection state so a stale range can never paint),
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
-  move/list/restore/purge backed by `.trash/index.json`), db.ts (sqlite cache
+  move/list/restore/purge backed by `.trash/.index.json`), db.ts (sqlite cache
   + api_tokens table), shares.ts (public share links: random id → live vault
   path, optional scrypt password hash; rename/delete follow the file),
   auth.ts (better-auth, Google, allowlist), indexer.ts,

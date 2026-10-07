@@ -88,11 +88,38 @@ export async function renamePath(oldRelPath: string, newRelPath: string): Promis
 	await fs.rename(from, to);
 }
 
-export async function moveToTrash(relPath: string): Promise<void> {
+// Trash operations pick free names and read-modify-write the index, so they
+// run one at a time; otherwise two deletes in the same millisecond collide.
+let trashQueue: Promise<unknown> = Promise.resolve();
+function withTrashLock<T>(fn: () => Promise<T>): Promise<T> {
+	const run = trashQueue.then(fn);
+	trashQueue = run.catch(() => {});
+	return run;
+}
+
+async function exists(full: string): Promise<boolean> {
+	try {
+		await fs.access(full);
+		return true;
+	} catch (e: unknown) {
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false;
+		throw e;
+	}
+}
+
+export function moveToTrash(relPath: string): Promise<void> {
+	return withTrashLock(() => trash(relPath));
+}
+
+async function trash(relPath: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
 	if (fullPath === VAULT_DIR || fullPath === TRASH_DIR) throw error(400, 'Invalid path');
 	await fs.mkdir(TRASH_DIR, { recursive: true });
-	const trashName = `${Date.now()}-${path.basename(fullPath)}`;
+	// Bump the stamp if a same-named note was trashed in the same millisecond,
+	// keeping the "<number>-<name>" shape listTrash falls back on.
+	let stamp = Date.now();
+	while (await exists(path.join(TRASH_DIR, `${stamp}-${path.basename(fullPath)}`))) stamp++;
+	const trashName = `${stamp}-${path.basename(fullPath)}`;
 	const dest = path.join(TRASH_DIR, trashName);
 	await fs.rename(fullPath, dest);
 	// Record original location so we can restore. Index is best-effort; a missing
@@ -164,7 +191,11 @@ export async function listTrash(): Promise<TrashEntry[]> {
 	return entries;
 }
 
-export async function restoreFromTrash(trashName: string): Promise<string> {
+export function restoreFromTrash(trashName: string): Promise<string> {
+	return withTrashLock(() => restore(trashName));
+}
+
+async function restore(trashName: string): Promise<string> {
 	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
 		throw error(400, 'Invalid trash name');
 	const src = path.join(TRASH_DIR, trashName);
@@ -215,7 +246,11 @@ export async function restoreFromTrash(trashName: string): Promise<string> {
 	return targetRel;
 }
 
-export async function purgeFromTrash(trashName: string): Promise<void> {
+export function purgeFromTrash(trashName: string): Promise<void> {
+	return withTrashLock(() => purge(trashName));
+}
+
+async function purge(trashName: string): Promise<void> {
 	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
 		throw error(400, 'Invalid trash name');
 	const full = path.join(TRASH_DIR, trashName);
