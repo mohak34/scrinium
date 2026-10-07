@@ -98,8 +98,12 @@ Scrinium is small, but there are a few footguns specific to it.
    desyncs the height map — gutter numbers, cursor coords and arrow targets
    all shift below the widget, compounding per block. Put spacing in padding.
 8. **Autosave is a per-path queue.** `scheduleSave` keys unsaved text by
-   note path; saves run one at a time and failed ones retry. Anything that
-   renames, moves or deletes a note must `flushSave()` first. The editor is
+   note path; saves run one at a time and failed ones retry. Renames,
+   deletes and read-modify-write rewrites run inside that same queue via
+   `afterSaved`, which writes pending text first and skips the change when
+   a save failed; saves typed meanwhile wait, so they never hit a path that
+   is mid-rename or mid-delete. `flushSave()` resolves false on a failed
+   write - anything else that reads the server copy must check it. The editor is
    one view for every note: a note switch goes through `setDoc(text, true)`,
    which also drops undo history - never swap docs another way.
 9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`

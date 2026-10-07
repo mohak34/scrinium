@@ -108,9 +108,10 @@ export async function loadNote(path: string): Promise<string> {
 }
 
 // Download the note as a plain `.md` file through the browser. Flushes the
-// autosave debounce first so the file includes the latest keystrokes.
+// autosave debounce first so the file includes the latest keystrokes; a
+// failed save aborts rather than download a stale copy.
 export async function downloadNote(path: string) {
-	await flushSave();
+	if (!(await flushSave())) return;
 	const content = await loadNote(path);
 	const url = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' }));
 	try {
@@ -129,9 +130,17 @@ export async function downloadNote(path: string) {
 // note is never overwritten by edits to another.
 const pending = new Map<string, string>();
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
-// Saves run one at a time: an older PUT can never land after a newer one.
-let saving: Promise<void> = Promise.resolve();
+// One queue for saves and for changes that depend on saved text (rename,
+// delete, content rewrites): an older PUT can never land after a newer one,
+// and a save never runs while a path change is in flight.
+let queue: Promise<unknown> = Promise.resolve();
 let retryMs = 0;
+
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+	const run = queue.then(fn);
+	queue = run.catch(() => {});
+	return run;
+}
 
 export function scheduleSave(path: string, content: string) {
 	pending.set(path, content);
@@ -144,44 +153,57 @@ export function scheduleSave(path: string, content: string) {
 // newer text for that note arrived meanwhile) and retries with backoff, so a
 // network blip shows "error" but never drops keystrokes. keepalive lets the
 // request outlive a closing tab (browsers cap those bodies near 64 KB).
-function doSave(keepalive = false): Promise<void> {
-	saving = saving.then(async () => {
-		clearTimeout(saveTimer);
-		let failed = false;
-		for (const [path, content] of [...pending]) {
-			pending.delete(path);
-			let ok = false;
-			try {
-				const res = await fetch(`/api/notes/${encPath(path)}`, {
-					method: 'PUT',
-					headers: { 'Content-Type': 'text/plain' },
-					body: content,
-					keepalive: keepalive && content.length < 60000
-				});
-				ok = res.ok;
-			} catch {}
-			if (!ok) {
-				failed = true;
-				if (!pending.has(path)) pending.set(path, content);
-			}
+// Only call from inside the queue.
+async function writePending(keepalive = false): Promise<boolean> {
+	clearTimeout(saveTimer);
+	let failed = false;
+	for (const [path, content] of [...pending]) {
+		pending.delete(path);
+		let ok = false;
+		try {
+			const res = await fetch(`/api/notes/${encPath(path)}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'text/plain' },
+				body: content,
+				keepalive: keepalive && content.length < 60000
+			});
+			ok = res.ok;
+		} catch {}
+		if (!ok) {
+			failed = true;
+			if (!pending.has(path)) pending.set(path, content);
 		}
-		if (failed) {
-			saveStatus.set('error');
-			retryMs = Math.min(retryMs ? retryMs * 2 : 2000, 30000);
-			saveTimer = setTimeout(() => void doSave(), retryMs);
-			return;
-		}
-		retryMs = 0;
-		if (pending.size === 0) saveStatus.set('saved');
-		void loadTree();
-	});
-	return saving;
+	}
+	if (failed) {
+		saveStatus.set('error');
+		retryMs = Math.min(retryMs ? retryMs * 2 : 2000, 30000);
+		saveTimer = setTimeout(() => void doSave(), retryMs);
+		return false;
+	}
+	retryMs = 0;
+	if (pending.size === 0) saveStatus.set('saved');
+	void loadTree();
+	return true;
 }
 
-// Finish saving immediately. Call before switching notes, renaming, moving,
-// deleting or leaving the page so the debounce can never drop keystrokes.
-export async function flushSave(keepalive = false) {
-	await doSave(keepalive);
+function doSave(keepalive = false): Promise<boolean> {
+	return enqueue(() => writePending(keepalive));
+}
+
+// Finish saving immediately. Call before switching notes or leaving the page
+// so the debounce can never drop keystrokes. Resolves false when a write
+// failed: the text stays queued for retry, but the server copy is stale.
+export function flushSave(keepalive = false): Promise<boolean> {
+	return doSave(keepalive);
+}
+
+// Run a change that reads or moves saved notes inside the queue: pending
+// text is written first and saves scheduled meanwhile wait for it to finish.
+// Resolves null without running fn when a write failed, so the change never
+// acts on a stale server copy. fn must not call flushSave (it would wait on
+// itself).
+function afterSaved<T>(fn: () => Promise<T>): Promise<T | null> {
+	return enqueue(async () => ((await writePending()) ? fn() : null));
 }
 
 // Pending text follows a rename so a late save never recreates the old file.
@@ -244,7 +266,6 @@ async function executeTitleSync() {
 	pendingTitleSync = null;
 	clearTimeout(titleSyncTimer);
 	if (!pending) return;
-	await flushSave();
 	const sanitized = sanitizeTitleForFilename(pending.title);
 	if (!sanitized) return;
 	const dir = pending.path.includes('/') ? pending.path.slice(0, pending.path.lastIndexOf('/')) : null;
@@ -259,34 +280,38 @@ export function cancelTitleSync() {
 	pendingTitleSync = null;
 }
 
+// Runs after saved text so keystrokes typed during the rename are on disk
+// before the heading is rewritten.
 export async function syncFilenameToTitle(oldPath: string, newPath: string) {
 	if (!newPath.endsWith('.md')) return;
 	const newBase = newPath.split('/').pop()!.replace(/\.md$/, '');
-	try {
-		const res = await fetch(`/api/notes/${encPath(newPath)}`);
-		if (!res.ok) return;
-		let content = await res.text();
-		// Rewrite the same source the sync reads (fm `title:` key when the
-		// block owns one, else the body heading); null means no target.
-		const curTitle = effectiveTitle(content, '');
-		if (curTitle === newBase) return;
-		const newContent = setEffectiveTitle(content, newBase);
-		if (!newContent) return;
-		const putRes = await fetch(`/api/notes/${encPath(newPath)}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'text/plain' },
-			body: newContent
-		});
-		if (putRes.ok) {
-			await loadTree();
-			// Push to editor if this is the active note
-			if (get(activePath) === newPath) {
-				externalContentUpdate.set({ path: newPath, content: newContent });
-				// also clear any pending title sync that would try to rename back
-				cancelTitleSync();
+	await afterSaved(async () => {
+		try {
+			const res = await fetch(`/api/notes/${encPath(newPath)}`);
+			if (!res.ok) return;
+			let content = await res.text();
+			// Rewrite the same source the sync reads (fm `title:` key when the
+			// block owns one, else the body heading); null means no target.
+			const curTitle = effectiveTitle(content, '');
+			if (curTitle === newBase) return;
+			const newContent = setEffectiveTitle(content, newBase);
+			if (!newContent) return;
+			const putRes = await fetch(`/api/notes/${encPath(newPath)}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'text/plain' },
+				body: newContent
+			});
+			if (putRes.ok) {
+				await loadTree();
+				// Push to editor if this is the active note
+				if (get(activePath) === newPath) {
+					externalContentUpdate.set({ path: newPath, content: newContent });
+					// also clear any pending title sync that would try to rename back
+					cancelTitleSync();
+				}
 			}
-		}
-	} catch {}
+		} catch {}
+	});
 }
 
 // --- New note defaults ---
@@ -325,72 +350,79 @@ export async function createFolder(path: string) {
 }
 
 // Rewrite the note's frontmatter block via a mutate callback (set/delete
-// keys). Creates the block when missing, drops it when emptied. Flushes
-// first so debounced keystrokes are never clobbered; pushes into the
-// editor when the note is open.
+// keys). Creates the block when missing, drops it when emptied. Runs after
+// saved text so debounced keystrokes are never clobbered (false when a save
+// failed); pushes into the editor when the note is open.
 export async function updateFrontmatter(
 	path: string,
 	mutate: (doc: Document) => void
 ): Promise<boolean> {
-	await flushSave();
-	let content: string;
-	try {
-		content = await loadNote(path);
-	} catch {
-		return false;
-	}
-	const next = updateFrontmatterBlock(content, mutate);
-	if (!next || next === content) return false;
-	const res = await fetch(`/api/notes/${encPath(path)}`, {
-		method: 'PUT',
-		headers: { 'Content-Type': 'text/plain' },
-		body: next
+	const ok = await afterSaved(async () => {
+		let content: string;
+		try {
+			content = await loadNote(path);
+		} catch {
+			return false;
+		}
+		const next = updateFrontmatterBlock(content, mutate);
+		if (!next || next === content) return false;
+		const res = await fetch(`/api/notes/${encPath(path)}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'text/plain' },
+			body: next
+		});
+		if (!res.ok) return false;
+		if (get(activePath) === path) {
+			externalContentUpdate.set({ path, content: next });
+		}
+		return true;
 	});
-	if (!res.ok) return false;
-	if (get(activePath) === path) {
-		externalContentUpdate.set({ path, content: next });
-	}
-	await loadTree();
-	return true;
+	if (ok) await loadTree();
+	return !!ok;
 }
 // Convert the first bare mention of the target note into a `[[link]]`
-// inside the source file. Flushes first so debounced keystrokes are never
-// clobbered; pushes into the editor when the source is the open note.
+// inside the source file. Runs after saved text so debounced keystrokes are
+// never clobbered (false when a save failed); pushes into the editor when the
+// source is the open note.
 export async function linkUnlinkedMention(sourcePath: string, targetPath: string): Promise<boolean> {
-	await flushSave();
-	let content: string;
-	try {
-		content = await loadNote(sourcePath);
-	} catch {
-		return false;
-	}
-	const next = linkFirstMention(content, targetPath);
-	if (!next) return false;
-	const res = await fetch(`/api/notes/${encPath(sourcePath)}`, {
-		method: 'PUT',
-		headers: { 'Content-Type': 'text/plain' },
-		body: next
+	const ok = await afterSaved(async () => {
+		let content: string;
+		try {
+			content = await loadNote(sourcePath);
+		} catch {
+			return false;
+		}
+		const next = linkFirstMention(content, targetPath);
+		if (!next) return false;
+		const res = await fetch(`/api/notes/${encPath(sourcePath)}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'text/plain' },
+			body: next
+		});
+		if (!res.ok) return false;
+		if (get(activePath) === sourcePath) {
+			externalContentUpdate.set({ path: sourcePath, content: next });
+		}
+		return true;
 	});
-	if (!res.ok) return false;
-	if (get(activePath) === sourcePath) {
-		externalContentUpdate.set({ path: sourcePath, content: next });
-	}
-	await loadTree();
-	return true;
+	if (ok) await loadTree();
+	return !!ok;
 }
 
 // Centralized rename/move that keeps tabs/activePath/pinned and pending
 // saves in sync. Callers still handle filetree collapsed state via renameDir.
+// Runs in the save queue: nothing is renamed while a save fails, and text
+// typed during the request waits, then follows the rename (or stays on the
+// old path when the rename fails).
 export async function renameNote(oldPath: string, newPath: string): Promise<boolean> {
 	if (oldPath === newPath) return true;
-	await flushSave();
-	const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
-		method: 'PATCH',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ newPath })
-	}).catch(() => null);
-	const ok = !!res?.ok;
-	if (ok) {
+	const ok = await afterSaved(async () => {
+		const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ newPath })
+		}).catch(() => null);
+		if (!res?.ok) return false;
 		remapPending(oldPath, newPath);
 		const current = get(activePath);
 		if (current && (current === oldPath || current.startsWith(oldPath + '/'))) {
@@ -412,24 +444,31 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 				return p;
 			})
 		);
-	}
+		return true;
+	});
 	await loadTree();
-	return ok;
+	return !!ok;
 }
 
+// Move a note or folder to trash. Runs in the save queue, so the trashed
+// copy has every keystroke saved before the delete; a failed save keeps the
+// note and its queued text. Text typed while the DELETE is in flight is
+// dropped on success (the note is gone; saving it would recreate the file)
+// and saved to the still-existing note on failure.
 export async function deletePath(path: string) {
-	// Save first so the trashed copy has the latest text.
-	await flushSave();
-	const res = await fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' }).catch(() => null);
+	const ok = await afterSaved(async () => {
+		const res = await fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' }).catch(() => null);
+		if (!res?.ok) return false;
+		for (const p of [...pending.keys()]) if (p === path || p.startsWith(path + '/')) pending.delete(p);
+		const current = get(activePath);
+		if (current && (current === path || current.startsWith(path + '/'))) {
+			activePath.set(null);
+		}
+		openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
+		return true;
+	});
 	await loadTree();
-	if (!res?.ok) return;
-	// Keystrokes typed while the request ran must not recreate the file.
-	for (const p of [...pending.keys()]) if (p === path || p.startsWith(path + '/')) pending.delete(p);
-	const current = get(activePath);
-	if (current && (current === path || current.startsWith(path + '/'))) {
-		activePath.set(null);
-	}
-	openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
+	return !!ok;
 }
 
 // Drag-and-drop move: a rename whose target is a folder (or null for the
