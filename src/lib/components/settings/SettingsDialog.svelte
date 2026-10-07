@@ -7,6 +7,7 @@
 	import AttachmentsPage from './AttachmentsPage.svelte';
 	import AccountPage from './AccountPage.svelte';
 	import DevicesPage from './DevicesPage.svelte';
+	import AgentsPage from './AgentsPage.svelte';
 	import TrashPage from './TrashPage.svelte';
 	import AboutPage from './AboutPage.svelte';
 
@@ -25,7 +26,8 @@
 			label: 'Account',
 			pages: [
 				{ key: 'account', title: 'Account', icon: 'person' },
-				{ key: 'devices', title: 'Devices and agents', icon: 'devices' }
+				{ key: 'devices', title: 'Devices', icon: 'devices' },
+				{ key: 'agents', title: 'Agents', icon: 'smart_toy' }
 			]
 		},
 		{
@@ -100,6 +102,7 @@
 					{:else if current.key === 'attachments'}<AttachmentsPage />
 					{:else if current.key === 'account'}<AccountPage />
 					{:else if current.key === 'devices'}<DevicesPage />
+				{:else if current.key === 'agents'}<AgentsPage />
 					{:else if current.key === 'trash'}<TrashPage onRestored={close} />
 					{:else}<AboutPage />
 					{/if}

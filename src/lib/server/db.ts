@@ -136,7 +136,7 @@ export function revokeApiToken(tokenHash: string) {
 }
 
 // What each agent token changed through MCP, newest first, for Settings >
-// Devices and agents. A trust log, not an audit trail: rows older than 30
+// Agents. A trust log, not an audit trail: rows older than 30
 // days are pruned on insert and revoking a token drops its rows.
 db.exec(`
 	CREATE TABLE IF NOT EXISTS agent_actions (
