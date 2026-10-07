@@ -14,10 +14,6 @@ export const tree = writable<VaultEntry[]>([]);
 export const activePath = writable<string | null>(null);
 export const saveStatus = writable<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-// For external edits (e.g. filename->title sync) to push new content into the editor
-// without the editor thinking it is a user edit.
-export const externalContentUpdate = writable<{ path: string; content: string } | null>(null);
-
 // Pinned notes, kept client-side (a display preference, not vault state).
 // Pinned entries sort first in the tree at every level.
 const PIN_STORAGE = 'scrinium:pinned';
@@ -227,6 +223,9 @@ function remapPending(from: string, to: string) {
 export interface EditorHost {
 	// Put a loaded note in the editor; false when it is no longer wanted.
 	show(path: string, content: string): boolean;
+	// The editor's live text, and a replacement autosaved like typing.
+	read(): string;
+	write(content: string): void;
 }
 let editorHost: EditorHost | null = null;
 let shown: string | null = null;
@@ -317,38 +316,16 @@ export function cancelTitleSync() {
 	pendingTitleSync = null;
 }
 
-// Runs after saved text so keystrokes typed during the rename are on disk
-// before the heading is rewritten.
+// Rewrite the renamed note's title (fm `title:` key when the block owns
+// one, else the body heading) to match its new filename.
 export async function syncFilenameToTitle(oldPath: string, newPath: string) {
 	if (!newPath.endsWith('.md')) return;
 	const newBase = newPath.split('/').pop()!.replace(/\.md$/, '');
-	await afterSaved(async () => {
-		try {
-			const res = await fetch(`/api/notes/${encPath(newPath)}`);
-			if (!res.ok) return;
-			let content = await res.text();
-			// Rewrite the same source the sync reads (fm `title:` key when the
-			// block owns one, else the body heading); null means no target.
-			const curTitle = effectiveTitle(content, '');
-			if (curTitle === newBase) return;
-			const newContent = setEffectiveTitle(content, newBase);
-			if (!newContent) return;
-			const putRes = await fetch(`/api/notes/${encPath(newPath)}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'text/plain' },
-				body: newContent
-			});
-			if (putRes.ok) {
-				await loadTree();
-				// Push to editor if this is the active note
-				if (get(activePath) === newPath) {
-					externalContentUpdate.set({ path: newPath, content: newContent });
-					// also clear any pending title sync that would try to rename back
-					cancelTitleSync();
-				}
-			}
-		} catch {}
-	});
+	const ok = await rewriteNote(newPath, (content) =>
+		effectiveTitle(content, '') === newBase ? null : setEffectiveTitle(content, newBase)
+	);
+	// A title sync queued before the rename would rename it back.
+	if (ok && shown === newPath) cancelTitleSync();
 }
 
 // --- New note defaults ---
@@ -386,64 +363,50 @@ export async function createFolder(path: string) {
 	await loadTree();
 }
 
-// Rewrite the note's frontmatter block via a mutate callback (set/delete
-// keys). Creates the block when missing, drops it when emptied. Runs after
-// saved text so debounced keystrokes are never clobbered (false when a save
-// failed); pushes into the editor when the note is open.
-export async function updateFrontmatter(
-	path: string,
-	mutate: (doc: Document) => void
-): Promise<boolean> {
+// Apply a content rewrite to a note's latest text. The note in the editor
+// is rewritten there and autosaved like typing, so text typed while the
+// rewrite waited is kept and later keystrokes keep the rewrite; any other
+// note is read and written back in the queue. Runs after saved text and
+// resolves false when a save failed or nothing changed.
+async function rewriteNote(path: string, next: (content: string) => string | null): Promise<boolean> {
 	const ok = await afterSaved(async () => {
+		const host = shown === path ? editorHost : null;
+		if (host) {
+			const content = host.read();
+			const out = next(content);
+			if (!out || out === content) return false;
+			host.write(out);
+			return true;
+		}
 		let content: string;
 		try {
 			content = await loadNote(path);
 		} catch {
 			return false;
 		}
-		const next = updateFrontmatterBlock(content, mutate);
-		if (!next || next === content) return false;
+		const out = next(content);
+		if (!out || out === content) return false;
 		const res = await fetch(`/api/notes/${encPath(path)}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'text/plain' },
-			body: next
-		});
-		if (!res.ok) return false;
-		if (get(activePath) === path) {
-			externalContentUpdate.set({ path, content: next });
-		}
-		return true;
+			body: out
+		}).catch(() => null);
+		return !!res?.ok;
 	});
 	if (ok) await loadTree();
 	return !!ok;
 }
+
+// Rewrite the note's frontmatter block via a mutate callback (set/delete
+// keys). Creates the block when missing, drops it when emptied.
+export function updateFrontmatter(path: string, mutate: (doc: Document) => void): Promise<boolean> {
+	return rewriteNote(path, (content) => updateFrontmatterBlock(content, mutate));
+}
+
 // Convert the first bare mention of the target note into a `[[link]]`
-// inside the source file. Runs after saved text so debounced keystrokes are
-// never clobbered (false when a save failed); pushes into the editor when the
-// source is the open note.
-export async function linkUnlinkedMention(sourcePath: string, targetPath: string): Promise<boolean> {
-	const ok = await afterSaved(async () => {
-		let content: string;
-		try {
-			content = await loadNote(sourcePath);
-		} catch {
-			return false;
-		}
-		const next = linkFirstMention(content, targetPath);
-		if (!next) return false;
-		const res = await fetch(`/api/notes/${encPath(sourcePath)}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'text/plain' },
-			body: next
-		});
-		if (!res.ok) return false;
-		if (get(activePath) === sourcePath) {
-			externalContentUpdate.set({ path: sourcePath, content: next });
-		}
-		return true;
-	});
-	if (ok) await loadTree();
-	return !!ok;
+// inside the source file.
+export function linkUnlinkedMention(sourcePath: string, targetPath: string): Promise<boolean> {
+	return rewriteNote(sourcePath, (content) => linkFirstMention(content, targetPath));
 }
 
 // Centralized rename/move that keeps tabs/activePath/pinned and pending

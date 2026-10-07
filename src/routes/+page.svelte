@@ -22,7 +22,6 @@
 		closeTab,
 		togglePin,
 		scheduleTitleSync,
-		externalContentUpdate,
 		attachEditor,
 		shownNote,
 		showNote,
@@ -43,6 +42,11 @@
 				currentContent = content;
 				editorRef?.setDoc(content, true);
 				return true;
+			},
+			read: () => currentContent,
+			write(content) {
+				editorRef?.setDoc(content);
+				onChange(content);
 			}
 		})
 	);
@@ -65,18 +69,6 @@
 			return;
 		}
 		void showNote(path);
-	});
-
-	// When a file rename syncs its H1 title (filename -> title), push the
-	// new content into the editor without treating it as a user edit.
-	$effect(() => {
-		const upd = $externalContentUpdate;
-		if (!upd) return;
-		if (upd.path === $activePath) {
-			currentContent = upd.content;
-			editorRef?.setDoc(upd.content);
-			externalContentUpdate.set(null);
-		}
 	});
 
 	let collapsed = $state(false);

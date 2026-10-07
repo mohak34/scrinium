@@ -98,11 +98,15 @@ Scrinium is small, but there are a few footguns specific to it.
    desyncs the height map — gutter numbers, cursor coords and arrow targets
    all shift below the widget, compounding per block. Put spacing in padding.
 8. **Autosave is a per-path queue.** `scheduleSave` keys unsaved text by
-   note path; saves run one at a time and failed ones retry. Renames,
-   deletes and read-modify-write rewrites run inside that same queue via
-   `afterSaved`, which writes pending text first and skips the change when
-   a save failed; saves typed meanwhile wait, so they never hit a path that
-   is mid-rename or mid-delete. `flushSave()` resolves false on a failed
+   note path; saves run one at a time, each sends the note's text as of
+   that moment, and failed ones retry. Renames, deletes and content
+   rewrites run inside that same queue via `afterSaved`, which writes
+   pending text first and skips the change when a save failed; saves typed
+   meanwhile wait, so they never hit a path that is mid-rename or
+   mid-delete. Content rewrites (properties, link conversion, title sync)
+   go through `rewriteNote`: the note in the editor is rewritten in the
+   editor's live text and autosaved like typing, never by pushing a
+   server-derived copy over it. `flushSave()` resolves false on a failed
    write - anything else that reads the server copy must check it. The editor is
    one view for every note: a note switch goes through `showNote`, which
    loads in the queue and prefers the note's unsaved text over the server
