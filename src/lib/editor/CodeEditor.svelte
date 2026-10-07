@@ -25,8 +25,9 @@ import { findCallouts } from './callouts';
 } from '@codemirror/search';
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
 	import { autocompletion, closeCompletion, completionStatus, moveCompletionSelection } from '@codemirror/autocomplete';
-	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
+	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, resolveAssetUrl, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
+	import { attachmentMarkdown } from '$lib/attachments';
 	import { tree } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
@@ -293,27 +294,21 @@ import { findCallouts } from './callouts';
 			.catch(() => {});
 	});
 
-	// Markdown image links are note-relative (livePreview resolves them against
-	// the note's folder); the upload API returns vault-relative paths. Convert
-	// so nested notes don't get doubled paths.
-	function noteRelative(notePath: string, vaultRel: string): string {
-		const from = notePath.split('/').slice(0, -1).filter(Boolean);
-		const to = vaultRel.split('/').filter(Boolean);
-		let i = 0;
-		while (i < from.length && i < to.length && from[i] === to[i]) i++;
-		return [...from.slice(i).map(() => '..'), ...to.slice(i)].join('/') || vaultRel;
-	}
-
-	async function uploadImage(file: File): Promise<string | null> {
-		const form = new FormData();
-		form.append('file', file);
+	async function uploadFile(file: File): Promise<string | null> {
 		// Resolve where this attachment should land from the user's settings and
 		// the current note's folder; the server re-validates the path.
 		const noteDir = notePath ? notePath.split('/').slice(0, -1).join('/') || null : null;
 		const folder = attachmentDirFor(noteDir, get(settings).attachments);
-		if (folder) form.append('folder', folder);
+		const query = new URLSearchParams({ name: file.name });
+		if (folder) query.set('folder', folder);
 		try {
-			const res = await fetch('/api/attachments', { method: 'POST', body: form });
+			// Unknown types have file.type '' and would go out with no
+			// Content-Type, which makes SvelteKit drop the body.
+			const res = await fetch(`/api/attachments?${query}`, {
+				method: 'POST',
+				body: file,
+				headers: { 'Content-Type': file.type || 'application/octet-stream' }
+			});
 			if (!res.ok) return null;
 			const data = await res.json();
 			return typeof data.path === 'string' ? data.path : null;
@@ -322,19 +317,17 @@ import { findCallouts } from './callouts';
 		}
 	}
 
-	// Upload pasted images and insert their markdown reference at the cursor.
-	// Failed uploads are skipped silently rather than leaving broken refs.
-	async function insertImages(view: EditorView, files: File[]) {
+	// Upload pasted or dropped files and insert their markdown reference at
+	// `pos`. Failed uploads are skipped silently rather than leaving broken
+	// refs.
+	async function insertFiles(view: EditorView, files: File[], pos: number) {
 		let insert = '';
 		for (const file of files) {
-			const vaultRel = await uploadImage(file);
-			if (!vaultRel) continue;
-			const rel = notePath ? noteRelative(notePath, vaultRel) : vaultRel;
-			const name = file.name.replace(/\.[^.]+$/, '') || 'image';
-			insert += `![${name}](${rel})\n`;
+			const vaultRel = await uploadFile(file);
+			if (vaultRel) insert += attachmentMarkdown(vaultRel, notePath ?? null) + '\n';
 		}
 		if (!insert) return;
-		const pos = view.state.selection.main.head;
+		pos = Math.min(pos, view.state.doc.length);
 		const line = view.state.doc.lineAt(pos);
 		const needsBreak = pos > line.from;
 		view.dispatch({
@@ -513,25 +506,33 @@ import { findCallouts } from './callouts';
 						if (e.ctrlKey || e.metaKey) {
 							const pos = view.posAtCoords(e);
 							if (pos !== null) {
+								// Relative links point into the vault (attachments).
 								const url = urlAtPos(view, pos);
-								if (url) {
+								const href = url && resolveAssetUrl(url, view.state.field(noteDirField));
+								if (href) {
 									e.preventDefault();
-									window.open(url, '_blank', 'noopener,noreferrer');
+									window.open(href, '_blank', 'noopener,noreferrer');
 									return true;
 								}
 							}
 						}
 					},
 					paste: (e, view) => {
-						// Paste an image from the clipboard: upload it to the vault
-						// and insert the markdown reference. Non-image pastes keep
-						// the default behaviour.
-						const files = Array.from(e.clipboardData?.files ?? []).filter((f) =>
-							f.type.startsWith('image/')
-						);
+						// Paste files from the clipboard: upload them to the vault
+						// and insert markdown references. Text pastes keep the
+						// default behaviour.
+						const files = Array.from(e.clipboardData?.files ?? []);
 						if (!files.length) return false;
 						e.preventDefault();
-						void insertImages(view, files);
+						void insertFiles(view, files, view.state.selection.main.head);
+						return true;
+					},
+					drop: (e, view) => {
+						const files = Array.from(e.dataTransfer?.files ?? []);
+						if (!files.length) return false;
+						e.preventDefault();
+						const pos = view.posAtCoords(e) ?? view.state.selection.main.head;
+						void insertFiles(view, files, pos);
 						return true;
 					}
 				}),

@@ -1,15 +1,9 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { readAsset, readNote } from '$lib/server/vault';
+import { readNote } from '$lib/server/vault';
+import { assetResponse } from '$lib/server/assets';
+import { isImagePath } from '$lib/attachments';
 import { checkProofToken, getShareSecret, shareImages } from '$lib/server/shares';
-
-const MIME_BY_EXT: Record<string, string> = {
-	png: 'image/png',
-	jpg: 'image/jpeg',
-	jpeg: 'image/jpeg',
-	gif: 'image/gif',
-	webp: 'image/webp'
-};
 
 // Public sibling of /api/assets for shared notes: /assets/<n> is the n-th
 // image the note currently references (see shareImages), never an arbitrary
@@ -29,15 +23,6 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		throw error(404, 'Not found');
 	}
 	const path = shareImages(markdown, secret.note_path).paths[Number(params.path)];
-	if (!path) throw error(404, 'Not found');
-	const mime = MIME_BY_EXT[path.split('.').pop()?.toLowerCase() ?? ''];
-	if (!mime) throw error(415, 'Unsupported asset type');
-	const data = await readAsset(path);
-	return new Response(new Uint8Array(data), {
-		headers: {
-			'Content-Type': mime,
-			'Cache-Control': 'private, max-age=3600',
-			'X-Content-Type-Options': 'nosniff'
-		}
-	});
+	if (!path || !isImagePath(path)) throw error(404, 'Not found');
+	return assetResponse(path);
 };

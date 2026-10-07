@@ -213,6 +213,17 @@ State channels you will touch:
   `src/lib/calendar.ts` keeps all-day events as date-only strings so the
   browser picks the local day - never `Date.parse` a Google `date` on the
   server, it lands a day early west of UTC.
+  assets.ts (`assetResponse`: streams a vault file out; only images, PDF,
+  audio, video and plain text are served inline, everything else as an
+  `octet-stream` download, all under `nosniff` + CSP `sandbox` - a vault
+  HTML/SVG served inline would run with the session). Uploads are raw
+  bodies (`POST`/`PUT /api/attachments?name=&folder=`, any type, 100 MB)
+  streamed to disk by `writeAssetStream` in vault.ts; never buffer one in
+  memory, the VPS has 1 GB. SvelteKit drops bodies without a
+  `Content-Type`, so uploaders always send one. The 100 MB cap must stay
+  under `BODY_SIZE_LIMIT` in `deploy/scrinium.service`.
+  `src/lib/attachments.ts` (`isImagePath`, `attachmentMarkdown`) is shared
+  by the editor, MCP and share pages.
   mobileAuth.ts (Google ID-token verification + API-token issue/verify),
   mcp.ts (MCP tools for agents; each tool calls the REST routes through
   SvelteKit's in-process `fetch`, so validation and index/link bookkeeping

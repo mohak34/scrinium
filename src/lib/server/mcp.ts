@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { AREAS, PRIORITIES, STATUSES } from '$lib/taskModel';
+import { attachmentMarkdown, isImagePath } from '$lib/attachments';
 import type { TaskRow } from './db';
 import type { TrashEntry } from './vault';
 
@@ -62,6 +63,11 @@ function taskOut(t: TaskRow) {
 	};
 }
 
+// Base64 rides inside one JSON request that is parsed whole, so it is held
+// in memory several times over. Larger files go through the streaming
+// route with curl (see upload_attachment's description).
+const MAX_INLINE_BYTES = 5 * 1024 * 1024;
+
 const result = (data: unknown) => ({
 	content: [{ type: 'text' as const, text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }]
 });
@@ -70,10 +76,10 @@ const enc = (p: string) => p.replace(/^\/+/, '').split('/').map(encodeURICompone
 
 export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite = () => {}) {
 	// Throws the route's error message so the SDK reports it as a tool error.
-	async function call(path: string, init?: RequestInit & { body?: string }): Promise<Response> {
+	async function call(path: string, init?: RequestInit): Promise<Response> {
 		const res = await fetch(path, {
 			...init,
-			headers: init?.body !== undefined ? { 'Content-Type': 'application/json' } : undefined
+			headers: typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : init?.headers
 		});
 		if (!res.ok) {
 			const raw = await res.text();
@@ -85,7 +91,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		}
 		return res;
 	}
-	const getJson = async <T>(path: string, init?: RequestInit & { body?: string }) =>
+	const getJson = async <T>(path: string, init?: RequestInit) =>
 		(await (await call(path, init)).json()) as T;
 	const send = (method: string, path: string, body?: unknown) =>
 		call(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -296,6 +302,54 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			const share = (await (await send('POST', '/api/shares', { path, password })).json()) as { id: string };
 			onWrite('share_note', path);
 			return result({ url: `${origin}/s/${share.id}`, password_protected: !!password });
+		}
+	);
+
+	// Attachments
+
+	server.registerTool(
+		'upload_attachment',
+		{
+			description: `Store a file (any type, up to 5 MB) in the vault and get the markdown that links it. Images come back as an embed. Put the markdown in a note with edit_note or append_to_note. Larger files: if you have a shell, stream them instead with \`curl -T <file> -H "Authorization: Bearer <token>" -H "Content-Type: application/octet-stream" "${origin}/api/attachments?name=<file name>"\` (up to 100 MB), which returns {"path"}.`,
+			inputSchema: {
+				name: z.string().min(1).max(200).describe('File name with extension, e.g. "diagram.png"'),
+				data_base64: z.string().min(1).max(Math.ceil(MAX_INLINE_BYTES / 3) * 4).describe('File contents, base64'),
+				folder: NotePath.optional().describe('Vault folder to store it in. Default "attachments"'),
+				note_path: NotePath.optional().describe('Note the link will go in, so the link is relative to it')
+			}
+		},
+		async ({ name, data_base64, folder, note_path }) => {
+			const query = new URLSearchParams({ name });
+			if (folder) query.set('folder', folder);
+			const { path } = await getJson<{ path: string }>(`/api/attachments?${query}`, {
+				method: 'POST',
+				body: Buffer.from(data_base64, 'base64'),
+				headers: { 'Content-Type': 'application/octet-stream' }
+			});
+			onWrite('upload_attachment', path);
+			return result({ path, markdown: attachmentMarkdown(path, note_path ?? null) });
+		}
+	);
+
+	server.registerTool(
+		'read_attachment',
+		{
+			description:
+				'Read a vault file that is not a note. Images up to 5 MB come back as images, text files as text, anything else as its type and size.',
+			inputSchema: { path: NotePath.describe('Vault-relative path, e.g. "attachments/diagram.png"') },
+			annotations: readOnly
+		},
+		async ({ path }) => {
+			const res = await call(`/api/assets/${enc(path)}`);
+			const type = res.headers.get('content-type') ?? '';
+			const size = Number(res.headers.get('content-length'));
+			if (size > MAX_INLINE_BYTES || !(isImagePath(path) || type.startsWith('text/'))) {
+				await res.body?.cancel();
+				return result({ path, type, size });
+			}
+			if (type.startsWith('text/')) return result(await res.text());
+			const data = Buffer.from(await res.arrayBuffer()).toString('base64');
+			return { content: [{ type: 'image' as const, data, mimeType: type }] };
 		}
 	);
 
