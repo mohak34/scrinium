@@ -249,11 +249,14 @@ let titleSyncTimer: ReturnType<typeof setTimeout> | undefined;
 export function scheduleTitleSync(path: string, content: string) {
 	if (!path.endsWith('.md')) return;
 	const title = extractTitle(content);
-	if (!title) return;
-	// Avoid scheduling if title already matches filename (sanitized)
+	// No usable title, or it already matches the filename: drop any rename
+	// queued for an earlier heading so a reverted edit is never applied.
 	const base = path.split('/').pop()!.replace(/\.md$/, '');
-	const sanitized = sanitizeTitleForFilename(title);
-	if (!sanitized || sanitized === base) return;
+	const sanitized = title && sanitizeTitleForFilename(title);
+	if (!sanitized || sanitized === base) {
+		if (pendingTitleSync?.path === path) cancelTitleSync();
+		return;
+	}
 	pendingTitleSync = { path, title };
 	clearTimeout(titleSyncTimer);
 	titleSyncTimer = setTimeout(() => {
