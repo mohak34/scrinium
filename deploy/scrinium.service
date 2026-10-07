@@ -15,6 +15,9 @@ User=scrinium
 WorkingDirectory=/opt/scrinium/app
 EnvironmentFile=/opt/scrinium/app/.env
 Environment=PORT=3000
+# adapter-node rejects bodies over 512K by default. Attachments stream to
+# disk and cap themselves at 100 MB, so this only needs to sit above that.
+Environment=BODY_SIZE_LIMIT=101M
 ExecStart=/usr/bin/node build/index.js
 Restart=on-failure
 RestartSec=5

@@ -49,7 +49,9 @@ you're editing" behavior, but no proprietary format and no vendor lock-in.
   search, command palette and a settings dialog (editor prefs stay local;
   trash and API tokens for phones and agents live there too). Dark theme only: Atkinson Hyperlegible
   Next for notes, Space Grotesk for the interface, JetBrains Mono for code.
-- **Attachment preview** — view images in an in-app overlay.
+- **Attachments** — paste or drop any file into a note (up to 100 MB). Images
+  embed and open in an in-app overlay; other files become links that open or
+  download on Ctrl/Cmd+click.
 - **Share links** — per-note public read-only links (`/s/…`) with optional
   password protection; manage them from the Share button in the note bar. Links show
   the note's live content and die when revoked or the note is deleted.
@@ -105,7 +107,10 @@ paste the token into its credential prompt, not the chat.
 
 Tools: notes (`list_notes`, `search_notes`, `read_note`, `create_note`,
 `update_note`, `edit_note`, `append_to_note`, `move_note`, `create_folder`,
-`delete_note`, `list_trash`, `restore_from_trash`, `share_note`), tags and
+`delete_note`, `list_trash`, `restore_from_trash`, `share_note`), attachments
+(`upload_attachment` up to 5 MB as base64, `read_attachment`; bigger files go
+through `curl -T` against `/api/attachments`, which the tool description
+spells out), tags and
 links (`list_tags`, `find_notes_by_tag`, `get_backlinks`) and tasks
 (`list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`,
 `link_task_to_note`, `unlink_task_from_note`, and `get_agenda` for overdue,

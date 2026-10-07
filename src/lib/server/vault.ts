@@ -1,5 +1,9 @@
 import { env } from '$env/dynamic/private';
 import fs from 'node:fs/promises';
+import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import path from 'node:path';
 import { error } from '@sveltejs/kit';
 
@@ -38,16 +42,58 @@ export async function readNote(relPath: string): Promise<string> {
 	}
 }
 
-export async function writeAsset(relPath: string, data: Buffer): Promise<void> {
-	const fullPath = safeResolve(relPath);
-	await fs.mkdir(path.dirname(fullPath), { recursive: true });
-	await fs.writeFile(fullPath, data);
+/**
+ * Streams an upload into `dir` under `name` without holding it in memory:
+ * chunks go to a hidden temp file and abort past `maxBytes`. The finished
+ * file is hard-linked into place, so a clash never overwrites; it retries
+ * as `name-1.ext`, `name-2.ext`, ... Returns the vault-relative path.
+ */
+export async function writeAssetStream(
+	dir: string,
+	name: string,
+	body: ReadableStream<Uint8Array>,
+	maxBytes: number
+): Promise<string> {
+	const fullDir = safeResolve(dir);
+	await fs.mkdir(fullDir, { recursive: true });
+	const tmp = path.join(fullDir, `.upload.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
+	let size = 0;
+	try {
+		await pipeline(
+			Readable.fromWeb(body as WebReadableStream<Uint8Array>),
+			async function* (chunks: AsyncIterable<Uint8Array>) {
+				for await (const chunk of chunks) {
+					size += chunk.byteLength;
+					if (size > maxBytes) throw error(413, `File too large (max ${maxBytes / 1024 / 1024} MB)`);
+					yield chunk;
+				}
+			},
+			createWriteStream(tmp, { flags: 'wx' })
+		);
+		if (size === 0) throw error(400, 'Empty file');
+		const ext = path.extname(name);
+		const stem = name.slice(0, name.length - ext.length);
+		for (let n = 0; ; n++) {
+			const candidate = n ? `${stem}-${n}${ext}` : name;
+			try {
+				await fs.link(tmp, path.join(fullDir, candidate));
+				return dir ? `${dir}/${candidate}` : candidate;
+			} catch (e: unknown) {
+				if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+			}
+		}
+	} finally {
+		await fs.rm(tmp, { force: true });
+	}
 }
 
-export async function readAsset(relPath: string): Promise<Buffer> {
+// Opens a vault file for streaming out; 404 for missing files and folders.
+export async function openAsset(relPath: string): Promise<{ stream: ReadStream; size: number }> {
 	const fullPath = safeResolve(relPath);
 	try {
-		return await fs.readFile(fullPath);
+		const stat = await fs.stat(fullPath);
+		if (!stat.isFile()) throw error(404, 'Not found');
+		return { stream: createReadStream(fullPath), size: stat.size };
 	} catch (e: unknown) {
 		if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw error(404, 'Not found');
 		throw e;
