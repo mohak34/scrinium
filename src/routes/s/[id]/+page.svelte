@@ -22,8 +22,9 @@
 	let password = $state('');
 	let busy = $state(false);
 
-	// Reader zoom on the paper. CSS `zoom` scales text, KaTeX and images
-	// together; print CSS pins it back to 100% so PDFs always come out sane.
+	// Reader zoom on the paper. Scales the base font size (everything inside
+	// is sized in em, KaTeX included) so text reflows inside the viewport
+	// instead of overflowing it on a phone. Print pins it back to 100%.
 	const MIN_ZOOM = 50;
 	const MAX_ZOOM = 200;
 	const ZOOM_STEP = 10;
@@ -193,24 +194,24 @@
 				</span>
 			{/if}
 		</header>
-		<article class="paper" style:zoom={`${zoom}%`}>{@html html}</article>
+		<article class="paper" style:--zoom={zoom / 100}>{@html html}</article>
 	{/if}
 </div>
 
 <style>
+	/* The page scrolls the document itself (the root layout skips its
+	overflow pin on /s/), so phones get native scrolling, pinch zoom and a
+	collapsing URL bar. */
 	.shared {
-		/* Definite height (not min-height): the app shell pins body to
-		overflow hidden, so only a fixed-height box here can scroll. */
-		height: 100vh;
-		overflow-y: auto;
+		min-height: 100dvh;
 		background: #000;
 		color: #eee;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
+		-webkit-text-size-adjust: 100%;
+		text-size-adjust: 100%;
 	}
 	.state {
-		margin-top: 20vh;
+		margin: 20vh 0 0;
+		text-align: center;
 		color: #888;
 	}
 	.lock {
@@ -280,6 +281,8 @@
 		font-size: 0.8rem;
 	}
 	.doc {
+		flex: 1 1 0;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -344,6 +347,15 @@
 		background: #1a1a1a;
 		color: #eee;
 	}
+	@media (pointer: coarse) {
+		.tbtn {
+			width: 36px;
+			height: 36px;
+		}
+		.pct {
+			min-height: 36px;
+		}
+	}
 	.zoom-sep {
 		width: 1px;
 		height: 16px;
@@ -355,16 +367,21 @@
 		color: #161616;
 		font-family:
 			-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-		width: min(720px, calc(100vw - 2rem));
+		width: min(calc(720px * var(--zoom, 1)), calc(100% - 2rem));
 		margin: 24px auto 48px;
-		padding: 48px 56px;
+		padding: 3.2em 3.75em;
 		border-radius: 4px;
-		font-size: 15px;
+		font-size: calc(15px * var(--zoom, 1));
 		line-height: 1.65;
+		overflow-wrap: break-word;
 	}
+	/* Phones: edge-to-edge sheet, fixed gutters so zoom spends width on text. */
 	@media (max-width: 640px) {
 		.paper {
-			padding: 28px 22px;
+			width: 100%;
+			margin: 0;
+			padding: 24px 18px 48px;
+			border-radius: 0;
 		}
 	}
 	.paper :global(h1),
@@ -438,6 +455,23 @@
 	.paper :global(.print-math) :global(.katex-display) {
 		margin: 0;
 	}
+	/* Wide tables scroll sideways inside the sheet instead of the page. */
+	.paper :global(table) {
+		display: block;
+		max-width: 100%;
+		overflow-x: auto;
+		border-collapse: collapse;
+		margin: 1em 0;
+	}
+	.paper :global(th),
+	.paper :global(td) {
+		border: 1px solid #ddd;
+		padding: 0.35em 0.7em;
+		text-align: left;
+	}
+	.paper :global(th) {
+		background: #f5f5f5;
+	}
 	.paper :global(li) {
 		margin: 0.15em 0;
 	}
@@ -477,14 +511,11 @@
 		:global(html),
 		:global(body) {
 			height: auto !important;
-			overflow: visible !important;
 			background: #fff !important;
 		}
 		.shared {
-			height: auto;
-			overflow: visible;
+			min-height: 0;
 			background: #fff;
-			display: block;
 		}
 		.bar {
 			display: none;
@@ -493,8 +524,9 @@
 			margin: 0;
 			width: auto;
 			max-width: none;
+			padding: 48px 56px;
 			border-radius: 0;
-			zoom: 1 !important;
+			font-size: 15px;
 		}
 		.paper :global(a) {
 			text-decoration: none;
