@@ -30,7 +30,8 @@
 	]);
 
 	async function printNote() {
-		await flushSave();
+		// The print page reads the server copy; skip it while a save fails.
+		if (!(await flushSave())) return;
 		goto(`/print?note=${encodeURIComponent(path)}`);
 	}
 </script>

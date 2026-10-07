@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -32,6 +33,18 @@ export function safeResolve(relPath: string): string {
 	return resolved;
 }
 
+// Every vault mutation (write, mkdir, rename, trash, restore, purge) runs one
+// at a time through this in-process queue. Renames and restores check that the
+// target is free and then move onto it; without the queue a concurrent write or
+// rename can land on that target in between and get overwritten. Locked
+// functions must never call each other, or the queue deadlocks.
+let vaultQueue: Promise<unknown> = Promise.resolve();
+function withVaultLock<T>(fn: () => Promise<T>): Promise<T> {
+	const run = vaultQueue.then(fn);
+	vaultQueue = run.catch(() => {});
+	return run;
+}
+
 export async function readNote(relPath: string): Promise<string> {
 	const fullPath = safeResolve(relPath);
 	try {
@@ -45,7 +58,8 @@ export async function readNote(relPath: string): Promise<string> {
 /**
  * Streams an upload into `dir` under `name` without holding it in memory:
  * chunks go to a hidden temp file and abort past `maxBytes`. The finished
- * file is hard-linked into place, so a clash never overwrites; it retries
+ * file is hard-linked into place under the vault lock (the slow stream
+ * stays outside it), so a clash never overwrites; it retries
  * as `name-1.ext`, `name-2.ext`, ... Returns the vault-relative path.
  */
 export async function writeAssetStream(
@@ -56,7 +70,7 @@ export async function writeAssetStream(
 ): Promise<string> {
 	const fullDir = safeResolve(dir);
 	await fs.mkdir(fullDir, { recursive: true });
-	const tmp = path.join(fullDir, `.upload.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
+	const tmp = path.join(fullDir, `.upload.${randomUUID()}.tmp`);
 	let size = 0;
 	try {
 		await pipeline(
@@ -73,15 +87,17 @@ export async function writeAssetStream(
 		if (size === 0) throw error(400, 'Empty file');
 		const ext = path.extname(name);
 		const stem = name.slice(0, name.length - ext.length);
-		for (let n = 0; ; n++) {
-			const candidate = n ? `${stem}-${n}${ext}` : name;
-			try {
-				await fs.link(tmp, path.join(fullDir, candidate));
-				return dir ? `${dir}/${candidate}` : candidate;
-			} catch (e: unknown) {
-				if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+		return await withVaultLock(async () => {
+			for (let n = 0; ; n++) {
+				const candidate = n ? `${stem}-${n}${ext}` : name;
+				try {
+					await fs.link(tmp, path.join(fullDir, candidate));
+					return dir ? `${dir}/${candidate}` : candidate;
+				} catch (e: unknown) {
+					if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+				}
 			}
-		}
+		});
 	} finally {
 		await fs.rm(tmp, { force: true });
 	}
@@ -102,41 +118,64 @@ export async function openAsset(relPath: string): Promise<{ stream: ReadStream; 
 
 // Write to a temp file beside the note, then rename over it: a crash or a
 // full disk mid-write leaves the old note intact instead of a truncated one.
+// The temp name is random so concurrent writes to one note never share it.
 export async function writeNote(relPath: string, content: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
-	await fs.mkdir(path.dirname(fullPath), { recursive: true });
-	const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${process.pid}.${Date.now()}.tmp`);
-	try {
-		await fs.writeFile(tmp, content, 'utf-8');
-		await fs.rename(tmp, fullPath);
-	} catch (e) {
-		await fs.rm(tmp, { force: true });
-		throw e;
-	}
+	return withVaultLock(async () => {
+		await fs.mkdir(path.dirname(fullPath), { recursive: true });
+		const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${randomUUID()}.tmp`);
+		try {
+			await fs.writeFile(tmp, content, 'utf-8');
+			await fs.rename(tmp, fullPath);
+		} catch (e) {
+			await fs.rm(tmp, { force: true });
+			throw e;
+		}
+	});
 }
 
 export async function createFolder(relPath: string): Promise<void> {
-	await fs.mkdir(safeResolve(relPath), { recursive: true });
+	const fullPath = safeResolve(relPath);
+	return withVaultLock(async () => {
+		await fs.mkdir(fullPath, { recursive: true });
+	});
 }
 
+// fs.rename replaces an existing file (or empty folder), so the free check
+// and the move must not interleave with other mutations: hold the vault lock.
 export async function renamePath(oldRelPath: string, newRelPath: string): Promise<void> {
 	const from = safeResolve(oldRelPath);
 	const to = safeResolve(newRelPath);
 	if (from === to) return;
-	try {
-		await fs.access(to);
-		throw error(409, 'Target already exists');
-	} catch (e: unknown) {
-		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-	}
-	await fs.rename(from, to);
+	return withVaultLock(async () => {
+		if (await exists(to)) throw error(409, 'Target already exists');
+		await fs.rename(from, to);
+	});
 }
 
-export async function moveToTrash(relPath: string): Promise<void> {
+async function exists(full: string): Promise<boolean> {
+	try {
+		await fs.access(full);
+		return true;
+	} catch (e: unknown) {
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false;
+		throw e;
+	}
+}
+
+export function moveToTrash(relPath: string): Promise<void> {
+	return withVaultLock(() => trash(relPath));
+}
+
+async function trash(relPath: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
 	if (fullPath === VAULT_DIR || fullPath === TRASH_DIR) throw error(400, 'Invalid path');
 	await fs.mkdir(TRASH_DIR, { recursive: true });
-	const trashName = `${Date.now()}-${path.basename(fullPath)}`;
+	// Bump the stamp if a same-named note was trashed in the same millisecond,
+	// keeping the "<number>-<name>" shape listTrash falls back on.
+	let stamp = Date.now();
+	while (await exists(path.join(TRASH_DIR, `${stamp}-${path.basename(fullPath)}`))) stamp++;
+	const trashName = `${stamp}-${path.basename(fullPath)}`;
 	const dest = path.join(TRASH_DIR, trashName);
 	await fs.rename(fullPath, dest);
 	// Record original location so we can restore. Index is best-effort; a missing
@@ -208,7 +247,11 @@ export async function listTrash(): Promise<TrashEntry[]> {
 	return entries;
 }
 
-export async function restoreFromTrash(trashName: string): Promise<string> {
+export function restoreFromTrash(trashName: string): Promise<string> {
+	return withVaultLock(() => restore(trashName));
+}
+
+async function restore(trashName: string): Promise<string> {
 	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
 		throw error(400, 'Invalid trash name');
 	const src = path.join(TRASH_DIR, trashName);
@@ -225,11 +268,11 @@ export async function restoreFromTrash(trashName: string): Promise<string> {
 	let targetFull = safeResolve(targetRel);
 	try {
 		await fs.access(targetFull);
-		// Find a free name like "name (1).md"
+		// Find a free name like "name (1).md"; never fall through to the taken original.
 		const dir = path.dirname(targetFull);
 		const ext = path.extname(targetFull);
 		const base = path.basename(targetFull, ext);
-		for (let i = 1; i < 100; i++) {
+		for (let i = 1; ; i++) {
 			const candBase = `${base} (${i})${ext}`;
 			const candRel = targetRel.includes('/')
 				? `${targetRel.slice(0, targetRel.lastIndexOf('/'))}/${candBase}`
@@ -259,7 +302,11 @@ export async function restoreFromTrash(trashName: string): Promise<string> {
 	return targetRel;
 }
 
-export async function purgeFromTrash(trashName: string): Promise<void> {
+export function purgeFromTrash(trashName: string): Promise<void> {
+	return withVaultLock(() => purge(trashName));
+}
+
+async function purge(trashName: string): Promise<void> {
 	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
 		throw error(400, 'Invalid trash name');
 	const full = path.join(TRASH_DIR, trashName);
