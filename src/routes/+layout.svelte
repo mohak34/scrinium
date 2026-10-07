@@ -19,7 +19,10 @@
 		// Kill the browser's native right-click menu everywhere - Scrinium
 		// has its own custom context menus, and the editor treats right-click
 		// as an app-level action.
-		const block = (e: MouseEvent) => e.preventDefault();
+		// Public share pages keep it so readers can long-press links on phones.
+		const block = (e: MouseEvent) => {
+			if (!page.url.pathname.startsWith('/s/')) e.preventDefault();
+		};
 		window.addEventListener('contextmenu', block);
 
 		// Ctrl+Shift+1..4 jumps between Notes, Tasks, Board and Calendar.
@@ -41,14 +44,18 @@
 	});
 </script>
 
+<!-- The app shell scrolls its own panes. Share pages are documents and
+scroll the page, which phones need for native scrolling and pinch zoom. -->
 <svelte:head>
-	<style>
-		html,
-		body {
-			height: 100%;
-			overflow: hidden;
-		}
-	</style>
+	{#if !page.url.pathname.startsWith('/s/')}
+		<style>
+			html,
+			body {
+				height: 100%;
+				overflow: hidden;
+			}
+		</style>
+	{/if}
 </svelte:head>
 
 {@render children()}
