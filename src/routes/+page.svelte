@@ -15,7 +15,6 @@
 	import {
 		activePath,
 		loadTree,
-		loadNote,
 		openTabs,
 		scheduleSave,
 		flushSave,
@@ -24,7 +23,10 @@
 		togglePin,
 		scheduleTitleSync,
 		externalContentUpdate,
-		takeActiveRename
+		attachEditor,
+		shownNote,
+		showNote,
+		hideNote
 	} from '$lib/stores/vault';
 	import { settings } from '$lib/stores/settings';
 	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
@@ -33,10 +35,17 @@
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
 	let lastLoadedPath = $state<string | null>('');
-	// The note whose text the editor shows. Lags activePath while the next
-	// note loads, so keystrokes in that window save to the note they were
-	// typed into, never to the one still loading.
-	let shownPath: string | null = null;
+
+	onMount(() =>
+		attachEditor({
+			show(path, content) {
+				if (get(activePath) !== path) return false;
+				currentContent = content;
+				editorRef?.setDoc(content, true);
+				return true;
+			}
+		})
+	);
 
 	// Loading the active note's content happens here so that ANY activePath
 	// change - opening a note, or closeTab switching to a neighbour - reloads
@@ -45,29 +54,17 @@
 	$effect(() => {
 		const path = $activePath;
 		if (path === lastLoadedPath) return;
-		const prev = lastLoadedPath;
 		lastLoadedPath = path;
-		// The open note was renamed or moved (title sync, tree rename, drag):
-		// same note, new path. Keep the editor; reloading would jump the
-		// cursor and drop keystrokes typed during the rename.
-		if (takeActiveRename(prev, path)) {
-			shownPath = path;
-			return;
-		}
+		// The editor already holds this note: it was renamed or moved (same
+		// note, new path), or the user came back before another note loaded.
+		// Reloading would jump the cursor and drop keystrokes.
+		if (path && path === shownNote()) return;
 		if (!path) {
-			shownPath = null;
+			hideNote();
 			currentContent = '';
 			return;
 		}
-		void (async () => {
-			await flushSave();
-			const content = await loadNote(path);
-			if ($activePath === path) {
-				currentContent = content;
-				editorRef?.setDoc(content, true);
-				shownPath = path;
-			}
-		})();
+		void showNote(path);
 	});
 
 	// When a file rename syncs its H1 title (filename -> title), push the
@@ -336,7 +333,7 @@
 
 	function onChange(newContent: string) {
 		currentContent = newContent;
-		const path = shownPath;
+		const path = shownNote();
 		if (path) {
 			scheduleSave(path, newContent);
 			scheduleTitleSync(path, newContent);

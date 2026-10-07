@@ -87,8 +87,8 @@ Scrinium is small, but there are a few footguns specific to it.
    against loops by comparing sanitized values before acting; a rename also
    flushes pending saves first. Don't add a second path that renames notes
    without going through `renameNote` (moves included), or tabs/pins/
-   activePath and queued saves drift. A rename of the open note sets
-   `takeActiveRename` so the page keeps the editor instead of reloading.
+   activePath and queued saves drift. A rename of the open note moves
+   `shownNote()` with it, so the page keeps the editor instead of reloading.
 6. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
    and record the original path in `.trash/index.json`. If you touch trash
    internals, keep that file in sync or restore falls back to guessing from
@@ -104,8 +104,11 @@ Scrinium is small, but there are a few footguns specific to it.
    a save failed; saves typed meanwhile wait, so they never hit a path that
    is mid-rename or mid-delete. `flushSave()` resolves false on a failed
    write - anything else that reads the server copy must check it. The editor is
-   one view for every note: a note switch goes through `setDoc(text, true)`,
-   which also drops undo history - never swap docs another way.
+   one view for every note: a note switch goes through `showNote`, which
+   loads in the queue and prefers the note's unsaved text over the server
+   copy (so a failed save never reopens stale), then `setDoc(text, true)`,
+   which also drops undo history - never swap docs another way. Keystrokes
+   save to `shownNote()`, which lags `activePath` until the load lands.
 9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
 

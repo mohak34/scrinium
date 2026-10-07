@@ -220,14 +220,43 @@ function remapPending(from: string, to: string) {
 	}
 }
 
-// Set when a rename moves the open note, so the page keeps the editor as is
-// (cursor, undo, keystrokes typed during the request) instead of reloading.
-let activeRename: { from: string; to: string } | null = null;
+// The page's editor. `shown` is the note whose text it holds: it lags
+// activePath while the next note loads, so keystrokes save to the note they
+// were typed into, and it follows renames, so the editor is never reloaded
+// for a note it already shows.
+export interface EditorHost {
+	// Put a loaded note in the editor; false when it is no longer wanted.
+	show(path: string, content: string): boolean;
+}
+let editorHost: EditorHost | null = null;
+let shown: string | null = null;
 
-export function takeActiveRename(from: string | null, to: string | null): boolean {
-	const hit = !!activeRename && activeRename.from === from && activeRename.to === to;
-	activeRename = null;
-	return hit;
+export function attachEditor(host: EditorHost): () => void {
+	editorHost = host;
+	return () => {
+		if (editorHost !== host) return;
+		editorHost = null;
+		shown = null;
+	};
+}
+
+export function shownNote(): string | null {
+	return shown;
+}
+
+export function hideNote() {
+	shown = null;
+}
+
+// Load a note into the editor: its unsaved text when a save failed, else
+// the server copy. Runs in the queue, so no write of the note is in flight
+// and text that failed to save is back in pending before it is read.
+export function showNote(path: string): Promise<void> {
+	return enqueue(async () => {
+		await writePending();
+		const content = pending.get(path) ?? (await loadNote(path));
+		if (editorHost?.show(path, content)) shown = path;
+	});
 }
 
 // --- Title <-> filename sync ---
@@ -432,11 +461,12 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 		}).catch(() => null);
 		if (!res?.ok) return false;
 		remapPending(oldPath, newPath);
+		if (shown && (shown === oldPath || shown.startsWith(oldPath + '/'))) {
+			shown = newPath + shown.slice(oldPath.length);
+		}
 		const current = get(activePath);
 		if (current && (current === oldPath || current.startsWith(oldPath + '/'))) {
-			const next = newPath + current.slice(oldPath.length);
-			activeRename = { from: current, to: next };
-			activePath.set(next);
+			activePath.set(newPath + current.slice(oldPath.length));
 		}
 		openTabs.update((tabs) =>
 			tabs.map((t) => {
@@ -468,6 +498,7 @@ export async function deletePath(path: string) {
 		const res = await fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' }).catch(() => null);
 		if (!res?.ok) return false;
 		for (const p of [...pending.keys()]) if (p === path || p.startsWith(path + '/')) pending.delete(p);
+		if (shown && (shown === path || shown.startsWith(path + '/'))) shown = null;
 		const current = get(activePath);
 		if (current && (current === path || current.startsWith(path + '/'))) {
 			activePath.set(null);
