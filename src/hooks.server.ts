@@ -35,6 +35,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const found = await auth.api.getSession({ headers: event.request.headers });
 	const session = found && isAllowedEmail(found.user.email) ? found : null;
 	event.locals.session = session;
+	event.locals.email = session?.user.email ?? null;
 
 	if (!session && !isPublic) {
 		if (event.url.pathname.startsWith('/api')) {
@@ -44,6 +45,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			const bearer = authz?.match(/^Bearer (.+)$/i)?.[1];
 			const email = bearer ? emailForBearerToken(bearer) : null;
 			if (email && isAllowedEmail(email)) {
+				event.locals.email = email;
 				return resolve(event);
 			}
 			return new Response('Unauthorized', { status: 401 });

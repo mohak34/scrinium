@@ -22,9 +22,19 @@ function parseExpiry(v: string | number | null): number {
 	return Number.isFinite(n) ? n : 0;
 }
 
+// API-token requests carry only an email; Google grants hang off the
+// better-auth user row. No row means the web sign-in never happened.
+export function userIdForEmail(email: string): string | null {
+	const row = db.prepare(`SELECT id FROM user WHERE lower(email) = ?`).get(email.toLowerCase()) as
+		| { id: string }
+		| undefined;
+	return row?.id ?? null;
+}
+
 export async function getGoogleAccessToken(
-	userId: string
+	userId: string | null
 ): Promise<{ token: string } | { needsConnect: true }> {
+	if (!userId) return { needsConnect: true };
 	const row = db
 		.prepare(
 			`SELECT accessToken, refreshToken, accessTokenExpiresAt FROM account
@@ -186,7 +196,7 @@ export async function fetchCalendarEvents(
 
 // Cheap connection probe for Settings > Account: a valid token that can
 // read the calendar list.
-export async function calendarConnected(userId: string): Promise<boolean> {
+export async function calendarConnected(userId: string | null): Promise<boolean> {
 	const access = await getGoogleAccessToken(userId);
 	if ('needsConnect' in access) return false;
 	try {
