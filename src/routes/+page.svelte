@@ -434,6 +434,8 @@
 		onToggleSidebar={toggleCollapse}
 		onToggleRightSidebar={toggleRightCollapse}
 		onCommand={(cmd) => editorRef?.runCommand(cmd)}
+		onStepTab={stepTab}
+		onShowShortcuts={() => (helpOpen = true)}
 	/>
 {/if}
 

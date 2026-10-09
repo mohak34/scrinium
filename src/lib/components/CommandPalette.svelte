@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { get } from 'svelte/store';
-	import { searchNotes, activePath, downloadNote, type SearchResult } from '$lib/stores/vault';
-	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
+	import {
+		searchNotes,
+		activePath,
+		downloadNote,
+		togglePin,
+		closeTab,
+		type SearchResult
+	} from '$lib/stores/vault';
+	import { createRequest, focusSearchRequest, renameRequest } from '$lib/stores/actions';
 	import { openSettings } from '$lib/stores/settingsDialog';
 	import { signOut } from '$lib/auth-client';
 
@@ -12,8 +19,24 @@
 		onToggleSidebar: () => void;
 		onToggleRightSidebar: () => void;
 		onCommand: (cmd: string) => void;
+		onStepTab: (dir: 1 | -1) => void;
+		onShowShortcuts: () => void;
 	}
-	let { onSelect, onClose, onToggleSidebar, onToggleRightSidebar, onCommand }: Props = $props();
+	let {
+		onSelect,
+		onClose,
+		onToggleSidebar,
+		onToggleRightSidebar,
+		onCommand,
+		onStepTab,
+		onShowShortcuts
+	}: Props = $props();
+
+	// Run fn on the open note, if there is one.
+	const withNote = (fn: (path: string) => void) => () => {
+		const p = get(activePath);
+		if (p) fn(p);
+	};
 
 	const mod =
 		typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
@@ -50,6 +73,20 @@
 			hint: 'Show or hide the backlinks panel',
 			run: () => onToggleRightSidebar()
 		},
+		{
+			label: 'Pin / unpin note',
+			hint: 'Keep the open note at the top of the sidebar',
+			run: withNote(togglePin)
+		},
+		{
+			label: 'Rename note',
+			hint: 'Rename the open note in the file tree',
+			run: withNote((path) => renameRequest.set({ path }))
+		},
+		{ label: 'Close tab', hint: 'Close the open note', run: withNote(closeTab) },
+		{ label: 'Next tab', hint: 'Cycle open tabs', run: () => onStepTab(1) },
+		{ label: 'Previous tab', hint: 'Cycle open tabs', run: () => onStepTab(-1) },
+		{ label: 'Keyboard shortcuts', hint: 'Show every shortcut', run: () => onShowShortcuts() },
 		{ label: 'Go to Tasks', hint: 'Ctrl+Shift+2', run: () => goto('/tasks') },
 		{ label: 'Go to Board', hint: 'Ctrl+Shift+3', run: () => goto('/tasks/kanban') },
 		{ label: 'Go to Calendar', hint: 'Ctrl+Shift+4', run: () => goto('/tasks/calendar') },
@@ -106,7 +143,7 @@
 			run: () => onCommand('removeTask')
 		},
 		{ label: 'Find in note', hint: `${mod}F`, run: () => onCommand('find') },
-		{ label: 'Find & replace', hint: `${mod}H`, run: () => onCommand('replace') },
+		{ label: 'Find & replace', hint: 'Replace the next match', run: () => onCommand('replace') },
 		{
 			label: 'Download note as Markdown',
 			hint: 'Save the open note as a .md file',
