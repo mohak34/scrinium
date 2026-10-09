@@ -28,7 +28,7 @@
 		hideNote
 	} from '$lib/stores/vault';
 	import { settings } from '$lib/stores/settings';
-	import { createRequest, focusSearchRequest } from '$lib/stores/actions';
+	import { createRequest, focusSearchRequest, renameRequest } from '$lib/stores/actions';
 	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
 
 	let editorRef = $state<CodeEditor>();
@@ -94,6 +94,12 @@
 			sidebarWidth = savedWidth;
 		}
 		loadTree();
+
+		// The sidebar owns the inline rename input, so open it for a rename
+		// asked from the note bar or palette; it picks the request up on mount.
+		const unsubRename = renameRequest.subscribe((req) => {
+			if (req && collapsed) toggleCollapse();
+		});
 
 		const key = (e: KeyboardEvent) => {
 			// Vim-style keys (? help, / search, [ ] tabs). Plain keys with no
@@ -183,6 +189,7 @@
 		});
 		return () => {
 			window.removeEventListener('keydown', key);
+			unsubRename();
 		};
 	});
 
