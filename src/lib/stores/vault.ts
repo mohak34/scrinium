@@ -482,6 +482,7 @@ export async function deletePath(path: string) {
 			activePath.set(null);
 		}
 		openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
+		pinnedPaths.update((pinned) => pinned.filter((p) => p !== path && !p.startsWith(path + '/')));
 		return true;
 	});
 	await loadTree();

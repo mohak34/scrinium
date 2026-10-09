@@ -8,6 +8,7 @@
 	import {
 		tree,
 		pinnedPaths,
+		togglePin,
 		activePath,
 		createNote,
 		createFolder,
@@ -41,7 +42,13 @@
 	}
 	let { onSelect, onOpenAsset, onToggleCollapse }: Props = $props();
 
-	let menu = $state<{ x: number; y: number; entry: VaultEntry | null } | null>(null);
+	// pinRow: opened from the Pinned list, which only offers Unpin.
+	let menu = $state<{
+		x: number;
+		y: number;
+		entry: VaultEntry | null;
+		pinRow?: boolean;
+	} | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ path: string } | null>(null);
 	let treeEl = $state<HTMLDivElement>();
@@ -221,9 +228,22 @@
 	const noteCount = $derived(countNotes($tree));
 	const pinName = (path: string) => (path.split('/').pop() ?? path).replace(/\.md$/, '');
 
+	// Pins are per browser, so a note deleted elsewhere (another device, an
+	// agent) can linger in the list; only show pins that still exist.
+	function hasFile(entries: VaultEntry[], path: string): boolean {
+		return entries.some((e) =>
+			e.type === 'file' ? e.path === path : path.startsWith(e.path + '/') && hasFile(e.children ?? [], path)
+		);
+	}
+	const shownPins = $derived($pinnedPaths.filter((p) => hasFile($tree, p)));
+	const pinLabel = (path: string) => ($pinnedPaths.includes(path) ? 'Unpin' : 'Pin to sidebar');
+
 	const menuItems = $derived.by(() => {
 		if (!menu) return [];
 		const entry = menu.entry;
+		if (entry && menu.pinRow) {
+			return [{ label: 'Unpin', action: () => togglePin(entry.path) }];
+		}
 		if (!entry) {
 			return [
 				{ label: 'New note', action: () => (createTarget = { parent: null, kind: 'note' }) },
@@ -241,6 +261,7 @@
 				items.splice(
 					1,
 					0,
+					{ label: pinLabel(entry.path), action: () => togglePin(entry.path) },
 					{
 						label: 'Download as .md',
 						action: () => void downloadNote(entry.path).catch(() => {})
@@ -300,10 +321,25 @@
 	</div>
 	<SearchBox {onSelect} />
 	<div class="scroll">
-		{#if $pinnedPaths.length > 0}
+		{#if shownPins.length > 0}
 			<div class="group"><span class="material-symbols-outlined">keep</span>Pinned</div>
-			{#each $pinnedPaths as p (p)}
-				<button class="pin-row" class:active={$activePath === p} title={p} onclick={() => onSelect(p)}>
+			{#each shownPins as p (p)}
+				<button
+					class="pin-row"
+					class:active={$activePath === p}
+					title={p}
+					onclick={() => onSelect(p)}
+					oncontextmenu={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						menu = {
+							x: e.clientX,
+							y: e.clientY,
+							entry: { name: pinName(p), path: p, type: 'file' },
+							pinRow: true
+						};
+					}}
+				>
 					<span class="material-symbols-outlined">description</span>
 					<span class="pin-name">{pinName(p)}</span>
 				</button>
