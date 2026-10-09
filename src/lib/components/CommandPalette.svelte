@@ -196,6 +196,23 @@
 		void searchNotes('').then((r) => (recents = r));
 	});
 
+	// Hand focus back on close (the editor, usually), unless the command
+	// moved it somewhere else, like the rename input or the search box.
+	$effect(() => {
+		const prev = document.activeElement;
+		return () =>
+			setTimeout(() => {
+				if (
+					prev instanceof HTMLElement &&
+					prev !== document.body &&
+					prev.isConnected &&
+					(document.activeElement === document.body || document.activeElement === null)
+				) {
+					prev.focus();
+				}
+			});
+	});
+
 	$effect(() => {
 		inputEl?.focus();
 	});
