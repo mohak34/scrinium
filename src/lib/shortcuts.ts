@@ -4,20 +4,28 @@ export interface ShortcutRow {
 	desc: string;
 }
 
+// Sections titled "vim motions on" only fire with Settings > Keyboard > Vim
+// motions enabled (key handlers in src/routes/+page.svelte and Sidebar.svelte).
 export const SHORTCUTS: { title: string; rows: ShortcutRow[] }[] = [
 	{
 		title: 'File tree',
 		rows: [
-			{ keys: 'j k / arrows', desc: 'Move between entries' },
-			{ keys: 'l', desc: 'Expand folder / first child' },
-			{ keys: 'h', desc: 'Collapse folder / parent folder' },
+			{ keys: 'Up / Down', desc: 'Move between entries' },
 			{ keys: 'Enter', desc: 'Open note / toggle folder' }
 		]
 	},
 	{
-		title: 'Leader (Space, then a key)',
+		title: 'File tree (vim motions on)',
 		rows: [
-			{ keys: 'Space p', desc: 'Command palette' },
+			{ keys: 'j k', desc: 'Move between entries' },
+			{ keys: 'l', desc: 'Expand folder / first child' },
+			{ keys: 'h', desc: 'Collapse folder / parent folder' }
+		]
+	},
+	{
+		title: 'Leader (vim motions on: Space, then a key)',
+		rows: [
+			{ keys: 'Space p / Space', desc: 'Command palette' },
 			{ keys: 'Space n / N', desc: 'New note / new folder' },
 			{ keys: 'Space e', desc: 'Focus editor' },
 			{ keys: 'Space f', desc: 'Focus note search' },
@@ -27,21 +35,24 @@ export const SHORTCUTS: { title: string; rows: ShortcutRow[] }[] = [
 		]
 	},
 	{
+		title: 'Single keys (vim motions on)',
+		rows: [
+			{ keys: '/', desc: 'Focus note search' },
+			{ keys: '?', desc: 'This help' },
+			{ keys: '[ / ]', desc: 'Previous / next tab' }
+		]
+	},
+	{
 		title: 'General',
 		rows: [
 			{ keys: 'Ctrl/⌘ K', desc: 'Command palette' },
 			{ keys: 'Ctrl/⌘ Shift 1-4', desc: 'Switch app' },
-			{ keys: '/', desc: 'Focus note search' },
-			{ keys: '?', desc: 'This help' },
 			{ keys: 'Esc', desc: 'Close dialog' }
 		]
 	},
 	{
-		title: 'Tabs',
-		rows: [
-			{ keys: '[', desc: 'Previous tab' },
-			{ keys: ']', desc: 'Next tab' }
-		]
+		title: 'Board',
+		rows: [{ keys: 'Alt arrows', desc: 'Move the focused card' }]
 	},
 	{
 		title: 'Sidebar',

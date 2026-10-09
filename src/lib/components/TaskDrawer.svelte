@@ -80,6 +80,25 @@
 	const kids = $derived(task ? childrenOf($tasks, task.id) : []);
 	const doneKids = $derived(kids.filter((k) => k.status === 'done').length);
 
+	// Tasks this one can move under: open tasks other than itself and its own
+	// subtree (the API rejects cycles), plus the current parent even if done.
+	const parentChoices = $derived.by(() => {
+		if (!task) return [];
+		const own = new Set([task.id]);
+		for (let grew = true; grew; ) {
+			grew = false;
+			for (const t of $tasks) {
+				if (t.parent_id && own.has(t.parent_id) && !own.has(t.id)) {
+					own.add(t.id);
+					grew = true;
+				}
+			}
+		}
+		return $tasks.filter(
+			(t) => !own.has(t.id) && (t.status !== 'done' || t.id === task.parent_id)
+		);
+	});
+
 	// Drafts reset whenever a different task opens, and follow edits made
 	// elsewhere (list row, board, an agent) unless that box has focus.
 	let titleDraft = $state('');
@@ -342,6 +361,25 @@
 					>
 						{#each PRIORITIES as p (p.key)}
 							<option value={p.key}>{p.label}</option>
+						{/each}
+					</select>
+				</div>
+			</div>
+			<div class="kv">
+				<span class="k">Parent</span>
+				<div class="v">
+					<select
+						class="ctl bare grow"
+						value={task.parent_id ?? ''}
+						aria-label="Parent task"
+						onchange={(e) =>
+							void updateTask(task.id, {
+								parent_id: (e.target as HTMLSelectElement).value || null
+							})}
+					>
+						<option value="">None</option>
+						{#each parentChoices as p (p.id)}
+							<option value={p.id}>{p.title}</option>
 						{/each}
 					</select>
 				</div>
@@ -752,6 +790,7 @@
 	}
 	.ctl.grow {
 		flex: 1;
+		min-width: 0;
 	}
 	.ctl.time {
 		width: 104px;
