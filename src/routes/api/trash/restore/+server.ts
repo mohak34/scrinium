@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { restoreFromTrash, isFolder } from '$lib/server/vault';
+import { restoreFromTrash, isFolder, vaultRel } from '$lib/server/vault';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '$env/dynamic/private';
@@ -16,8 +16,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	const restored = await restoreFromTrash(trashName);
 	const restoredRel = restored.path;
 	// Landed under a new name: projects that lived in the trashed folder follow it.
-	if (restored.path !== restored.originalPath && restored.deletedAt != null) {
-		moveTrashedProjects(restored.originalPath, restored.path, restored.deletedAt, isFolder);
+	const from = vaultRel(restored.originalPath);
+	const to = vaultRel(restored.path);
+	if (from !== to && restored.deletedAt != null) {
+		moveTrashedProjects(from, to, restored.deletedAt, isFolder);
 	}
 
 	// Re-index restored files so search/sidebar pick them up without waiting for next save.
