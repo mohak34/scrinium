@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
-import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
+import { createReadStream, createWriteStream, statSync, type ReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
@@ -31,6 +31,14 @@ export function safeResolve(relPath: string): string {
 		throw error(400, 'Invalid path');
 	}
 	return resolved;
+}
+
+export function isFolder(relPath: string): boolean {
+	try {
+		return statSync(safeResolve(relPath)).isDirectory();
+	} catch {
+		return false;
+	}
 }
 
 // Every vault mutation (write, mkdir, rename, trash, restore, purge) runs one

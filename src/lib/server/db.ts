@@ -562,9 +562,17 @@ export function deleteProject(path: string) {
 }
 
 // Moves projects under oldPath to the same place under newPath, tasks with
-// them. A stale row already at the target (its folder was trashed) merges in.
-function moveProjects(oldPath: string, newPath: string, rows: { path: string }[]) {
+// them, but only those whose folder is now there (arrived checks the new
+// path): a nested project sitting in the trash stays where it will restore
+// to. A stale row already at the target (its folder was trashed) merges in.
+function moveProjects(
+	oldPath: string,
+	newPath: string,
+	rows: { path: string }[],
+	arrived: (path: string) => boolean
+) {
 	if (oldPath === newPath) return;
+	rows = rows.filter((r) => arrived(newPath + r.path.slice(oldPath.length)));
 	const move = db.prepare(`UPDATE OR IGNORE projects SET path = ? WHERE path = ?`);
 	const drop = db.prepare(`DELETE FROM projects WHERE path = ?`);
 	const retag = db.prepare(`UPDATE tasks SET project = ? WHERE project = ?`);
@@ -579,31 +587,30 @@ function moveProjects(oldPath: string, newPath: string, rows: { path: string }[]
 }
 
 // A renamed or moved folder takes its projects (and nested ones) along.
-export function renameProjects(oldPath: string, newPath: string) {
+export function renameProjects(
+	oldPath: string,
+	newPath: string,
+	arrived: (path: string) => boolean
+) {
 	const rows = db
 		.prepare(`SELECT path FROM projects WHERE ${under('path')}`)
 		.all(...underArgs(oldPath)) as { path: string }[];
-	moveProjects(oldPath, newPath, rows);
+	moveProjects(oldPath, newPath, rows, arrived);
 }
 
 // A folder restored from the trash under a new name ("P (1)") takes back the
-// projects whose folders came back with it (cameBack checks the new path).
-// Projects registered after the trash belong to whatever now sits at the
-// old path.
+// projects that came back with it. Projects registered after the trash
+// belong to whatever now sits at the old path.
 export function moveTrashedProjects(
 	oldPath: string,
 	newPath: string,
 	deletedAt: number,
-	cameBack: (path: string) => boolean
+	arrived: (path: string) => boolean
 ) {
 	const rows = db
 		.prepare(`SELECT path FROM projects WHERE ${under('path')} AND created_at <= ?`)
 		.all(...underArgs(oldPath), deletedAt) as { path: string }[];
-	moveProjects(
-		oldPath,
-		newPath,
-		rows.filter((r) => cameBack(newPath + r.path.slice(oldPath.length)))
-	);
+	moveProjects(oldPath, newPath, rows, arrived);
 }
 
 // Reminders that are due and haven't fired. Done tasks never fire, and a

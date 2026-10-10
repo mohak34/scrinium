@@ -19,9 +19,11 @@ function wouldCycle(id: string, parentId: string | null): boolean {
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = params.id;
 	if (!id) throw error(400, 'Missing id');
+	const body = await request.json().catch(() => null);
+	// Read after the only await: from here the handler is synchronous, so a
+	// concurrent PATCH can't change the task between this read and the write.
 	const cur = getTask(id);
 	if (!cur) throw error(404, 'Task not found');
-	const body = await request.json().catch(() => null);
 	if (!body || typeof body !== 'object') throw error(400, 'Invalid request');
 
 	const patch: Parameters<typeof updateTask>[1] = {};
@@ -76,7 +78,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	const parentId = patch.parent_id !== undefined ? patch.parent_id : cur.parent_id;
 	if (parentId) patch.project = getTask(parentId)?.project ?? null;
 	const row = updateTask(id, patch)!;
-	if (row.project !== cur.project) setSubtreeProject(id, row.project);
+	if (patch.project !== undefined) setSubtreeProject(id, row.project);
 	return json(row);
 };
 
