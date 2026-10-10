@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
-import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
+import { createReadStream, createWriteStream, statSync, type ReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
@@ -31,6 +31,19 @@ export function safeResolve(relPath: string): string {
 		throw error(400, 'Invalid path');
 	}
 	return resolved;
+}
+
+// The canonical vault-relative form of a path ("./P/" and "/P" are "P").
+export function vaultRel(relPath: string): string {
+	return path.relative(VAULT_DIR, safeResolve(relPath)).split(path.sep).join('/');
+}
+
+export function isFolder(relPath: string): boolean {
+	try {
+		return statSync(safeResolve(relPath)).isDirectory();
+	} catch {
+		return false;
+	}
 }
 
 // Every vault mutation (write, mkdir, rename, trash, restore, purge) runs one
@@ -247,11 +260,19 @@ export async function listTrash(): Promise<TrashEntry[]> {
 	return entries;
 }
 
-export function restoreFromTrash(trashName: string): Promise<string> {
+// path is where the item landed: originalPath, or "name (1)" when that is
+// taken. deletedAt is null for items missing from the index.
+export interface Restored {
+	path: string;
+	originalPath: string;
+	deletedAt: number | null;
+}
+
+export function restoreFromTrash(trashName: string): Promise<Restored> {
 	return withVaultLock(() => restore(trashName));
 }
 
-async function restore(trashName: string): Promise<string> {
+async function restore(trashName: string): Promise<Restored> {
 	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
 		throw error(400, 'Invalid trash name');
 	const src = path.join(TRASH_DIR, trashName);
@@ -299,7 +320,7 @@ async function restore(trashName: string): Promise<string> {
 	try {
 		await writeTrashIndex(idx);
 	} catch {}
-	return targetRel;
+	return { path: targetRel, originalPath, deletedAt: meta?.deletedAt ?? null };
 }
 
 export function purgeFromTrash(trashName: string): Promise<void> {

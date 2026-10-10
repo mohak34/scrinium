@@ -3,6 +3,8 @@
 	import { get } from 'svelte/store';
 	import {
 		tasks,
+		projects,
+		loadTasks,
 		openTaskId,
 		closeTask,
 		openTask,
@@ -365,6 +367,28 @@
 					</select>
 				</div>
 			</div>
+			{#if !task.parent_id}
+				<div class="kv">
+					<span class="k">Project</span>
+					<div class="v">
+						<select
+							class="ctl bare grow"
+							value={task.project ?? ''}
+							aria-label="Project"
+							onchange={async (e) => {
+								// Subtasks follow on the server; reload to show it.
+								if (await updateTask(task.id, { project: (e.target as HTMLSelectElement).value || null }))
+									void loadTasks();
+							}}
+						>
+							<option value="">None</option>
+							{#each $projects as p (p.path)}
+								<option value={p.path}>{p.path}</option>
+							{/each}
+						</select>
+					</div>
+				</div>
+			{/if}
 			<div class="kv">
 				<span class="k">Parent</span>
 				<div class="v">
