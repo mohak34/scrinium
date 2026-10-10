@@ -247,11 +247,19 @@ export async function listTrash(): Promise<TrashEntry[]> {
 	return entries;
 }
 
-export function restoreFromTrash(trashName: string): Promise<string> {
+// path is where the item landed: originalPath, or "name (1)" when that is
+// taken. deletedAt is null for items missing from the index.
+export interface Restored {
+	path: string;
+	originalPath: string;
+	deletedAt: number | null;
+}
+
+export function restoreFromTrash(trashName: string): Promise<Restored> {
 	return withVaultLock(() => restore(trashName));
 }
 
-async function restore(trashName: string): Promise<string> {
+async function restore(trashName: string): Promise<Restored> {
 	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
 		throw error(400, 'Invalid trash name');
 	const src = path.join(TRASH_DIR, trashName);
@@ -299,7 +307,7 @@ async function restore(trashName: string): Promise<string> {
 	try {
 		await writeTrashIndex(idx);
 	} catch {}
-	return targetRel;
+	return { path: targetRel, originalPath, deletedAt: meta?.deletedAt ?? null };
 }
 
 export function purgeFromTrash(trashName: string): Promise<void> {

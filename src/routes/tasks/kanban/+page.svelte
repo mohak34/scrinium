@@ -57,12 +57,16 @@
 	const project = $derived(page.url.searchParams.get('project'));
 	const proj = $derived($projects.find((p) => p.path === project) ?? null);
 
+	// A project that no longer exists (removed or renamed, maybe in another
+	// tab) falls back to the main board once the list has loaded.
+	let projectsLoaded = $state(false);
+	$effect(() => {
+		if (projectsLoaded && project && !proj) void goto('/tasks/kanban', { replaceState: true });
+	});
+
 	onMount(() => {
 		void loadTasks();
-		// A project that no longer exists falls back to the main board.
-		void loadProjects().then((all) => {
-			if (project && !all.some((p) => p.path === project)) void goto('/tasks/kanban', { replaceState: true });
-		});
+		void loadProjects().then(() => (projectsLoaded = true));
 		if (localStorage.getItem(VIEW_KEY) === 'areas') view = 'areas';
 	});
 
@@ -82,6 +86,9 @@
 		const name = projectName(path);
 		return $projects.filter((p) => projectName(p.path) === name).length > 1 ? path : name;
 	}
+
+	// Select value for "New project...": project paths never start with '.'.
+	const NEW_PROJECT = '.new';
 
 	function openProject(path: string | null) {
 		void goto(path ? `/tasks/kanban?project=${encodeURIComponent(path)}` : '/tasks/kanban');
@@ -150,12 +157,13 @@
 		const title = draft.trim();
 		if (!title) return;
 		draft = '';
-		await createTask({
+		const row = await createTask({
 			title,
 			status,
 			area: laneArea === undefined ? (area ?? proj?.area ?? null) : laneArea,
 			project: project ?? null
 		});
+		if (!row && !draft) draft = title;
 	}
 
 	function startAdd(cell: string) {
@@ -411,7 +419,7 @@
 			value={project ?? ''}
 			onchange={(e) => {
 				const el = e.target as HTMLSelectElement;
-				if (el.value === '+') {
+				if (el.value === NEW_PROJECT) {
 					el.value = project ?? '';
 					void newProject();
 				} else openProject(el.value || null);
@@ -421,7 +429,7 @@
 			{#each $projects as p (p.path)}
 				<option value={p.path}>{projectLabel(p.path)}</option>
 			{/each}
-			<option value="+">New project...</option>
+			<option value={NEW_PROJECT}>New project...</option>
 		</select>
 		{#if proj}
 			<select

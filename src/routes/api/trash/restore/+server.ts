@@ -4,7 +4,7 @@ import { restoreFromTrash } from '$lib/server/vault';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '$env/dynamic/private';
-import { upsertNoteMeta, indexNote } from '$lib/server/db';
+import { upsertNoteMeta, indexNote, moveTrashedProjects } from '$lib/server/db';
 import { effectiveTitle } from '$lib/editor/frontmatter';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
@@ -13,7 +13,12 @@ export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json().catch(() => null);
 	const trashName = typeof body?.trashName === 'string' ? body.trashName : '';
 	if (!trashName) throw error(400, 'Missing trashName');
-	const restoredRel = await restoreFromTrash(trashName);
+	const restored = await restoreFromTrash(trashName);
+	const restoredRel = restored.path;
+	// Landed under a new name: projects that lived in the trashed folder follow it.
+	if (restored.path !== restored.originalPath && restored.deletedAt != null) {
+		moveTrashedProjects(restored.originalPath, restored.path, restored.deletedAt);
+	}
 
 	// Re-index restored files so search/sidebar pick them up without waiting for next save.
 	async function reindexRecursive(rel: string) {

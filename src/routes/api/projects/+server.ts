@@ -5,7 +5,9 @@ import { createFolder } from '$lib/server/vault';
 import { isArea } from '$lib/taskModel';
 
 // Projects are vault folders, addressed by path in the body (POST, PATCH) or
-// ?path= (DELETE), since paths carry slashes.
+// ?path= (DELETE), since paths carry slashes. Only a new project's path is
+// cleaned; an existing one is addressed by its stored path exactly, which a
+// folder rename may have set to anything the vault accepts.
 
 // "Projects/scrinium" from whatever the user typed. Hidden segments are
 // refused so a project can't live in .trash.
@@ -33,19 +35,21 @@ export const POST: RequestHandler = async ({ request }) => {
 	const area = cleanArea(body?.area);
 	if (getProject(path)) throw error(409, 'Already a project');
 	await createFolder(path);
-	return json(insertProject(path, area), { status: 201 });
+	const row = insertProject(path, area);
+	if (!row) throw error(409, 'Already a project');
+	return json(row, { status: 201 });
 };
 
 export const PATCH: RequestHandler = async ({ request }) => {
 	const body = await request.json().catch(() => null);
-	const path = cleanPath(body?.path);
-	const row = setProjectArea(path, cleanArea(body?.area));
+	if (typeof body?.path !== 'string') throw error(400, 'Bad path');
+	const row = setProjectArea(body.path, cleanArea(body?.area));
 	if (!row) throw error(404, 'Project not found');
 	return json(row);
 };
 
 export const DELETE: RequestHandler = async ({ url }) => {
-	const path = cleanPath(url.searchParams.get('path'));
+	const path = url.searchParams.get('path') ?? '';
 	if (!getProject(path)) throw error(404, 'Project not found');
 	deleteProject(path);
 	return json({ ok: true });

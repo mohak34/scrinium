@@ -523,13 +523,12 @@ export function getProject(path: string): ProjectRow | undefined {
 	return db.prepare(`SELECT * FROM projects WHERE path = ?`).get(path) as ProjectRow | undefined;
 }
 
-export function insertProject(path: string, area: TaskArea | null): ProjectRow {
-	db.prepare(`INSERT OR IGNORE INTO projects (path, area, created_at) VALUES (?, ?, ?)`).run(
-		path,
-		area,
-		Date.now()
-	);
-	return getProject(path)!;
+// Undefined when the path is already a project.
+export function insertProject(path: string, area: TaskArea | null): ProjectRow | undefined {
+	const { changes } = db
+		.prepare(`INSERT OR IGNORE INTO projects (path, area, created_at) VALUES (?, ?, ?)`)
+		.run(path, area, Date.now());
+	return changes ? getProject(path) : undefined;
 }
 
 export function setProjectArea(path: string, area: TaskArea | null): ProjectRow | undefined {
@@ -546,12 +545,10 @@ export function deleteProject(path: string) {
 	})();
 }
 
-// A renamed or moved folder takes its projects (and theirs, nested) along.
-// A stale row already at the target (its folder was trashed) merges in.
-export function renameProjects(oldPath: string, newPath: string) {
-	const rows = db
-		.prepare(`SELECT path FROM projects WHERE ${under('path')}`)
-		.all(...underArgs(oldPath)) as { path: string }[];
+// Moves projects under oldPath to the same place under newPath, tasks with
+// them. A stale row already at the target (its folder was trashed) merges in.
+function moveProjects(oldPath: string, newPath: string, rows: { path: string }[]) {
+	if (oldPath === newPath) return;
 	const move = db.prepare(`UPDATE OR IGNORE projects SET path = ? WHERE path = ?`);
 	const drop = db.prepare(`DELETE FROM projects WHERE path = ?`);
 	const retag = db.prepare(`UPDATE tasks SET project = ? WHERE project = ?`);
@@ -563,6 +560,24 @@ export function renameProjects(oldPath: string, newPath: string) {
 			retag.run(to, path);
 		}
 	})();
+}
+
+// A renamed or moved folder takes its projects (and nested ones) along.
+export function renameProjects(oldPath: string, newPath: string) {
+	const rows = db
+		.prepare(`SELECT path FROM projects WHERE ${under('path')}`)
+		.all(...underArgs(oldPath)) as { path: string }[];
+	moveProjects(oldPath, newPath, rows);
+}
+
+// A folder restored from the trash under a new name ("P (1)") takes back the
+// projects registered before it was trashed; newer ones belong to whatever
+// now sits at the old path.
+export function moveTrashedProjects(oldPath: string, newPath: string, deletedAt: number) {
+	const rows = db
+		.prepare(`SELECT path FROM projects WHERE ${under('path')} AND created_at <= ?`)
+		.all(...underArgs(oldPath), deletedAt) as { path: string }[];
+	moveProjects(oldPath, newPath, rows);
 }
 
 // Reminders that are due and haven't fired. Done tasks never fire, and a
