@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import TaskDrawer from '$lib/components/TaskDrawer.svelte';
-	import { loadTasks } from '$lib/stores/tasks';
+	import { loadProjects, loadTasks } from '$lib/stores/tasks';
 
 	// Shared frame for Tasks, Board and Calendar: the page on the left, the
 	// task drawer docked on the right while a task is open. Each page owns
@@ -11,8 +11,11 @@
 	// Tasks also change from other tabs, the phone and agents (MCP): reload
 	// when this tab comes back into view.
 	onMount(() => {
+		void loadProjects();
 		const again = () => {
-			if (document.visibilityState === 'visible') void loadTasks();
+			if (document.visibilityState !== 'visible') return;
+			void loadTasks();
+			void loadProjects();
 		};
 		document.addEventListener('visibilitychange', again);
 		window.addEventListener('focus', again);

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		tasks,
 		loadTasks,
@@ -19,15 +21,22 @@
 		type Task,
 		type TaskArea,
 		type TaskStatus,
-		type TaskUpdate as TaskPatch
+		type TaskUpdate as TaskPatch,
+		projects,
+		loadProjects,
+		createProject,
+		setProjectArea,
+		removeProject
 	} from '$lib/stores/tasks';
-	import { areaMeta, DOING_LIMIT } from '$lib/taskModel';
+	import { areaMeta, DOING_LIMIT, onMainBoard, projectName } from '$lib/taskModel';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 
 	// Two views of the same tasks: status columns, or the same columns split
 	// into one row per area. Drag a card to change its status (and its area,
 	// in the area view). Done only shows the last week unless expanded.
+	// ?project=<folder> narrows the board to one project, whose Inbox is its
+	// backlog; the main board leaves that backlog out (onMainBoard).
 	type View = 'columns' | 'areas';
 	const VIEW_KEY = 'scrinium:boardView';
 	let view = $state<View>('columns');
@@ -45,6 +54,21 @@
 	// The area view leaves Inbox out: unplanned work has no row to sit in yet.
 	const LANE_STATUSES = STATUSES.filter((s) => s.key !== 'inbox');
 
+	const project = $derived(page.url.searchParams.get('project'));
+	const proj = $derived($projects.find((p) => p.path === project) ?? null);
+
+	// A project that isn't in the list gets a fresh load before giving up:
+	// one that no longer exists (removed or renamed, maybe in another tab)
+	// falls back to the main board.
+	$effect(() => {
+		if (!project || proj) return;
+		const want = project;
+		void loadProjects().then((rows) => {
+			if (rows && !rows.some((p) => p.path === want) && page.url.searchParams.get('project') === want)
+				void goto('/tasks/kanban', { replaceState: true });
+		});
+	});
+
 	onMount(() => {
 		void loadTasks();
 		if (localStorage.getItem(VIEW_KEY) === 'areas') view = 'areas';
@@ -55,7 +79,37 @@
 		localStorage.setItem(VIEW_KEY, v);
 	}
 
-	const pool = $derived(topLevel($tasks).filter((t) => area == null || t.area === area));
+	const pool = $derived(
+		topLevel($tasks).filter(
+			(t) => (project ? t.project === project : onMainBoard(t)) && (area == null || t.area === area)
+		)
+	);
+
+	// Option label: the folder name, or the whole path when two share a name.
+	function projectLabel(path: string): string {
+		const name = projectName(path);
+		return $projects.filter((p) => projectName(p.path) === name).length > 1 ? path : name;
+	}
+
+	// Select values: "p:<path>" opens a project, NEW_PROJECT makes one.
+	const NEW_PROJECT = 'new';
+
+	function openProject(path: string | null) {
+		void goto(path ? `/tasks/kanban?project=${encodeURIComponent(path)}` : '/tasks/kanban');
+	}
+
+	async function newProject() {
+		const path = prompt('Project folder (created if missing)', 'Projects/');
+		if (!path?.trim()) return;
+		const row = await createProject(path);
+		if (typeof row === 'string') alert(row);
+		else openProject(row.path);
+	}
+
+	async function dropProject(path: string) {
+		if (!confirm(`Remove project "${projectName(path)}"? Its folder and notes stay, its tasks move to the main board.`)) return;
+		if (await removeProject(path)) openProject(null);
+	}
 
 	function cellRows(status: TaskStatus, laneArea?: TaskArea | null): Task[] {
 		let rows = pool.filter(
@@ -92,6 +146,7 @@
 	function subLabel(key: TaskStatus): string {
 		if (key === 'todo') return `Committed for ${weekRange()}`;
 		if (key === 'done') return showAllDone ? 'All time' : 'Last 7 days';
+		if (key === 'inbox' && project) return 'Backlog, only on this board';
 		return STATUSES.find((s) => s.key === key)!.hint;
 	}
 
@@ -106,7 +161,13 @@
 		const title = draft.trim();
 		if (!title) return;
 		draft = '';
-		await createTask({ title, status, area: laneArea === undefined ? area : laneArea });
+		const row = await createTask({
+			title,
+			status,
+			area: laneArea === undefined ? (area ?? proj?.area ?? null) : laneArea,
+			project: project ?? null
+		});
+		if (!row && !draft) draft = title;
 	}
 
 	function startAdd(cell: string) {
@@ -270,8 +331,17 @@
 		}}
 	>
 		{#if overId === t.id && dragId && dragId !== t.id}<div class="ins"></div>{/if}
-		{#if showArea && t.area}
-			<span class="area"><i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}</span>
+		{#if (showArea && t.area) || (!project && t.project)}
+			<div class="tags">
+				{#if showArea && t.area}
+					<span class="area"><i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}</span>
+				{/if}
+				{#if !project && t.project}
+					<span class="area" title={t.project}>
+						<span class="material-symbols-outlined">folder</span>{projectName(t.project)}
+					</span>
+				{/if}
+			</div>
 		{/if}
 		<div class="kt">{t.title}</div>
 		{#if t.status === 'waiting' && (t.waiting_on || t.waiting_since)}
@@ -347,6 +417,41 @@
 <div class="page">
 	<header class="page-h">
 		<AppSwitcher current="board" size="lg" />
+		<select
+			class="pick"
+			aria-label="Project"
+			value={project ? `p:${project}` : ''}
+			onchange={(e) => {
+				const el = e.target as HTMLSelectElement;
+				if (el.value === NEW_PROJECT) {
+					el.value = project ? `p:${project}` : '';
+					void newProject();
+				} else openProject(el.value ? el.value.slice(2) : null);
+			}}
+		>
+			<option value="">All tasks</option>
+			{#each $projects as p (p.path)}
+				<option value="p:{p.path}">{projectLabel(p.path)}</option>
+			{/each}
+			<option value={NEW_PROJECT}>New project...</option>
+		</select>
+		{#if proj}
+			<select
+				class="pick"
+				aria-label="Default area for new tasks"
+				title="Default area for new tasks"
+				value={proj.area ?? ''}
+				onchange={(e) => void setProjectArea(proj.path, ((e.target as HTMLSelectElement).value || null) as TaskArea | null)}
+			>
+				<option value="">No default area</option>
+				{#each AREAS as a (a.key)}
+					<option value={a.key}>Default area: {a.label}</option>
+				{/each}
+			</select>
+			<button class="icon" title="Remove project" onclick={() => void dropProject(proj.path)}>
+				<span class="material-symbols-outlined">folder_off</span>
+			</button>
+		{/if}
 		<span class="cnt">{openCount} open</span>
 		<span class="vsep"></span>
 		<div class="areas" role="group" aria-label="Filter by area">
@@ -482,6 +587,35 @@
 		padding: 0 16px 0 24px;
 		border-bottom: 1px solid var(--line);
 		flex-shrink: 0;
+	}
+	.pick {
+		height: 28px;
+		max-width: 220px;
+		padding: 0 6px;
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-md);
+		background: var(--bg);
+		color: var(--text);
+		font: var(--fs) var(--font-ui);
+		cursor: pointer;
+	}
+	.icon {
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		border-radius: var(--r-md);
+		background: none;
+		color: var(--text-3);
+		cursor: pointer;
+	}
+	.icon:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.icon .material-symbols-outlined {
+		font-size: 18px;
 	}
 	.cnt {
 		color: var(--text-3);
@@ -681,12 +815,22 @@
 		color: var(--text-3);
 		text-decoration: line-through;
 	}
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 12px;
+		padding-right: 18px;
+	}
 	.area {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
 		color: var(--text-2);
 		font-size: var(--fs-xs);
+	}
+	.area .material-symbols-outlined {
+		font-size: 14px;
+		color: var(--text-3);
 	}
 	.kt {
 		color: var(--text);

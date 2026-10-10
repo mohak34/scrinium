@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types';
-import { listTasks, listTasksForNote, insertTask, getTask } from '$lib/server/db';
+import { listTasks, listTasksForNote, insertTask, getTask, getProject } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
 import { parseStamp } from '$lib/server/taskInput';
 
@@ -35,10 +35,16 @@ export const POST: RequestHandler = async ({ request }) => {
 	const detail = typeof body?.detail === 'string' ? body.detail.slice(0, 4000) : '';
 	const priority = isPriority(body?.priority) ? body.priority : 'none';
 	let parent_id: string | null = null;
+	let parentProject: string | null = null;
 	if (typeof body?.parent_id === 'string' && body.parent_id) {
-		if (!getTask(body.parent_id)) throw error(400, 'Bad parent');
-		parent_id = body.parent_id;
+		const parent = getTask(body.parent_id);
+		if (!parent) throw error(400, 'Bad parent');
+		parent_id = parent.id;
+		parentProject = parent.project;
 	}
+	const badProject =
+		body?.project != null && (typeof body.project !== 'string' || !getProject(body.project));
+	if (!parent_id && badProject) throw error(400, 'Bad project');
 	const row = insertTask({
 		id: randomUUID(),
 		title,
@@ -48,6 +54,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		area: isArea(body?.area) ? body.area : null,
 		waiting_on: cleanText(body?.waiting_on, 120),
 		parent_id,
+		// A subtask always carries its parent's project.
+		project: parent_id ? parentProject : (body?.project ?? null),
 		due_at: body?.due_at === undefined ? null : parseStamp(body.due_at, 'due date'),
 		remind_at: body?.remind_at === undefined ? null : parseStamp(body.remind_at, 'reminder')
 	});

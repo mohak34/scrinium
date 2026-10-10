@@ -1,6 +1,14 @@
 import { json, text, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { readNote, writeNote, createFolder, renamePath, moveToTrash } from '$lib/server/vault';
+import {
+	readNote,
+	writeNote,
+	createFolder,
+	renamePath,
+	moveToTrash,
+	isFolder,
+	vaultRel
+} from '$lib/server/vault';
 import { effectiveTitle } from '$lib/editor/frontmatter';
 import {
 	upsertNoteMeta,
@@ -9,7 +17,8 @@ import {
 	indexNote,
 	deleteNoteIndexByPrefix,
 	renameNoteIndex,
-	renameTaskLinks
+	renameTaskLinks,
+	renameProjects
 } from '$lib/server/db';
 import { deleteSharesByPrefix, renameShares } from '$lib/server/shares';
 
@@ -51,6 +60,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	renameNoteIndex(params.path, body.newPath);
 	renameShares(params.path, body.newPath);
 	renameTaskLinks(params.path, body.newPath);
+	renameProjects(vaultRel(params.path), vaultRel(body.newPath), isFolder);
 	return new Response(null, { status: 204 });
 };
 

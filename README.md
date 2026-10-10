@@ -8,6 +8,8 @@ Every note is a `.md` file under `VAULT_DIR`. You can edit, back up, or move not
 
 The editor is CodeMirror 6. It hides markdown syntax and shows it again on the line the cursor is on.
 
+A project is a vault folder with its own board. Pick one or make one from the project menu on the Board. The folder holds the project's notes. The project's Inbox is its backlog and stays on the project board. Its tasks show on the main board and task list once they move to This week or later.
+
 ## Getting started (local)
 
 Copy `.env.example` to `.env` and fill it in:
@@ -41,6 +43,7 @@ The server has these tools:
 - Attachments: `upload_attachment`, `read_attachment`
 - Tags and links: `list_tags`, `find_notes_by_tag`, `get_backlinks`
 - Tasks: `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`, `link_task_to_note`, `unlink_task_from_note`, `get_agenda`
+- Projects: `list_projects`, `create_project`
 
 ## Deployment
 

@@ -278,6 +278,15 @@ State channels you will touch:
   `task_links`), not the vault. `waiting_since` is stamped by `updateTask`
   when a task enters Waiting. `GET /api/tasks?note=` lists tasks linked to a
   note; note renames move `task_links` with the file like shares.
+  Projects: a `projects` row registers a vault folder (`POST /api/projects`
+  creates it); `tasks.project` holds that folder path, and a note/folder
+  rename moves both via `renameProjects`. Rows outlive a trashed folder;
+  a restore under a new name moves the ones whose folders came back.
+  Subtasks always carry their parent's project: the task routes enforce
+  it and `setSubtreeProject` cascades a change on the parent.
+  `onMainBoard` in taskModel.ts keeps a project's Inbox (its backlog) off
+  the main board, the list and `get_agenda`; `?project=` on the board
+  shows one project. The calendar shows every dated task.
   `/tasks` (list + filters), `/tasks/kanban` (columns or by-area lanes, both
   drag and drop), `/tasks/calendar` (month grid + day agenda, drop to
   schedule) share `TaskDrawer.svelte` docked by `tasks/+layout.svelte`.

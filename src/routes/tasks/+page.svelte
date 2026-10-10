@@ -21,7 +21,7 @@
 		type TaskArea,
 		type TaskStatus
 	} from '$lib/stores/tasks';
-	import { areaMeta } from '$lib/taskModel';
+	import { areaMeta, onMainBoard, projectName } from '$lib/taskModel';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 	import AppActions from '$lib/components/AppActions.svelte';
@@ -60,7 +60,9 @@
 		return true;
 	}
 
-	const inArea = $derived(topLevel($tasks).filter((t) => area == null || t.area === area));
+	// Project backlogs stay on their project board (see onMainBoard).
+	const listed = $derived(topLevel($tasks).filter(onMainBoard));
+	const inArea = $derived(listed.filter((t) => area == null || t.area === area));
 
 	const visible = $derived.by(() => {
 		const q = query.trim().toLowerCase();
@@ -105,11 +107,11 @@
 	);
 	const areaCounts = $derived(
 		Object.fromEntries(
-			AREAS.map((a) => [a.key, topLevel($tasks).filter((t) => t.area === a.key && t.status !== 'done').length])
+			AREAS.map((a) => [a.key, listed.filter((t) => t.area === a.key && t.status !== 'done').length])
 		) as Record<TaskArea, number>
 	);
-	const openCount = $derived(topLevel($tasks).filter((t) => t.status !== 'done').length);
-	const overdueCount = $derived(topLevel($tasks).filter(isOverdue).length);
+	const openCount = $derived(listed.filter((t) => t.status !== 'done').length);
+	const overdueCount = $derived(listed.filter(isOverdue).length);
 	const heading = $derived(
 		(area ? `${areaMeta(area).label}: ` : '') + filters.find((f) => f.key === filter)!.label
 	);
@@ -313,6 +315,11 @@
 									{/if}
 									{#if t.area}
 										<span class="m area"><i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}</span>
+									{/if}
+									{#if t.project}
+										<span class="m" title={t.project}>
+											<span class="material-symbols-outlined">folder</span>{projectName(t.project)}
+										</span>
 									{/if}
 									{#if t.link_count > 0}
 										<span class="m" title="Linked notes">

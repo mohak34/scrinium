@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getTask, updateTask, deleteTask } from '$lib/server/db';
+import { getTask, updateTask, deleteTask, getProject, setSubtreeProject } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
 import { parseStamp } from '$lib/server/taskInput';
 
@@ -19,8 +19,11 @@ function wouldCycle(id: string, parentId: string | null): boolean {
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = params.id;
 	if (!id) throw error(400, 'Missing id');
-	if (!getTask(id)) throw error(404, 'Task not found');
 	const body = await request.json().catch(() => null);
+	// Read after the only await: from here the handler is synchronous, so a
+	// concurrent PATCH can't change the task between this read and the write.
+	const cur = getTask(id);
+	if (!cur) throw error(404, 'Task not found');
 	if (!body || typeof body !== 'object') throw error(400, 'Invalid request');
 
 	const patch: Parameters<typeof updateTask>[1] = {};
@@ -58,6 +61,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (wouldCycle(id, parentId)) throw error(400, 'Bad parent');
 		patch.parent_id = parentId;
 	}
+	if (body.project !== undefined) {
+		if (body.project !== null && (typeof body.project !== 'string' || !getProject(body.project)))
+			throw error(400, 'Bad project');
+		patch.project = body.project;
+	}
 	if (body.due_at !== undefined) patch.due_at = parseStamp(body.due_at, 'due date');
 	if (body.remind_at !== undefined) patch.remind_at = parseStamp(body.remind_at, 'reminder');
 	if (body.position !== undefined) {
@@ -65,7 +73,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			throw error(400, 'Bad position');
 		patch.position = body.position;
 	}
-	const row = updateTask(id, patch);
+	// A subtask carries its parent's project, and a project change on any
+	// task carries down to its subtasks.
+	const parentId = patch.parent_id !== undefined ? patch.parent_id : cur.parent_id;
+	if (parentId) patch.project = getTask(parentId)?.project ?? null;
+	const row = updateTask(id, patch)!;
+	if (patch.project !== undefined) setSubtreeProject(id, row.project);
 	return json(row);
 };
 

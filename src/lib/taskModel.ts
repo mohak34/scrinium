@@ -57,3 +57,14 @@ export function statusMeta(key: TaskStatus) {
 export function areaMeta(key: TaskArea) {
 	return AREAS.find((a) => a.key === key)!;
 }
+
+// A project is a vault folder registered as one; tasks point at it by path.
+// Its Inbox is the project backlog and stays on the project board. The
+// main board and list only show a project task once it is planned.
+export function onMainBoard(t: { project: string | null; status: TaskStatus }): boolean {
+	return t.project == null || t.status !== 'inbox';
+}
+
+export function projectName(path: string): string {
+	return path.slice(path.lastIndexOf('/') + 1);
+}
