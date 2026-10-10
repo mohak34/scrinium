@@ -367,11 +367,11 @@
 		color: #161616;
 		font-family:
 			-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-		width: min(calc(720px * var(--zoom, 1)), calc(100% - 2rem));
+		width: min(calc(880px * var(--zoom, 1)), calc(100% - 2rem));
 		margin: 24px auto 48px;
 		padding: 3.2em 3.75em;
 		border-radius: 4px;
-		font-size: calc(15px * var(--zoom, 1));
+		font-size: calc(17px * var(--zoom, 1));
 		line-height: 1.65;
 		overflow-wrap: break-word;
 	}
@@ -382,6 +382,7 @@
 			margin: 0;
 			padding: 24px 18px 48px;
 			border-radius: 0;
+			font-size: calc(15px * var(--zoom, 1));
 		}
 	}
 	.paper :global(h1),
