@@ -433,6 +433,22 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 	return getTask(id);
 }
 
+// Subtasks carry their root's project; a change on the root follows down.
+export function setSubtreeProject(id: string, project: string | null) {
+	const kidsOf = db.prepare(`SELECT id FROM tasks WHERE parent_id = ?`);
+	const set = db.prepare(`UPDATE tasks SET project = ? WHERE id = ?`);
+	const seen = new Set<string>([id]);
+	db.transaction(() => {
+		for (const cur of seen) {
+			for (const k of kidsOf.all(cur) as { id: string }[]) {
+				if (seen.has(k.id)) continue;
+				seen.add(k.id);
+				set.run(project, k.id);
+			}
+		}
+	})();
+}
+
 export function deleteTask(id: string) {
 	// Subtasks belong to their parent - remove the whole subtree, links with
 	// it. Iterative with a seen set, so even a cyclic parent chain ends.
@@ -571,13 +587,23 @@ export function renameProjects(oldPath: string, newPath: string) {
 }
 
 // A folder restored from the trash under a new name ("P (1)") takes back the
-// projects registered before it was trashed; newer ones belong to whatever
-// now sits at the old path.
-export function moveTrashedProjects(oldPath: string, newPath: string, deletedAt: number) {
+// projects whose folders came back with it (cameBack checks the new path).
+// Projects registered after the trash belong to whatever now sits at the
+// old path.
+export function moveTrashedProjects(
+	oldPath: string,
+	newPath: string,
+	deletedAt: number,
+	cameBack: (path: string) => boolean
+) {
 	const rows = db
 		.prepare(`SELECT path FROM projects WHERE ${under('path')} AND created_at <= ?`)
 		.all(...underArgs(oldPath), deletedAt) as { path: string }[];
-	moveProjects(oldPath, newPath, rows);
+	moveProjects(
+		oldPath,
+		newPath,
+		rows.filter((r) => cameBack(newPath + r.path.slice(oldPath.length)))
+	);
 }
 
 // Reminders that are due and haven't fired. Done tasks never fire, and a

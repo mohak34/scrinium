@@ -87,8 +87,8 @@
 		return $projects.filter((p) => projectName(p.path) === name).length > 1 ? path : name;
 	}
 
-	// Select value for "New project...": project paths never start with '.'.
-	const NEW_PROJECT = '.new';
+	// Select values: "p:<path>" opens a project, NEW_PROJECT makes one.
+	const NEW_PROJECT = 'new';
 
 	function openProject(path: string | null) {
 		void goto(path ? `/tasks/kanban?project=${encodeURIComponent(path)}` : '/tasks/kanban');
@@ -416,18 +416,18 @@
 		<select
 			class="pick"
 			aria-label="Project"
-			value={project ?? ''}
+			value={project ? `p:${project}` : ''}
 			onchange={(e) => {
 				const el = e.target as HTMLSelectElement;
 				if (el.value === NEW_PROJECT) {
-					el.value = project ?? '';
+					el.value = project ? `p:${project}` : '';
 					void newProject();
-				} else openProject(el.value || null);
+				} else openProject(el.value ? el.value.slice(2) : null);
 			}}
 		>
 			<option value="">All tasks</option>
 			{#each $projects as p (p.path)}
-				<option value={p.path}>{projectLabel(p.path)}</option>
+				<option value="p:{p.path}">{projectLabel(p.path)}</option>
 			{/each}
 			<option value={NEW_PROJECT}>New project...</option>
 		</select>

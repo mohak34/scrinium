@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getTask, updateTask, deleteTask, getProject } from '$lib/server/db';
+import { getTask, updateTask, deleteTask, getProject, setSubtreeProject } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
 import { parseStamp } from '$lib/server/taskInput';
 
@@ -19,7 +19,8 @@ function wouldCycle(id: string, parentId: string | null): boolean {
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = params.id;
 	if (!id) throw error(400, 'Missing id');
-	if (!getTask(id)) throw error(404, 'Task not found');
+	const cur = getTask(id);
+	if (!cur) throw error(404, 'Task not found');
 	const body = await request.json().catch(() => null);
 	if (!body || typeof body !== 'object') throw error(400, 'Invalid request');
 
@@ -70,7 +71,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			throw error(400, 'Bad position');
 		patch.position = body.position;
 	}
-	const row = updateTask(id, patch);
+	// A subtask carries its parent's project, and a project change on any
+	// task carries down to its subtasks.
+	const parentId = patch.parent_id !== undefined ? patch.parent_id : cur.parent_id;
+	if (parentId) patch.project = getTask(parentId)?.project ?? null;
+	const row = updateTask(id, patch)!;
+	if (row.project !== cur.project) setSubtreeProject(id, row.project);
 	return json(row);
 };
 

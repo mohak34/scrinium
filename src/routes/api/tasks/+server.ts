@@ -42,8 +42,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		parent_id = parent.id;
 		parentProject = parent.project;
 	}
-	if (body?.project != null && (typeof body.project !== 'string' || !getProject(body.project)))
-		throw error(400, 'Bad project');
+	const badProject =
+		body?.project != null && (typeof body.project !== 'string' || !getProject(body.project));
+	if (!parent_id && badProject) throw error(400, 'Bad project');
 	const row = insertTask({
 		id: randomUUID(),
 		title,
@@ -53,8 +54,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		area: isArea(body?.area) ? body.area : null,
 		waiting_on: cleanText(body?.waiting_on, 120),
 		parent_id,
-		// A subtask joins its parent's project unless told otherwise.
-		project: body?.project === undefined ? parentProject : body.project,
+		// A subtask always carries its parent's project.
+		project: parent_id ? parentProject : (body?.project ?? null),
 		due_at: body?.due_at === undefined ? null : parseStamp(body.due_at, 'due date'),
 		remind_at: body?.remind_at === undefined ? null : parseStamp(body.remind_at, 'reminder')
 	});

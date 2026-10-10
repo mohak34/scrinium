@@ -418,7 +418,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		remind_at: When.nullable().optional().describe('When to show a reminder, independent of due'),
 		waiting_on: z.string().max(120).nullable().optional().describe('Who a waiting task is blocked on'),
 		parent_id: z.string().nullable().optional().describe('Make this a subtask of another task'),
-		project: z.string().nullable().optional().describe('Project folder path from list_projects')
+		project: z.string().nullable().optional().describe('Project folder path from list_projects. Subtasks always follow their parent.')
 	};
 
 	server.registerTool(
@@ -540,7 +540,15 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			const now = Date.now();
 			const today = dayOf(now);
 			const weekEnd = dayOf(now + 7 * 86400000);
-			const open = (await allTasks()).filter((t) => t.status !== 'done' && onMainBoard(t));
+			// Same view as the main board: a project's backlog, and subtasks
+			// under a backlog task, stay on the project board.
+			const all = await allTasks();
+			const byId = new Map(all.map((t) => [t.id, t]));
+			const parentOf = (t: TaskRow) => (t.parent_id ? byId.get(t.parent_id) : undefined);
+			const open = all.filter((t) => {
+				const p = parentOf(t);
+				return t.status !== 'done' && onMainBoard(t) && (!p || onMainBoard(p));
+			});
 			const dated = open.filter((t) => t.due_at != null).sort((a, b) => a.due_at! - b.due_at!);
 			const day = (t: TaskRow) => dayOf(t.due_at!);
 			return result({
