@@ -173,16 +173,16 @@ export interface Project {
 
 export const projects = writable<Project[]>([]);
 
-// Bumped by every project change made here, so a list fetched before the
-// change can't land after it and undo it.
-let projectsGen = 0;
+// Only the newest load lands. Every project change here starts a fresh load
+// once it succeeds, so a list fetched before the change can't undo it.
+let projectsLoad = 0;
 
 export async function loadProjects(): Promise<Project[]> {
-	const gen = projectsGen;
+	const n = ++projectsLoad;
 	const res = await fetch('/api/projects', { credentials: 'include' }).catch(() => null);
-	if (!res?.ok || gen !== projectsGen) return get(projects);
+	if (!res?.ok || n !== projectsLoad) return get(projects);
 	const rows = (await res.json()) as Project[];
-	if (gen !== projectsGen) return get(projects);
+	if (n !== projectsLoad) return get(projects);
 	projects.set(rows);
 	return rows;
 }
@@ -197,11 +197,10 @@ const sendProject = (method: string, body: unknown) =>
 
 /** Registers a folder (created when missing). Resolves to an error message on failure. */
 export async function createProject(path: string, area: TaskArea | null = null): Promise<Project | string> {
-	projectsGen++;
 	const res = await sendProject('POST', { path, area });
 	if (!res?.ok) return (await res?.json().catch(() => null))?.message ?? 'Could not create the project';
 	const row = (await res.json()) as Project;
-	projectsGen++;
+	void loadProjects();
 	projects.update((all) =>
 		[...all.filter((p) => p.path !== row.path), row].sort((a, b) => a.path.localeCompare(b.path))
 	);
@@ -209,24 +208,22 @@ export async function createProject(path: string, area: TaskArea | null = null):
 }
 
 export async function setProjectArea(path: string, area: TaskArea | null): Promise<boolean> {
-	projectsGen++;
 	const res = await sendProject('PATCH', { path, area });
 	if (!res?.ok) return false;
 	const row = (await res.json()) as Project;
-	projectsGen++;
+	void loadProjects();
 	projects.update((all) => all.map((p) => (p.path === path ? row : p)));
 	return true;
 }
 
 /** Unregisters the project; the folder stays and its tasks join the main board. */
 export async function removeProject(path: string): Promise<boolean> {
-	projectsGen++;
 	const res = await fetch(`/api/projects?path=${encodeURIComponent(path)}`, {
 		method: 'DELETE',
 		credentials: 'include'
 	}).catch(() => null);
 	if (!res?.ok) return false;
-	projectsGen++;
+	void loadProjects();
 	projects.update((all) => all.filter((p) => p.path !== path));
 	tasks.update((all) => all.map((t) => (t.project === path ? { ...t, project: null } : t)));
 	return true;
