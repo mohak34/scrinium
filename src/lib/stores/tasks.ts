@@ -172,22 +172,24 @@ export interface Project {
 }
 
 export const projects = writable<Project[]>([]);
-// True once a project list has landed, so "no such project" means it.
-export const projectsLoaded = writable(false);
 
-// Only the newest load lands. Every project change here starts a fresh load
-// once it succeeds, so a list fetched before the change can't undo it.
+// Only the newest load lands; an older one resolves with the newest one's
+// result, so every caller sees the list the store ends up with (null if
+// that load failed). Every project change here starts a fresh load once it
+// succeeds, so a list fetched before the change can't undo it.
 let projectsLoad = 0;
+let latestLoad: Promise<Project[] | null> = Promise.resolve(null);
 
-export async function loadProjects(): Promise<Project[]> {
+export function loadProjects(): Promise<Project[] | null> {
 	const n = ++projectsLoad;
-	const res = await fetch('/api/projects', { credentials: 'include' }).catch(() => null);
-	if (!res?.ok || n !== projectsLoad) return get(projects);
-	const rows = (await res.json()) as Project[];
-	if (n !== projectsLoad) return get(projects);
-	projects.set(rows);
-	projectsLoaded.set(true);
-	return rows;
+	latestLoad = (async () => {
+		const res = await fetch('/api/projects', { credentials: 'include' }).catch(() => null);
+		const rows = res?.ok ? ((await res.json().catch(() => null)) as Project[] | null) : null;
+		if (n !== projectsLoad) return latestLoad;
+		if (rows) projects.set(rows);
+		return rows;
+	})();
+	return latestLoad;
 }
 
 const sendProject = (method: string, body: unknown) =>

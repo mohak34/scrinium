@@ -23,7 +23,7 @@
 		type TaskStatus,
 		type TaskUpdate as TaskPatch,
 		projects,
-		projectsLoaded,
+		loadProjects,
 		createProject,
 		setProjectArea,
 		removeProject
@@ -57,11 +57,16 @@
 	const project = $derived(page.url.searchParams.get('project'));
 	const proj = $derived($projects.find((p) => p.path === project) ?? null);
 
-	// A project that no longer exists (removed or renamed, maybe in another
-	// tab) falls back to the main board once the list has loaded. The tasks
-	// layout loads the list.
+	// A project that isn't in the list gets a fresh load before giving up:
+	// one that no longer exists (removed or renamed, maybe in another tab)
+	// falls back to the main board.
 	$effect(() => {
-		if ($projectsLoaded && project && !proj) void goto('/tasks/kanban', { replaceState: true });
+		if (!project || proj) return;
+		const want = project;
+		void loadProjects().then((rows) => {
+			if (rows && !rows.some((p) => p.path === want) && page.url.searchParams.get('project') === want)
+				void goto('/tasks/kanban', { replaceState: true });
+		});
 	});
 
 	onMount(() => {

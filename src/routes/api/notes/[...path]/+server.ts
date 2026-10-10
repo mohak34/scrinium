@@ -6,7 +6,8 @@ import {
 	createFolder,
 	renamePath,
 	moveToTrash,
-	isFolder
+	isFolder,
+	vaultRel
 } from '$lib/server/vault';
 import { effectiveTitle } from '$lib/editor/frontmatter';
 import {
@@ -59,7 +60,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	renameNoteIndex(params.path, body.newPath);
 	renameShares(params.path, body.newPath);
 	renameTaskLinks(params.path, body.newPath);
-	renameProjects(params.path, body.newPath, isFolder);
+	renameProjects(vaultRel(params.path), vaultRel(body.newPath), isFolder);
 	return new Response(null, { status: 204 });
 };
 

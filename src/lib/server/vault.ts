@@ -33,6 +33,11 @@ export function safeResolve(relPath: string): string {
 	return resolved;
 }
 
+// The canonical vault-relative form of a path ("./P/" and "/P" are "P").
+export function vaultRel(relPath: string): string {
+	return path.relative(VAULT_DIR, safeResolve(relPath)).split(path.sep).join('/');
+}
+
 export function isFolder(relPath: string): boolean {
 	try {
 		return statSync(safeResolve(relPath)).isDirectory();
