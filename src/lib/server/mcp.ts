@@ -544,11 +544,15 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			// under a backlog task, stay on the project board.
 			const all = await allTasks();
 			const byId = new Map(all.map((t) => [t.id, t]));
-			const parentOf = (t: TaskRow) => (t.parent_id ? byId.get(t.parent_id) : undefined);
-			const open = all.filter((t) => {
-				const p = parentOf(t);
-				return t.status !== 'done' && onMainBoard(t) && (!p || onMainBoard(p));
-			});
+			const shown = (t: TaskRow) => {
+				const seen = new Set<string>();
+				for (let a: TaskRow | undefined = t; a && !seen.has(a.id); a = byId.get(a.parent_id ?? '')) {
+					if (!onMainBoard(a)) return false;
+					seen.add(a.id);
+				}
+				return true;
+			};
+			const open = all.filter((t) => t.status !== 'done' && shown(t));
 			const dated = open.filter((t) => t.due_at != null).sort((a, b) => a.due_at! - b.due_at!);
 			const day = (t: TaskRow) => dayOf(t.due_at!);
 			return result({

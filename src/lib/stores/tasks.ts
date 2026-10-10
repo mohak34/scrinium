@@ -172,6 +172,8 @@ export interface Project {
 }
 
 export const projects = writable<Project[]>([]);
+// True once a project list has landed, so "no such project" means it.
+export const projectsLoaded = writable(false);
 
 // Only the newest load lands. Every project change here starts a fresh load
 // once it succeeds, so a list fetched before the change can't undo it.
@@ -184,6 +186,7 @@ export async function loadProjects(): Promise<Project[]> {
 	const rows = (await res.json()) as Project[];
 	if (n !== projectsLoad) return get(projects);
 	projects.set(rows);
+	projectsLoaded.set(true);
 	return rows;
 }
 
