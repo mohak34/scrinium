@@ -9,7 +9,8 @@ import {
 	indexNote,
 	deleteNoteIndexByPrefix,
 	renameNoteIndex,
-	renameTaskLinks
+	renameTaskLinks,
+	renameProjects
 } from '$lib/server/db';
 import { deleteSharesByPrefix, renameShares } from '$lib/server/shares';
 
@@ -51,6 +52,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	renameNoteIndex(params.path, body.newPath);
 	renameShares(params.path, body.newPath);
 	renameTaskLinks(params.path, body.newPath);
+	renameProjects(params.path, body.newPath);
 	return new Response(null, { status: 204 });
 };
 

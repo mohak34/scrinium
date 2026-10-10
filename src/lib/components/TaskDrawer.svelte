@@ -3,6 +3,7 @@
 	import { get } from 'svelte/store';
 	import {
 		tasks,
+		projects,
 		openTaskId,
 		closeTask,
 		openTask,
@@ -361,6 +362,25 @@
 					>
 						{#each PRIORITIES as p (p.key)}
 							<option value={p.key}>{p.label}</option>
+						{/each}
+					</select>
+				</div>
+			</div>
+			<div class="kv">
+				<span class="k">Project</span>
+				<div class="v">
+					<select
+						class="ctl bare grow"
+						value={task.project ?? ''}
+						aria-label="Project"
+						onchange={(e) =>
+							void updateTask(task.id, {
+								project: (e.target as HTMLSelectElement).value || null
+							})}
+					>
+						<option value="">None</option>
+						{#each $projects as p (p.path)}
+							<option value={p.path}>{p.path}</option>
 						{/each}
 					</select>
 				</div>

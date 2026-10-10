@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getTask, updateTask, deleteTask } from '$lib/server/db';
+import { getTask, updateTask, deleteTask, getProject } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
 import { parseStamp } from '$lib/server/taskInput';
 
@@ -57,6 +57,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (parentId && !getTask(parentId)) throw error(400, 'Bad parent');
 		if (wouldCycle(id, parentId)) throw error(400, 'Bad parent');
 		patch.parent_id = parentId;
+	}
+	if (body.project !== undefined) {
+		if (body.project !== null && (typeof body.project !== 'string' || !getProject(body.project)))
+			throw error(400, 'Bad project');
+		patch.project = body.project;
 	}
 	if (body.due_at !== undefined) patch.due_at = parseStamp(body.due_at, 'due date');
 	if (body.remind_at !== undefined) patch.remind_at = parseStamp(body.remind_at, 'reminder');

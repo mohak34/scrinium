@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types';
-import { listTasks, listTasksForNote, insertTask, getTask } from '$lib/server/db';
+import { listTasks, listTasksForNote, insertTask, getTask, getProject } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
 import { parseStamp } from '$lib/server/taskInput';
 
@@ -39,6 +39,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (!getTask(body.parent_id)) throw error(400, 'Bad parent');
 		parent_id = body.parent_id;
 	}
+	if (body?.project != null && (typeof body.project !== 'string' || !getProject(body.project)))
+		throw error(400, 'Bad project');
 	const row = insertTask({
 		id: randomUUID(),
 		title,
@@ -48,6 +50,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		area: isArea(body?.area) ? body.area : null,
 		waiting_on: cleanText(body?.waiting_on, 120),
 		parent_id,
+		project: body?.project ?? null,
 		due_at: body?.due_at === undefined ? null : parseStamp(body.due_at, 'due date'),
 		remind_at: body?.remind_at === undefined ? null : parseStamp(body.remind_at, 'reminder')
 	});

@@ -288,6 +288,7 @@ db.exec(`
 	if (!names.has('area')) db.exec(`ALTER TABLE tasks ADD COLUMN area TEXT`);
 	if (!names.has('waiting_on')) db.exec(`ALTER TABLE tasks ADD COLUMN waiting_on TEXT`);
 	if (!names.has('waiting_since')) db.exec(`ALTER TABLE tasks ADD COLUMN waiting_since INTEGER`);
+	if (!names.has('project')) db.exec(`ALTER TABLE tasks ADD COLUMN project TEXT`);
 	if (names.has('note_path')) {
 		// Old single-note column folds into the links table, then goes away.
 		db.prepare(
@@ -312,6 +313,7 @@ export interface TaskRow {
 	waiting_on: string | null;
 	waiting_since: number | null;
 	parent_id: string | null;
+	project: string | null;
 	due_at: number | null;
 	remind_at: number | null;
 	notified_at: number | null;
@@ -345,6 +347,7 @@ export interface NewTask {
 	area?: TaskArea | null;
 	waiting_on?: string | null;
 	parent_id?: string | null;
+	project?: string | null;
 	due_at?: number | null;
 	remind_at?: number | null;
 	position?: number;
@@ -354,8 +357,8 @@ export function insertTask(t: NewTask): TaskRow {
 	const now = Date.now();
 	db.prepare(
 		`INSERT INTO tasks (id, title, detail, status, priority, area, waiting_on, waiting_since,
-		 parent_id, due_at, remind_at, position, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 parent_id, project, due_at, remind_at, position, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		t.id,
 		t.title,
@@ -366,6 +369,7 @@ export function insertTask(t: NewTask): TaskRow {
 		t.waiting_on ?? null,
 		t.status === 'waiting' ? now : null,
 		t.parent_id ?? null,
+		t.project ?? null,
 		t.due_at ?? null,
 		t.remind_at ?? null,
 		t.position ?? now,
@@ -385,6 +389,7 @@ export type TaskPatch = Partial<
 		| 'area'
 		| 'waiting_on'
 		| 'parent_id'
+		| 'project'
 		| 'due_at'
 		| 'remind_at'
 		| 'position'
@@ -404,7 +409,7 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 	}
 	db.prepare(
 		`UPDATE tasks SET title = ?, detail = ?, status = ?, priority = ?, area = ?,
-		 waiting_on = ?, waiting_since = ?, parent_id = ?,
+		 waiting_on = ?, waiting_since = ?, parent_id = ?, project = ?,
 		 due_at = ?, remind_at = ?, notified_at = ?,
 		 position = ?, updated_at = ?, gcal_event_id = ? WHERE id = ?`
 	).run(
@@ -416,6 +421,7 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 		next.waiting_on,
 		next.waiting_since,
 		next.parent_id,
+		next.project,
 		next.due_at,
 		next.remind_at,
 		next.notified_at,
@@ -489,6 +495,74 @@ export function addTaskLink(taskId: string, notePath: string): string[] {
 export function removeTaskLink(taskId: string, notePath: string): string[] {
 	db.prepare(`DELETE FROM task_links WHERE task_id = ? AND note_path = ?`).run(taskId, notePath);
 	return listTaskLinks(taskId);
+}
+
+// Projects: vault folders registered as a project board. The folder holds
+// the project's notes; tasks.project holds the folder path. area is the
+// default for tasks created on the board. Rows outlive a trashed folder, so
+// restoring it brings the project back as it was.
+db.exec(`
+	CREATE TABLE IF NOT EXISTS projects (
+		path TEXT PRIMARY KEY,
+		area TEXT,
+		created_at INTEGER NOT NULL
+	);
+`);
+
+export interface ProjectRow {
+	path: string;
+	area: TaskArea | null;
+	created_at: number;
+}
+
+export function listProjects(): ProjectRow[] {
+	return db.prepare(`SELECT * FROM projects ORDER BY path COLLATE NOCASE`).all() as ProjectRow[];
+}
+
+export function getProject(path: string): ProjectRow | undefined {
+	return db.prepare(`SELECT * FROM projects WHERE path = ?`).get(path) as ProjectRow | undefined;
+}
+
+export function insertProject(path: string, area: TaskArea | null): ProjectRow {
+	db.prepare(`INSERT OR IGNORE INTO projects (path, area, created_at) VALUES (?, ?, ?)`).run(
+		path,
+		area,
+		Date.now()
+	);
+	return getProject(path)!;
+}
+
+export function setProjectArea(path: string, area: TaskArea | null): ProjectRow | undefined {
+	db.prepare(`UPDATE projects SET area = ? WHERE path = ?`).run(area, path);
+	return getProject(path);
+}
+
+// Unregistering a project leaves its folder alone; its tasks fall back to
+// the main board.
+export function deleteProject(path: string) {
+	db.transaction(() => {
+		db.prepare(`UPDATE tasks SET project = NULL WHERE project = ?`).run(path);
+		db.prepare(`DELETE FROM projects WHERE path = ?`).run(path);
+	})();
+}
+
+// A renamed or moved folder takes its projects (and theirs, nested) along.
+// A stale row already at the target (its folder was trashed) merges in.
+export function renameProjects(oldPath: string, newPath: string) {
+	const rows = db
+		.prepare(`SELECT path FROM projects WHERE ${under('path')}`)
+		.all(...underArgs(oldPath)) as { path: string }[];
+	const move = db.prepare(`UPDATE OR IGNORE projects SET path = ? WHERE path = ?`);
+	const drop = db.prepare(`DELETE FROM projects WHERE path = ?`);
+	const retag = db.prepare(`UPDATE tasks SET project = ? WHERE project = ?`);
+	db.transaction(() => {
+		for (const { path } of rows) {
+			const to = newPath + path.slice(oldPath.length);
+			move.run(to, path);
+			drop.run(path);
+			retag.run(to, path);
+		}
+	})();
 }
 
 // Reminders that are due and haven't fired. Done tasks never fire, and a
