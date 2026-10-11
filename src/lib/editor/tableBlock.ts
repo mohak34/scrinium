@@ -25,7 +25,8 @@ import {
 	setPreviewMode
 } from './livePreview';
 import { findTableRanges } from './tableRanges';
-import { inlineMathRegex } from './mathRanges';
+import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
+import { parseFrontmatter } from './frontmatter';
 import { findWikilinksInText } from './wikilinks';
 
 type Render = typeof import('$lib/print/renderNote').renderNoteToHtml;
@@ -77,7 +78,9 @@ function tableHtml(
 /**
  * Spans in a source row whose pipes don't split cells: the renderer swaps
  * inline code, inline math and wikilinks out before markdown-it sees the
- * row, in that order. Offsets are relative to the row.
+ * row, in that order, each pass over the text the last one left. Masking
+ * each span before the next pass repeats that. Offsets are relative to the
+ * row.
  */
 function protectedSpans(
 	state: EditorState,
@@ -85,21 +88,29 @@ function protectedSpans(
 	text: string
 ): { from: number; to: number }[] {
 	const spans: { from: number; to: number }[] = [];
+	let masked = text;
+	const mask = (found: { from: number; to: number }[]) => {
+		for (const s of found) {
+			spans.push(s);
+			masked = masked.slice(0, s.from) + 'x'.repeat(s.to - s.from) + masked.slice(s.to);
+		}
+	};
+	const code: { from: number; to: number }[] = [];
 	syntaxTree(state).iterate({
 		from,
 		to: from + text.length,
 		enter: (n) => {
-			if (n.name === 'InlineCode') spans.push({ from: n.from - from, to: n.to - from });
+			if (n.name === 'InlineCode') code.push({ from: n.from - from, to: n.to - from });
 		}
 	});
-	const free = (a: number, b: number) => !spans.some((s) => a < s.to && s.from < b);
-	for (const m of text.matchAll(inlineMathRegex())) {
-		if (free(m.index, m.index + m[0].length))
-			spans.push({ from: m.index, to: m.index + m[0].length });
-	}
-	for (const w of findWikilinksInText(text)) {
-		if (free(w.from, w.to)) spans.push(w);
-	}
+	mask(code);
+	mask(
+		Array.from(masked.matchAll(inlineMathRegex()), (m) => ({
+			from: m.index,
+			to: m.index + m[0].length
+		}))
+	);
+	mask(findWikilinksInText(masked));
 	return spans;
 }
 
@@ -163,11 +174,11 @@ class TableWidget extends WidgetType {
 		const link = target.closest('a');
 		if (link && (e.ctrlKey || e.metaKey)) {
 			// markdown-it percent-encodes the href and resolveAssetUrl encodes
-			// again, so a relative one is decoded first (as for images).
+			// each path segment again, so a relative one is decoded fully first.
 			let href = link.getAttribute('href') ?? '';
 			if (!/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('/')) {
 				try {
-					href = decodeURI(href);
+					href = decodeURIComponent(href);
 				} catch {}
 			}
 			const url = resolveAssetUrl(href, this.noteDir);
@@ -215,13 +226,27 @@ function isRangeActive(state: EditorState, from: number, to: number): boolean {
 
 const sourceLine = Decoration.line({ class: 'cm-table-source' });
 
-// Top-level `[ref]: url` lines, appended to each table's render so
-// reference links in cells resolve like they do in the full note.
+const REF_CONTAINERS = new Set(['Document', 'Blockquote', 'BulletList', 'OrderedList', 'ListItem']);
+
+// The note's `[ref]: url` definitions (any depth, quote and indent prefixes
+// dropped), appended to each table's render so reference links in cells
+// resolve like they do in the full note. Frontmatter and display math are
+// not markdown to the renderer, so definitions there don't count.
 function linkReferences(state: EditorState): string {
+	const fmEnd = parseFrontmatter(state.doc.toString())?.bodyStart ?? 0;
+	const math = findMathBlockRanges(state);
 	const refs: string[] = [];
-	for (let n = syntaxTree(state).topNode.firstChild; n; n = n.nextSibling) {
-		if (n.name === 'LinkReference') refs.push(state.doc.sliceString(n.from, n.to));
-	}
+	syntaxTree(state).iterate({
+		enter: (n) => {
+			if (n.name === 'LinkReference') {
+				if (n.from >= fmEnd && !math.some((r) => n.from < r.to && r.from < n.to)) {
+					refs.push(state.doc.sliceString(n.from, n.to).replace(/^[ \t]*(?:>[ \t]?)*/gm, ''));
+				}
+				return false;
+			}
+			return REF_CONTAINERS.has(n.name);
+		}
+	});
 	return refs.join('\n');
 }
 
