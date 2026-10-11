@@ -195,6 +195,13 @@ class TableWidget extends WidgetType {
 			e.preventDefault();
 			return;
 		}
+		// A wide table scrolls itself; a press below its client box is on
+		// the scrollbar, so the browser keeps it.
+		if (
+			target instanceof HTMLTableElement &&
+			e.clientY >= target.getBoundingClientRect().top + target.clientTop + target.clientHeight
+		)
+			return;
 		e.preventDefault();
 		const start = view.posAtDOM(div);
 		const first = view.state.doc.lineAt(start).number;
