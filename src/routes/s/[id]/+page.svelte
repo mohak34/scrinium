@@ -456,23 +456,6 @@
 	.paper :global(.print-math) :global(.katex-display) {
 		margin: 0;
 	}
-	/* Wide tables scroll sideways inside the sheet instead of the page. */
-	.paper :global(table) {
-		display: block;
-		max-width: 100%;
-		overflow-x: auto;
-		border-collapse: collapse;
-		margin: 1em 0;
-	}
-	.paper :global(th),
-	.paper :global(td) {
-		border: 1px solid #ddd;
-		padding: 0.35em 0.7em;
-		text-align: left;
-	}
-	.paper :global(th) {
-		background: #f5f5f5;
-	}
 	.paper :global(li) {
 		margin: 0.15em 0;
 	}

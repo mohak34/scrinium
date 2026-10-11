@@ -30,6 +30,7 @@ import { findCallouts } from './callouts';
 	import { attachmentMarkdown } from '$lib/attachments';
 	import { tree } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
+	import { tableBlockField } from './tableBlock';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
 	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
@@ -457,6 +458,7 @@ import { findCallouts } from './callouts';
 				tagCtxField,
 				livePreview,
 				mathBlockField,
+				tableBlockField,
 				yankFlashField,
 				yankFlashTheme,
 				baseTheme,

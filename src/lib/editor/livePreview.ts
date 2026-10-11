@@ -34,6 +34,7 @@ import {
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
+import { findTableRanges } from './tableRanges';
 import { parseFrontmatter } from './frontmatter';
 import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
 import {
@@ -418,7 +419,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// inner `[x]` Link decorations where the widget replaces the whole
 	// `[[...]]` - same overlap rule as callout headers.
 	const docText = view.state.doc.toString();
-	const blockRanges = findMathBlockRanges(view.state);
+	// Display math and top-level tables are block StateFields: no inline
+	// decoration may land inside them (tables stay raw while edited).
+	const blockRanges = [...findMathBlockRanges(view.state), ...findTableRanges(view.state)];
 	// Frontmatter is raw YAML, never pretty markdown: nothing inside the
 	// block is styled, hidden or swapped (its closing `---` parses as a
 	// setext HeaderMark, YAML `-` lists as bullets, `#` comments as ATX).
@@ -439,6 +442,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 			from,
 			to,
 			enter: (node) => {
+				// tableBlock.ts owns top-level tables, rendered or raw.
+				if (node.name === 'Table' && blockRanges.some((r) => node.from >= r.from && node.to <= r.to))
+					return false;
 				const active = isLineActive(view, node.from, node.to);
 
 				const headingClass = HEADING_CLASS[node.name];
@@ -781,6 +787,9 @@ export const livePreview = ViewPlugin.fromClass(
 			if (
 				update.docChanged ||
 				update.viewportChanged ||
+				// The background parser finishing can reveal new blocks (a
+				// table whose range inline decorations must leave).
+				syntaxTree(update.state) !== syntaxTree(update.startState) ||
 				update.transactions.some(
 					(tr) =>
 						tr.effects.some((e) => e.is(previewModeEffect)) ||

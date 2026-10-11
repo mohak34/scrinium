@@ -56,6 +56,9 @@ export const baseTheme = EditorView.theme(
 			padding: '28px 56px 40vh 12px',
 			caretColor: 'var(--accent)'
 		},
+		// Wrapped content may shrink below its widest block, so a wide table
+		// scrolls inside its widget instead of widening the whole note.
+		'.cm-content.cm-lineWrapping': { minWidth: '0' },
 		'.cm-line': { padding: '0 2px' },
 		'&.cm-focused': { outline: 'none' },
 		// Vim's bottom panel renders for every dialog even with the status
@@ -278,6 +281,31 @@ export const baseTheme = EditorView.theme(
 			borderLeft: '1px solid var(--line)',
 			borderRight: '1px solid var(--line)'
 		},
+		// Rendered table (tableBlock.ts); table rules live in theme.css.
+		// Padding, not margin, same height-map reason as .cm-math-block.
+		// white-space resets the editor's break-spaces, which would turn the
+		// renderer's newlines between rows into text that splits the table.
+		'.cm-table-block': { padding: '0.5rem 0', cursor: 'text', whiteSpace: 'normal' },
+		'.cm-table-pending': {
+			whiteSpace: 'pre',
+			fontFamily: 'var(--font-mono)',
+			fontSize: '0.85em',
+			color: 'var(--text-3)'
+		},
+		'.cm-table-block a': { color: 'var(--blue)' },
+		'.cm-table-block .print-wikilink': { color: 'var(--accent)' },
+		'.cm-table-block .print-tag': { color: 'var(--violet)' },
+		'.cm-table-block .print-inline-code': {
+			fontFamily: 'var(--font-mono)',
+			background: 'var(--raise)',
+			border: '1px solid var(--line-2)',
+			color: 'var(--rose)',
+			padding: '0.05em 0.35em',
+			borderRadius: '4px',
+			fontSize: '0.8em'
+		},
+		// Raw table lines while editing: monospace so the pipes line up.
+		'.cm-table-source': { fontFamily: 'var(--font-mono)', fontSize: '0.85em' },
 		// Plain quotes: a quiet rule and dimmer text. Line decorations, so no
 		// height-map risk, same as callouts.
 		'.cm-quote': {
