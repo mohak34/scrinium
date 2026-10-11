@@ -359,9 +359,14 @@ State channels you will touch:
    deployment, update this file (`Where code lives`, gotchas) and the README
    if it is user-facing. Docs ship in the same commit as the code — commit
    messages are short `fix:` / `feat:`.
-3. **Commit + push to `main`.** That push IS the deploy — watch the Actions
-   run, then hard-refresh `https://scrinium.mohak.dev` so the browser drops
-   the old cached build.
+3. **Commit on a branch, ship through a PR.** One branch per fix or feature
+   (`fix/...`, `feat/...`, `docs/...`), never commits on `main`. The PR runs
+   no CI (the workflow only triggers on `main`), so step 1's check is the
+   gate.
+4. **Merging the PR is the deploy.** The maintainer merges; that push to
+   `main` runs the deploy workflow. Watch the Actions run, hard-refresh
+   `https://scrinium.mohak.dev` so the browser drops the old cached build,
+   then delete the merged branch.
 
 **Manual fallback** (only if Actions is broken). From the repo root:
 
