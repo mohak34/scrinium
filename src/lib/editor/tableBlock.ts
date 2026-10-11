@@ -8,10 +8,12 @@
  * cell puts the cursor in that cell's source.
  *
  * The renderer (markdown-it) is loaded on the first table, so notes
- * without tables never pay for it.
+ * without tables never pay for it. Lezer and markdown-it don't always agree
+ * on where a table ends, so a table only becomes a widget when the render
+ * is exactly one table with a row per source row; anything else stays raw.
  */
 
-import { StateField, type EditorState, type Range } from '@codemirror/state';
+import { StateEffect, StateField, type EditorState, type Range } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import {
@@ -23,6 +25,8 @@ import {
 	setPreviewMode
 } from './livePreview';
 import { findTableRanges } from './tableRanges';
+import { inlineMathRegex } from './mathRanges';
+import { findWikilinksInText } from './wikilinks';
 
 type Render = typeof import('$lib/print/renderNote').renderNoteToHtml;
 let render: Render | null = null;
@@ -32,25 +36,82 @@ const loadRenderer = () =>
 		render = m.renderNoteToHtml;
 	}));
 
+// Dispatched once the renderer has loaded, so pending widgets rebuild.
+const rendererReady = StateEffect.define<null>();
+
+// Rendered tables by note folder + source, oldest dropped first.
 const htmlCache = new Map<string, string>();
-function tableHtml(source: string, noteDir: string | null): string | null {
+const CACHE_MAX = 200;
+
+/**
+ * HTML for a table, null until the renderer has loaded, '' when the render
+ * is not exactly one table with `rows` rows. `refs` are the note's link
+ * reference definitions, which a table cell may use.
+ */
+function tableHtml(
+	source: string,
+	refs: string,
+	rows: number,
+	noteDir: string | null
+): string | null {
 	if (!render) return null;
-	const key = `${noteDir ?? ''}\n${source}`;
+	const key = `${noteDir ?? ''}\n${source}\n${refs}`;
 	let html = htmlCache.get(key);
 	if (html === undefined) {
-		html = render(source, '', (url) => resolveAssetUrl(url, noteDir));
-		htmlCache.set(key, html);
+		html = render(refs ? `${source}\n\n${refs}` : source, '', (url) =>
+			resolveAssetUrl(url, noteDir)
+		);
+		const tpl = document.createElement('template');
+		tpl.innerHTML = html;
+		const [table, ...rest] = Array.from(tpl.content.children);
+		if (rest.length || !(table instanceof HTMLTableElement) || table.rows.length !== rows)
+			html = '';
+	} else {
+		htmlCache.delete(key);
 	}
+	htmlCache.set(key, html);
+	if (htmlCache.size > CACHE_MAX) htmlCache.delete(htmlCache.keys().next().value!);
 	return html;
 }
 
+/**
+ * Spans in a source row whose pipes don't split cells: the renderer swaps
+ * inline code, inline math and wikilinks out before markdown-it sees the
+ * row, in that order. Offsets are relative to the row.
+ */
+function protectedSpans(
+	state: EditorState,
+	from: number,
+	text: string
+): { from: number; to: number }[] {
+	const spans: { from: number; to: number }[] = [];
+	syntaxTree(state).iterate({
+		from,
+		to: from + text.length,
+		enter: (n) => {
+			if (n.name === 'InlineCode') spans.push({ from: n.from - from, to: n.to - from });
+		}
+	});
+	const free = (a: number, b: number) => !spans.some((s) => a < s.to && s.from < b);
+	for (const m of text.matchAll(inlineMathRegex())) {
+		if (free(m.index, m.index + m[0].length))
+			spans.push({ from: m.index, to: m.index + m[0].length });
+	}
+	for (const w of findWikilinksInText(text)) {
+		if (free(w.from, w.to)) spans.push(w);
+	}
+	return spans;
+}
+
 // Offset of the start of cell `cell` in a source row: past the optional
-// leading pipe, then past one unescaped pipe per earlier cell.
-function cellOffset(text: string, cell: number): number {
+// leading pipe, then past one splitting pipe per earlier cell.
+function cellOffset(text: string, cell: number, spans: { from: number; to: number }[]): number {
+	const splits = (i: number) =>
+		text[i] === '|' && text[i - 1] !== '\\' && !spans.some((s) => i >= s.from && i < s.to);
 	let i = text.length - text.trimStart().length;
 	if (text[i] === '|') i++;
 	for (let c = 0; c < cell && i < text.length; c++) {
-		while (i < text.length && !(text[i] === '|' && text[i - 1] !== '\\')) i++;
+		while (i < text.length && !splits(i)) i++;
 		i++;
 	}
 	while (text[i] === ' ') i++;
@@ -58,14 +119,18 @@ function cellOffset(text: string, cell: number): number {
 }
 
 class TableWidget extends WidgetType {
+	// html is null while the renderer loads.
 	constructor(
 		readonly source: string,
+		readonly html: string | null,
 		readonly noteDir: string | null
 	) {
 		super();
 	}
 	eq(other: TableWidget) {
-		return other.source === this.source && other.noteDir === this.noteDir;
+		return (
+			other.source === this.source && other.html === this.html && other.noteDir === this.noteDir
+		);
 	}
 	// Rows minus the delimiter line, so a fresh widget doesn't flap the
 	// viewport before it is measured (see BlockMathWidget).
@@ -75,17 +140,13 @@ class TableWidget extends WidgetType {
 	toDOM(view: EditorView) {
 		const div = document.createElement('div');
 		div.className = 'cm-table-block';
-		const html = tableHtml(this.source, this.noteDir);
-		if (html !== null) {
-			div.innerHTML = html;
+		if (this.html !== null) {
+			div.innerHTML = this.html;
 		} else {
 			div.textContent = this.source;
 			div.classList.add('cm-table-pending');
 			void loadRenderer().then(() => {
-				if (!div.isConnected) return;
-				div.classList.remove('cm-table-pending');
-				div.innerHTML = tableHtml(this.source, this.noteDir) ?? '';
-				view.requestMeasure();
+				if (div.isConnected) view.dispatch({ effects: rendererReady.of(null) });
 			});
 		}
 		div.addEventListener('mousedown', (e) => this.onMouseDown(e, view, div));
@@ -101,8 +162,16 @@ class TableWidget extends WidgetType {
 		const target = e.target as Element;
 		const link = target.closest('a');
 		if (link && (e.ctrlKey || e.metaKey)) {
-			const href = resolveAssetUrl(link.getAttribute('href') ?? '', this.noteDir);
-			if (href) window.open(href, '_blank', 'noopener,noreferrer');
+			// markdown-it percent-encodes the href and resolveAssetUrl encodes
+			// again, so a relative one is decoded first (as for images).
+			let href = link.getAttribute('href') ?? '';
+			if (!/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('/')) {
+				try {
+					href = decodeURI(href);
+				} catch {}
+			}
+			const url = resolveAssetUrl(href, this.noteDir);
+			if (url) window.open(url, '_blank', 'noopener,noreferrer');
 			e.preventDefault();
 			return;
 		}
@@ -112,12 +181,18 @@ class TableWidget extends WidgetType {
 		const rows = Array.from(div.querySelectorAll('tr'));
 		const row = rows.indexOf(target.closest('tr') as HTMLTableRowElement);
 		// Rendered row 0 is the header line; body rows sit after the
-		// delimiter line, hence the +1.
+		// delimiter line, hence the +1. The row count matches the source
+		// (see tableHtml); while pending there are no rows: the header.
 		const lineNo = Math.min(first + (row <= 0 ? 0 : row + 1), view.state.doc.lines);
 		const line = view.state.doc.line(lineNo);
 		const cellEl = target.closest('td, th');
 		const cell = cellEl ? Array.from(cellEl.parentElement?.children ?? []).indexOf(cellEl) : 0;
-		view.dispatch({ selection: { anchor: line.from + cellOffset(line.text, Math.max(0, cell)) } });
+		const spans = protectedSpans(view.state, line.from, line.text);
+		view.dispatch({
+			selection: {
+				anchor: line.from + cellOffset(line.text, Math.max(0, cell), spans)
+			}
+		});
 		// Leave preview only after reading positions: the rebuild it
 		// triggers swaps this widget out for the source lines.
 		if (isPreviewMode()) setPreviewMode(view, false);
@@ -140,20 +215,37 @@ function isRangeActive(state: EditorState, from: number, to: number): boolean {
 
 const sourceLine = Decoration.line({ class: 'cm-table-source' });
 
+// Top-level `[ref]: url` lines, appended to each table's render so
+// reference links in cells resolve like they do in the full note.
+function linkReferences(state: EditorState): string {
+	const refs: string[] = [];
+	for (let n = syntaxTree(state).topNode.firstChild; n; n = n.nextSibling) {
+		if (n.name === 'LinkReference') refs.push(state.doc.sliceString(n.from, n.to));
+	}
+	return refs.join('\n');
+}
+
 function buildTableDecorations(state: EditorState): DecorationSet {
+	const tables = findTableRanges(state);
+	if (!tables.length) return Decoration.none;
 	const noteDir = state.field(noteDirField, false) ?? null;
+	const refs = linkReferences(state);
 	const ranges: Range<Decoration>[] = [];
-	for (const t of findTableRanges(state)) {
-		if (isRangeActive(state, t.from, t.to)) {
-			for (let n = state.doc.lineAt(t.from).number; n <= state.doc.lineAt(t.to).number; n++) {
-				ranges.push(sourceLine.range(state.doc.line(n).from));
-			}
+	for (const t of tables) {
+		const first = state.doc.lineAt(t.from).number;
+		const last = state.doc.lineAt(t.to).number;
+		// Header and body rows; the delimiter line renders no row.
+		const html = isRangeActive(state, t.from, t.to)
+			? ''
+			: tableHtml(t.source, refs, last - first, noteDir);
+		if (html === '') {
+			for (let n = first; n <= last; n++) ranges.push(sourceLine.range(state.doc.line(n).from));
 		} else {
 			ranges.push(
-				Decoration.replace({ widget: new TableWidget(t.source, noteDir), block: true }).range(
-					t.from,
-					t.to
-				)
+				Decoration.replace({
+					widget: new TableWidget(t.source, html, noteDir),
+					block: true
+				}).range(t.from, t.to)
 			);
 		}
 	}
@@ -167,7 +259,7 @@ export const tableBlockField = StateField.define<DecorationSet>({
 			tr.docChanged ||
 			tr.reconfigured ||
 			syntaxTree(tr.state) !== syntaxTree(tr.startState) ||
-			tr.effects.some((e) => e.is(previewModeEffect) || e.is(noteDirEffect))
+			tr.effects.some((e) => e.is(previewModeEffect) || e.is(noteDirEffect) || e.is(rendererReady))
 		) {
 			return buildTableDecorations(tr.state);
 		}
