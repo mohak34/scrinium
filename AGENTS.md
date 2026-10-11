@@ -194,6 +194,12 @@ State channels you will touch:
   in `livePreview.ts` never overlaps a block replace),
   mathComplete.ts (`\command` completion source, math regions only),
   mathSnippets.ts (Tab word/subscript and Space fraction triggers),
+  tableBlock.ts (top-level GFM tables as a StateField like mathBlock:
+  off the table and its neighbour lines the table is one block widget
+  rendered by the lazy-loaded renderNote.ts, on it the raw lines show in
+  monospace; a click on a cell puts the caret in that cell's source;
+  ranges from tableRanges.ts so `livePreview.ts` never decorates inside
+  a table),
   yankFlash.ts (mini.nvim-style yank flash: line deco from the vim
   "<N> lines yanked" status notice via the facade dialog signal, read off
   live selection state so a stale range can never paint),
@@ -270,6 +276,8 @@ State channels you will touch:
   The old Material-style names (`--primary`, `--surface-container-*`,
   `--on-surface*`) are aliases kept for components not yet moved over; new
   code uses the tokens. Never fill with `--accent` under text.
+  It also holds the one table look shared by the editor widget
+  (`.cm-table-block`) and the share/print sheet (`.paper`).
 - App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in
   `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
   `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`
