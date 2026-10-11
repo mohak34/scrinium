@@ -787,6 +787,9 @@ export const livePreview = ViewPlugin.fromClass(
 			if (
 				update.docChanged ||
 				update.viewportChanged ||
+				// The background parser finishing can reveal new blocks (a
+				// table whose range inline decorations must leave).
+				syntaxTree(update.state) !== syntaxTree(update.startState) ||
 				update.transactions.some(
 					(tr) =>
 						tr.effects.some((e) => e.is(previewModeEffect)) ||

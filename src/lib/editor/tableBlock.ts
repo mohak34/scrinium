@@ -40,9 +40,11 @@ const loadRenderer = () =>
 // Dispatched once the renderer has loaded, so pending widgets rebuild.
 const rendererReady = StateEffect.define<null>();
 
-// Rendered tables by note folder + source, oldest dropped first.
+// Rendered tables by note folder + source, oldest dropped first. The bound
+// is on top of the open note's own tables (see buildTableDecorations), so a
+// note with many tables never evicts its own while rebuilding.
 const htmlCache = new Map<string, string>();
-const CACHE_MAX = 200;
+const CACHE_SPARE = 200;
 
 /**
  * HTML for a table, null until the renderer has loaded, '' when the render
@@ -71,7 +73,6 @@ function tableHtml(
 		htmlCache.delete(key);
 	}
 	htmlCache.set(key, html);
-	if (htmlCache.size > CACHE_MAX) htmlCache.delete(htmlCache.keys().next().value!);
 	return html;
 }
 
@@ -199,9 +200,11 @@ class TableWidget extends WidgetType {
 		const cellEl = target.closest('td, th');
 		const cell = cellEl ? Array.from(cellEl.parentElement?.children ?? []).indexOf(cellEl) : 0;
 		const spans = protectedSpans(view.state, line.from, line.text);
+		const pos = line.from + cellOffset(line.text, Math.max(0, cell), spans);
 		view.dispatch({
 			selection: {
-				anchor: line.from + cellOffset(line.text, Math.max(0, cell), spans)
+				anchor: e.shiftKey ? view.state.selection.main.anchor : pos,
+				head: pos
 			}
 		});
 		// Leave preview only after reading positions: the rebuild it
@@ -273,6 +276,9 @@ function buildTableDecorations(state: EditorState): DecorationSet {
 				}).range(t.from, t.to)
 			);
 		}
+	}
+	while (htmlCache.size > CACHE_SPARE + tables.length) {
+		htmlCache.delete(htmlCache.keys().next().value!);
 	}
 	return Decoration.set(ranges, true);
 }
