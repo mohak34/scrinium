@@ -76,12 +76,7 @@ Scrinium is small, but there are a few footguns specific to it.
 3. **Committing secrets.** `.env` is gitignored for a reason. `ALLOWED_EMAILS`
    plus `BETTER_AUTH_SECRET` gate the whole deployment. Never log or commit
    them.
-4. **Scope growth on the editor node walk.** The live-preview list is
-   deliberately a curated subset (headings, bold/italic, inline code, links,
-   checklists). Tables, nested lists, block quotes intentionally render as
-   plain text. Do not sneak new cases into `livePreview.ts` without keeping
-   the file small on purpose.
-5. **Breaking the title ↔ filename sync loop.** For `.md` notes the first `# `
+4. **Breaking the title ↔ filename sync loop.** For `.md` notes the first `# `
    heading and the filename are kept identical (see `scheduleTitleSync` /
    `syncFilenameToTitle` in `src/lib/stores/vault.ts`). Both directions guard
    against loops by comparing sanitized values before acting; a rename also
@@ -89,15 +84,15 @@ Scrinium is small, but there are a few footguns specific to it.
    without going through `renameNote` (moves included), or tabs/pins/
    activePath and queued saves drift. A rename of the open note moves
    `shownNote()` with it, so the page keeps the editor instead of reloading.
-6. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
+5. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
    and record the original path in `.trash/.index.json`. If you touch trash
    internals, keep that file in sync or restore falls back to guessing from
    the timestamp-prefixed name.
-7. **Vertical margins on block widgets.** CodeMirror measures block widgets
+6. **Vertical margins on block widgets.** CodeMirror measures block widgets
    without their margins, so `margin: X 0` on `.cm-math-block` / `.cm-image`
    desyncs the height map — gutter numbers, cursor coords and arrow targets
    all shift below the widget, compounding per block. Put spacing in padding.
-8. **Autosave is a per-path queue.** `scheduleSave` keys unsaved text by
+7. **Autosave is a per-path queue.** `scheduleSave` keys unsaved text by
    note path; saves run one at a time, each sends the note's text as of
    that moment, and failed ones retry. Renames, deletes and content
    rewrites run inside that same queue via `afterSaved`, which writes
@@ -116,15 +111,15 @@ Scrinium is small, but there are a few footguns specific to it.
    load the user already left is skipped; a failed load of the selected
    note sets `activePath` back to `shownNote()` (or none), so the chrome
    never names a note other than the one being typed into.
-9. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
+8. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
-10. **Vault mutations go through `withVaultLock`** in `src/lib/server/vault.ts`.
-    Writes, mkdirs, renames, trash, restore and purge run one at a time, so a
-    "target is free" check and the move onto it can't be split by another
-    request (`fs.rename` silently replaces files). A new function that
-    changes the vault takes the lock; locked functions never call each other,
-    or the queue deadlocks. The lock is per process: one app process per
-    vault.
+9. **Vault mutations go through `withVaultLock`** in `src/lib/server/vault.ts`.
+   Writes, mkdirs, renames, trash, restore and purge run one at a time, so a
+   "target is free" check and the move onto it can't be split by another
+   request (`fs.rename` silently replaces files). A new function that
+   changes the vault takes the lock; locked functions never call each other,
+   or the queue deadlocks. The lock is per process: one app process per
+   vault.
 
 ## Commands
 
@@ -171,8 +166,9 @@ State channels you will touch:
   callouts.ts (shared Obsidian `> [!note]` parser: kinds, aliases, icons,
   `findCallouts`; editor boxes via line decos + `!active` hides, print
   rewrites blockquotes post-restore so math/code inside keep rendering),
-  wikilinks.ts (shared `[[link]]` parse/resolve/backlink-match; editor pill
-  widgets + click-to-open/create via `wikiCtxField`, `[[` completion in
+  wikilinks.ts (shared `[[link]]` parse/resolve/backlink-match; the editor
+  pill `WikilinkWidget` and its click-to-open/create live in livePreview.ts,
+  fed the note list by `wikiCtxField` there; `[[` completion in
   wikiComplete.ts),
   frontmatter.ts (shared YAML `---` props: parse, `effectiveTitle`
   fm-title > body-heading > filename, `setEffectiveTitle` same-source
@@ -233,10 +229,19 @@ State channels you will touch:
   a new write tool must call it too).
 - `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
   tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,
-  settings.ts (editor prefs persisted to localStorage).
+  settings.ts (editor prefs persisted to localStorage), tasks.ts (tasks
+  and projects: lists, open drawer, API calls), editor.ts / vim.ts (caret
+  and vim mode for the StatusBar), settingsDialog.ts.
+- `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
+  renderer (markdown-it plus the editor's math, code, callout, wikilink
+  and tag parsing). Used by `/print` (NoteBar's Print / PDF) and the
+  `/s/[id]` share viewer; a markdown feature that should show up in PDFs
+  and shares goes here as well as in the editor.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
-  Sidebar, TabBar. `settings/SettingsDialog.svelte` is the one settings and
-  trash surface: a modal mounted in the root layout, opened through
+  Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
+  in the root layout; polls `POST /api/tasks/due` every 30 s).
+  `settings/SettingsDialog.svelte` is the one settings and trash surface:
+  a modal mounted in the root layout, opened through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
   and the palette. Pages: Editor, Keyboard (vim toggle + the shortcut list
   from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,
@@ -245,8 +250,9 @@ State channels you will touch:
   About. While open
   it swallows keydown in the capture phase so app shortcuts never fire
   underneath; Esc closes it.
-- `src/routes/` — `/` (+page.svelte shell), `/login`,
-  api/{auth,notes,tree,search,assets,attachments,tokens,trash,backlinks}.
+- `src/routes/` — `/` (+page.svelte shell), `/login`, `/print`, `/tasks/*`,
+  api/{auth,notes,tree,search,assets,attachments,tokens,trash,backlinks,
+  tags,tagged,tasks,projects,calendar}.
   `/api/mcp` is the stateless MCP endpoint (streamable HTTP, JSON
   responses) behind the normal /api gate. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
@@ -343,8 +349,6 @@ State channels you will touch:
   outlined font carries the FILL axis used by the `.fill` icon class.
 - The vault and `data/` live OUTSIDE `app/` on the box and are never touched
   by deploys.
-- Full background (VPS, Oracle Cloud firewall gotchas, Caddy, systemd,
-  backups) in `DEPLOY.md`.
 
 ## Shipping a change
 
@@ -353,8 +357,8 @@ State channels you will touch:
    server.
 2. **Keep the docs honest.** If the change touches the editor, auth, or
    deployment, update this file (`Where code lives`, gotchas) and the README
-   if it is user-facing, and `DEPLOY.md` if it changed ops. Docs ship in the
-   same commit as the code — commit messages are short `fix:` / `feat:`.
+   if it is user-facing. Docs ship in the same commit as the code — commit
+   messages are short `fix:` / `feat:`.
 3. **Commit + push to `main`.** That push IS the deploy — watch the Actions
    run, then hard-refresh `https://scrinium.mohak.dev` so the browser drops
    the old cached build.
