@@ -45,6 +45,11 @@ const rendererReady = StateEffect.define<null>();
 // note with many tables never evicts its own while rebuilding.
 const htmlCache = new Map<string, string>();
 const CACHE_SPARE = 200;
+function trimCache(noteTables: number) {
+	while (htmlCache.size > CACHE_SPARE + noteTables) {
+		htmlCache.delete(htmlCache.keys().next().value!);
+	}
+}
 
 /**
  * HTML for a table, null until the renderer has loaded, '' when the render
@@ -111,7 +116,10 @@ function protectedSpans(
 			to: m.index + m[0].length
 		}))
 	);
-	mask(findWikilinksInText(masked));
+	// The renderer skips wikilinks overlapping a stashed span.
+	mask(
+		findWikilinksInText(masked).filter((w) => !spans.some((s) => w.from < s.to && s.from < w.to))
+	);
 	return spans;
 }
 
@@ -255,7 +263,10 @@ function linkReferences(state: EditorState): string {
 
 function buildTableDecorations(state: EditorState): DecorationSet {
 	const tables = findTableRanges(state);
-	if (!tables.length) return Decoration.none;
+	if (!tables.length) {
+		trimCache(0);
+		return Decoration.none;
+	}
 	const noteDir = state.field(noteDirField, false) ?? null;
 	const refs = linkReferences(state);
 	const ranges: Range<Decoration>[] = [];
@@ -277,9 +288,7 @@ function buildTableDecorations(state: EditorState): DecorationSet {
 			);
 		}
 	}
-	while (htmlCache.size > CACHE_SPARE + tables.length) {
-		htmlCache.delete(htmlCache.keys().next().value!);
-	}
+	trimCache(tables.length);
 	return Decoration.set(ranges, true);
 }
 
