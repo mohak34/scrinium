@@ -56,6 +56,9 @@ export const baseTheme = EditorView.theme(
 			padding: '28px 56px 40vh 12px',
 			caretColor: 'var(--accent)'
 		},
+		// Wrapped content may shrink below its widest block, so a wide table
+		// scrolls inside its widget instead of widening the whole note.
+		'.cm-content.cm-lineWrapping': { minWidth: '0' },
 		'.cm-line': { padding: '0 2px' },
 		'&.cm-focused': { outline: 'none' },
 		// Vim's bottom panel renders for every dialog even with the status
