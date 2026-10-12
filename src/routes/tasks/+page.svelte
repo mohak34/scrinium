@@ -161,11 +161,6 @@
 		return 'radio_button_unchecked';
 	}
 
-	async function handleDelete(t: Task) {
-		if (!confirm(`Delete "${t.title}"?`)) return;
-		await deleteTask(t.id);
-	}
-
 	function subCount(t: Task): string | null {
 		const kids = childrenOf($tasks, t.id);
 		if (kids.length === 0) return null;
@@ -349,7 +344,7 @@
 								>
 									{t.due_at == null ? '' : isDueToday(t) && t.status !== 'done' ? 'Today' : dueLabel(t.due_at)}
 								</span>
-								<button class="del" title="Delete" onclick={() => void handleDelete(t)}>
+								<button class="del" title="Delete" onclick={() => void deleteTask(t.id)}>
 									<span class="material-symbols-outlined">delete</span>
 								</button>
 							</div>
