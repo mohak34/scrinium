@@ -383,9 +383,7 @@
 			</button>
 			<button
 				title="Delete"
-				onclick={() => {
-					if (confirm(`Delete "${t.title}"?`)) void deleteTask(t.id);
-				}}
+				onclick={() => void deleteTask(t.id)}
 			>
 				<span class="material-symbols-outlined">delete</span>
 			</button>

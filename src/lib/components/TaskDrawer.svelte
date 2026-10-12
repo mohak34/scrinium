@@ -235,11 +235,6 @@
 		void goto('/');
 	}
 
-	async function handleDelete(t: Task) {
-		if (!confirm(`Delete "${t.title}" and its subtasks?`)) return;
-		await deleteTask(t.id);
-	}
-
 	// Short labels so all five statuses fit one segmented row.
 	const STATUS_SHORT: Record<string, string> = { todo: 'Week' };
 
@@ -273,7 +268,7 @@
 			<span class="tid">{shortId(task.id)}</span>
 			<span>created {stamp(task.created_at)}</span>
 			<span class="sp"></span>
-			<button class="icon" title="Delete task" onclick={() => void handleDelete(task)}>
+			<button class="icon" title="Delete task" onclick={() => void deleteTask(task.id)}>
 				<span class="material-symbols-outlined">delete</span>
 			</button>
 			<button class="icon" title="Close (Esc)" onclick={closeTask}>
