@@ -9,12 +9,17 @@
 	import ReminderToasts from '$lib/components/ReminderToasts.svelte';
 	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
 	import BinsView from '$lib/components/bins/BinsView.svelte';
+	import CommandPalette from '$lib/components/CommandPalette.svelte';
+	import { paletteOpen } from '$lib/stores/palette';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { APPS } from '$lib/apps';
 	import { flushSave } from '$lib/stores/vault';
 
 	let { children } = $props();
+
+	const appChrome = () =>
+		!page.url.pathname.startsWith('/login') && !page.url.pathname.startsWith('/s/');
 
 	onMount(() => {
 		// Kill the browser's native right-click menu everywhere - Scrinium
@@ -26,14 +31,19 @@
 		};
 		window.addEventListener('contextmenu', block);
 
-		// Ctrl+Shift+1..4 jumps between Notes, Tasks, Board and Calendar.
-		// Plain Ctrl+digit is taken (editor headings, browser tabs). Public
-		// share and login pages have no apps to switch to.
+		// Ctrl+K toggles the command palette and Ctrl+Shift+1..4 jumps between
+		// Notes, Tasks, Board and Calendar, from any app page. Plain Ctrl+digit
+		// is taken (editor headings, browser tabs). Public share and login
+		// pages have neither.
 		const jump = (e: KeyboardEvent) => {
-			if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey) return;
+			if (!(e.ctrlKey || e.metaKey) || e.altKey || !appChrome()) return;
+			if (!e.shiftKey && e.key.toLowerCase() === 'k') {
+				e.preventDefault();
+				paletteOpen.update((v) => !v);
+				return;
+			}
 			const n = /^Digit([1-4])$/.exec(e.code)?.[1];
-			const path = page.url.pathname;
-			if (!n || path.startsWith('/login') || path.startsWith('/s/')) return;
+			if (!e.shiftKey || !n) return;
 			e.preventDefault();
 			void flushSave().then(() => goto(APPS[Number(n) - 1].href));
 		};
@@ -61,7 +71,10 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 
 {@render children()}
 <ReminderToasts />
-{#if !page.url.pathname.startsWith('/login') && !page.url.pathname.startsWith('/s/')}
+{#if appChrome()}
 	<SettingsDialog />
 	<BinsView />
+	{#if $paletteOpen}
+		<CommandPalette onClose={() => paletteOpen.set(false)} />
+	{/if}
 {/if}

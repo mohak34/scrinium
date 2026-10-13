@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { usePageCommands } from '$lib/stores/palette';
 	import {
 		tasks,
 		loadTasks,
@@ -72,6 +73,13 @@
 	onMount(() => {
 		void loadTasks();
 		if (localStorage.getItem(VIEW_KEY) === 'areas') view = 'areas';
+		return usePageCommands([
+			{ label: 'Board: status columns', hint: 'One column per status', run: () => setView('columns') },
+			{ label: 'Board: area lanes', hint: 'Columns split by area', run: () => setView('areas') },
+			{ label: 'Board: toggle older done tasks', hint: 'Done shows the last week by default', run: () => (showAllDone = !showAllDone) },
+			{ label: 'Main board', hint: 'Leave the project board', run: () => openProject(null) },
+			{ label: 'New project', hint: 'Board backed by a vault folder', run: () => void newProject() }
+		]);
 	});
 
 	function setView(v: View) {

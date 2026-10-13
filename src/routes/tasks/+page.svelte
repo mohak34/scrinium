@@ -26,6 +26,7 @@
 	import PageFooter from '$lib/components/PageFooter.svelte';
 	import AppActions from '$lib/components/AppActions.svelte';
 	import { onMount } from 'svelte';
+	import { usePageCommands } from '$lib/stores/palette';
 
 	let newTitle = $state('');
 	let newDue = $state('');
@@ -45,8 +46,24 @@
 		{ key: 'completed', label: 'Completed', icon: 'check_circle' }
 	];
 
+	let addInput = $state<HTMLInputElement>();
+
 	onMount(() => {
 		void loadTasks();
+		return usePageCommands([
+			{ label: 'Add a task here', hint: 'Focus the add box', run: () => addInput?.focus() },
+			{ label: 'Search tasks', hint: 'Filter this list by text', run: () => (searching = true) },
+			...filters.map((f) => ({
+				label: `Show ${f.label.toLowerCase()}`,
+				hint: 'Task list filter',
+				run: () => (filter = f.key)
+			})),
+			...AREAS.map((a) => ({
+				label: `Toggle area ${a.label}`,
+				hint: 'Task list filter',
+				run: () => (area = area === a.key ? null : a.key)
+			}))
+		]);
 	});
 
 
@@ -234,6 +251,7 @@
 			<span class="material-symbols-outlined">add</span>
 			<input
 				class="title-in"
+				bind:this={addInput}
 				placeholder="Add a task, press Enter"
 				bind:value={newTitle}
 				aria-label="New task title"

@@ -11,7 +11,6 @@
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import NoteTasks from '$lib/components/NoteTasks.svelte';
 	import CodeEditor from '$lib/editor/CodeEditor.svelte';
-	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import {
 		activePath,
 		loadTree,
@@ -22,6 +21,9 @@
 		openTab,
 		closeTab,
 		togglePin,
+		archivePath,
+		deletePath,
+		downloadNote,
 		scheduleTitleSync,
 		attachEditor,
 		shownNote,
@@ -31,6 +33,8 @@
 	import { settings } from '$lib/stores/settings';
 	import { createRequest, focusSearchRequest, renameRequest } from '$lib/stores/actions';
 	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
+	import { paletteOpen, usePageCommands } from '$lib/stores/palette';
+	import { goto } from '$app/navigation';
 
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
@@ -76,7 +80,7 @@
 	let rightCollapsed = $state(false);
 	let sidebarWidth = $state(260);
 	let resizing = $state(false);
-	let paletteOpen = $state(false);
+	let shareOpen = $state(false);
 	let helpOpen = $state(false);
 	let leaderPending = $state(false);
 	let leaderTimer: ReturnType<typeof setTimeout> | undefined;
@@ -99,7 +103,11 @@
 
 		// The sidebar owns the inline rename input, so open it for a rename
 		// asked from the note bar or palette; it picks the request up on mount.
+		// Same for a create asked from the palette, maybe on another page.
 		const unsubRename = renameRequest.subscribe((req) => {
+			if (req && collapsed) toggleCollapse();
+		});
+		const unsubCreate = createRequest.subscribe((req) => {
 			if (req && collapsed) toggleCollapse();
 		});
 
@@ -120,7 +128,7 @@
 				const typing = !!t?.closest?.(
 					'input, textarea, select, [contenteditable="true"], .cm-content, .cm-editor'
 				);
-				if (!typing && !paletteOpen && !imagePreview && !helpOpen) {
+				if (!typing && !$paletteOpen && !imagePreview && !helpOpen) {
 					e.preventDefault();
 					runLeader(e.key);
 				}
@@ -144,7 +152,7 @@
 				// Space keeps its native behaviour on controls (buttons use
 				// it to activate); the leader only starts from dead areas.
 				const onControl = e.key === ' ' && !!t?.closest?.('button, a, [role="button"]');
-				if (!typing && !onControl && !paletteOpen && !imagePreview && !helpOpen) {
+				if (!typing && !onControl && !$paletteOpen && !imagePreview && !helpOpen) {
 					e.preventDefault();
 					if (e.key === '?') helpOpen = true;
 					else if (e.key === '/') focusSearch();
@@ -167,15 +175,10 @@
 			) {
 				e.preventDefault();
 				editorRef?.runCommand('find');
-			} else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-				e.preventDefault();
-				paletteOpen = !paletteOpen;
 			} else if ((e.metaKey || e.ctrlKey) && e.key === '/') {
 				// Toggle the left sidebar from anywhere, editor included.
 				e.preventDefault();
 				toggleCollapse();
-			} else if (e.key === 'Escape' && paletteOpen) {
-				paletteOpen = false;
 			} else if (e.key === 'Escape' && imagePreview) {
 				imagePreview = null;
 			} else if (e.key === 'Escape' && (editorRef?.exitPreview() ?? false)) {
@@ -192,6 +195,7 @@
 		return () => {
 			window.removeEventListener('keydown', key);
 			unsubRename();
+			unsubCreate();
 		};
 	});
 
@@ -242,7 +246,6 @@
 	// Ask the sidebar for an inline create input. The request value persists
 	// until the sidebar consumes it, so this works while collapsed too.
 	function newEntry(kind: 'note' | 'folder') {
-		if (collapsed) toggleCollapse();
 		createRequest.set({ parent: null, kind });
 	}
 
@@ -250,7 +253,7 @@
 		switch (key) {
 			case ' ':
 			case 'p':
-				paletteOpen = true;
+				paletteOpen.set(true);
 				break;
 			case 'n':
 				newEntry('note');
@@ -284,6 +287,71 @@
 			}
 		}
 	}
+
+	// Run fn on the open note, if there is one.
+	const withNote = (fn: (path: string) => void) => () => {
+		const p = get(activePath);
+		if (p) fn(p);
+	};
+	const edit = (cmd: string) => () => editorRef?.runCommand(cmd);
+	const mod =
+		typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
+
+	// Palette commands that need this page: the sidebar, tabs, the open note
+	// and the editor. Global ones live in CommandPalette.svelte.
+	onMount(() =>
+		usePageCommands([
+			{ label: 'Open search', hint: 'Jump to the sidebar search box', run: focusSearch },
+			{ label: 'Toggle sidebar', hint: `${mod}/`, run: toggleCollapse },
+			{ label: 'Toggle right panel', hint: 'Outline, backlinks, tasks, tags', run: toggleRightCollapse },
+			{ label: 'Focus editor', hint: 'Space e', run: withNote(() => editorRef?.focus()) },
+			{ label: 'Pin / unpin note', hint: 'Keep the open note at the top of the sidebar', run: withNote(togglePin) },
+			{ label: 'Rename note', hint: 'Rename the open note in the file tree', run: withNote((path) => renameRequest.set({ path })) },
+			{ label: 'Share note', hint: 'Public link, optional password', run: withNote(() => (shareOpen = true)) },
+			{
+				label: 'Copy note path',
+				hint: 'Vault path of the open note',
+				run: withNote((path) => void navigator.clipboard?.writeText(path).catch(() => {}))
+			},
+			{ label: 'Close tab', hint: 'Close the open note', run: withNote(closeTab) },
+			{ label: 'Next tab', hint: ']', run: () => stepTab(1) },
+			{ label: 'Previous tab', hint: '[', run: () => stepTab(-1) },
+			{ label: 'Show shortcut overlay', hint: '?', run: () => (helpOpen = true) },
+			{
+				label: 'Archive note',
+				hint: 'Put the open note away, out of the tree and search',
+				run: withNote((path) => void archivePath(path))
+			},
+			{ label: 'Move note to trash', hint: 'Restore it from Trash', run: withNote((path) => void deletePath(path)) },
+			{
+				label: 'Download note as Markdown',
+				hint: 'Save the open note as a .md file',
+				run: withNote((path) => void downloadNote(path).catch(() => {}))
+			},
+			{
+				label: 'Print note to PDF',
+				hint: 'Open the print view',
+				// The print page reads the server copy; skip it while a save fails.
+				run: withNote(async (path) => {
+					if (await flushSave()) void goto(`/print?note=${encodeURIComponent(path)}`);
+				})
+			},
+			{ label: 'Bold', hint: `${mod}B`, run: edit('bold') },
+			{ label: 'Italic', hint: `${mod}I`, run: edit('italic') },
+			{ label: 'Strikethrough', hint: `${mod}Shift+X`, run: edit('strike') },
+			{ label: 'Inline code', hint: `${mod}\``, run: edit('code') },
+			...[1, 2, 3, 4, 5, 6].map((n) => ({ label: `Heading ${n}`, hint: `${mod}${n}`, run: edit(`h${n}`) })),
+			{ label: 'Toggle bullet list', hint: `${mod}Shift+B`, run: edit('bullet') },
+			{ label: 'Toggle task checkbox', hint: `${mod}L`, run: edit('task') },
+			{ label: 'Remove task checkbox', hint: `${mod}Shift+L`, run: edit('removeTask') },
+			{ label: 'Find in note', hint: `${mod}F`, run: edit('find') },
+			{ label: 'Find & replace', hint: 'Replace the next match', run: edit('replace') },
+			{ label: 'Math inline', hint: `${mod}M`, run: edit('mathInline') },
+			{ label: 'Math block', hint: `${mod}Shift+E`, run: edit('mathBlock') },
+			{ label: 'Insert callout', hint: 'Obsidian-style [!note] box', run: edit('callout') },
+			{ label: 'Full preview', hint: 'Esc', run: edit('preview') }
+		])
+	);
 
 	// Drag the sidebar's right edge to resize. Double-click resets to the
 	// default width. Multi-clicks never start a drag (detail > 1).
@@ -391,6 +459,7 @@
 			<NoteBar
 				path={$activePath}
 				rightOpen={!rightCollapsed}
+				bind:shareOpen
 				onTogglePreview={() => editorRef?.togglePreview()}
 				onToggleRight={toggleRightCollapse}
 			/>
@@ -435,18 +504,6 @@
 		</aside>
 	{/if}
 </div>
-
-{#if paletteOpen}
-	<CommandPalette
-		onSelect={openNote}
-		onClose={() => (paletteOpen = false)}
-		onToggleSidebar={toggleCollapse}
-		onToggleRightSidebar={toggleRightCollapse}
-		onCommand={(cmd) => editorRef?.runCommand(cmd)}
-		onStepTab={stepTab}
-		onShowShortcuts={() => (helpOpen = true)}
-	/>
-{/if}
 
 {#if helpOpen}
 	<ShortcutHelp onClose={() => (helpOpen = false)} />
