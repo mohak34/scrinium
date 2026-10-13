@@ -7,6 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import path from 'node:path';
 import { error } from '@sveltejs/kit';
+import { movedBy, relinkNote } from '$lib/relink';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
 const TRASH_DIR = path.join(VAULT_DIR, '.trash');
@@ -132,19 +133,22 @@ export async function openAsset(relPath: string): Promise<{ stream: ReadStream; 
 // Write to a temp file beside the note, then rename over it: a crash or a
 // full disk mid-write leaves the old note intact instead of a truncated one.
 // The temp name is random so concurrent writes to one note never share it.
+// Callers hold the vault lock.
+async function writeAtomic(fullPath: string, content: string): Promise<void> {
+	await fs.mkdir(path.dirname(fullPath), { recursive: true });
+	const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${randomUUID()}.tmp`);
+	try {
+		await fs.writeFile(tmp, content, 'utf-8');
+		await fs.rename(tmp, fullPath);
+	} catch (e) {
+		await fs.rm(tmp, { force: true });
+		throw e;
+	}
+}
+
 export async function writeNote(relPath: string, content: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
-	return withVaultLock(async () => {
-		await fs.mkdir(path.dirname(fullPath), { recursive: true });
-		const tmp = path.join(path.dirname(fullPath), `.${path.basename(fullPath)}.${randomUUID()}.tmp`);
-		try {
-			await fs.writeFile(tmp, content, 'utf-8');
-			await fs.rename(tmp, fullPath);
-		} catch (e) {
-			await fs.rm(tmp, { force: true });
-			throw e;
-		}
-	});
+	return withVaultLock(() => writeAtomic(fullPath, content));
 }
 
 export async function createFolder(relPath: string): Promise<void> {
@@ -156,13 +160,30 @@ export async function createFolder(relPath: string): Promise<void> {
 
 // fs.rename replaces an existing file (or empty folder), so the free check
 // and the move must not interleave with other mutations: hold the vault lock.
-export async function renamePath(oldRelPath: string, newRelPath: string): Promise<void> {
+// Relative links that the move broke are fixed in the same lock, in the
+// moved notes and in every note linking into the move (a whole-vault scan,
+// like backlinks). Resolves the notes it rewrote, under their new paths.
+export async function renamePath(
+	oldRelPath: string,
+	newRelPath: string
+): Promise<{ path: string; content: string }[]> {
 	const from = safeResolve(oldRelPath);
 	const to = safeResolve(newRelPath);
-	if (from === to) return;
+	if (from === to) return [];
 	return withVaultLock(async () => {
 		if (await exists(to)) throw error(409, 'Target already exists');
 		await fs.rename(from, to);
+		const [was, now] = [vaultRel(oldRelPath), vaultRel(newRelPath)];
+		const moved = movedBy(was, now);
+		const back = movedBy(now, was);
+		const changed: { path: string; content: string }[] = [];
+		for (const n of await readNotesUnder('')) {
+			const out = relinkNote(n.content, back(n.path), n.path, moved);
+			if (out === n.content) continue;
+			await writeAtomic(safeResolve(n.path), out);
+			changed.push({ path: n.path, content: out });
+		}
+		return changed;
 	});
 }
 
@@ -296,8 +317,9 @@ export interface Restored {
 	notes: { path: string; content: string }[];
 }
 
-// Every .md note at or under a vault path, with its text.
-async function readNotesUnder(rel: string): Promise<{ path: string; content: string }[]> {
+// Every .md note at or under a vault path ('' is the whole vault), with its
+// text. Dot folders inside are skipped.
+export async function readNotesUnder(rel: string): Promise<{ path: string; content: string }[]> {
 	const full = safeResolve(rel);
 	const st = await fs.stat(full).catch(() => null);
 	if (!st?.isDirectory()) {
@@ -306,7 +328,7 @@ async function readNotesUnder(rel: string): Promise<{ path: string; content: str
 	}
 	const out: { path: string; content: string }[] = [];
 	for (const d of await fs.readdir(full, { withFileTypes: true }).catch(() => [])) {
-		if (!d.name.startsWith('.')) out.push(...(await readNotesUnder(`${rel}/${d.name}`)));
+		if (!d.name.startsWith('.')) out.push(...(await readNotesUnder(rel ? `${rel}/${d.name}` : d.name)));
 	}
 	return out;
 }

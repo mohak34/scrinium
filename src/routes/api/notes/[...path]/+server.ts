@@ -65,13 +65,20 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	const body = await request.json().catch(() => null);
 	if (!body?.newPath || typeof body.newPath !== 'string') throw error(400, 'Invalid request');
 	const to = writable(body.newPath);
-	await renamePath(from, to);
+	const relinked = await renamePath(from, to);
 	renameNoteMeta(from, to);
 	renameNoteIndex(from, to);
 	renameShares(from, to);
 	renameTaskLinks(from, to);
 	renameProjects(vaultRel(from), vaultRel(to), isFolder);
-	return new Response(null, { status: 204 });
+	// Notes whose relative links the move rewrote; the editor fixes its
+	// copy of the open one the same way (relinkNote).
+	for (const n of relinked) {
+		const title = effectiveTitle(n.content, n.path);
+		upsertNoteMeta(n.path, title, Date.now());
+		indexNote(n.path, title, n.content);
+	}
+	return json({ relinked: relinked.map((n) => n.path) });
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {

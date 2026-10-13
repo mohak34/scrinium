@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store';
+import { movedBy, relinkNote } from '$lib/relink';
 import { linkFirstMention } from '$lib/editor/wikilinks';
 import { effectiveTitle, setEffectiveTitle, updateFrontmatterBlock } from '$lib/editor/frontmatter';
 import type { Document } from 'yaml';
@@ -454,9 +455,18 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 			body: JSON.stringify({ newPath })
 		}).catch(() => null);
 		if (!res?.ok) return false;
+		const { relinked = [] } = ((await res.json().catch(() => null)) ?? {}) as { relinked?: string[] };
 		remapPending(oldPath, newPath);
-		if (shown && (shown === oldPath || shown.startsWith(oldPath + '/'))) {
-			shown = newPath + shown.slice(oldPath.length);
+		const moved = movedBy(oldPath, newPath);
+		const before = shown;
+		if (shown) shown = moved(shown);
+		// The server fixed the relative links the move broke; the open note
+		// gets the same fix in its live text, autosaved like typing, so the
+		// next save never puts the old links back.
+		if (before && shown && editorHost && relinked.includes(shown)) {
+			const text = editorHost.read();
+			const out = relinkNote(text, before, shown, moved);
+			if (out !== text) editorHost.write(out);
 		}
 		const current = get(activePath);
 		if (current && (current === oldPath || current.startsWith(oldPath + '/'))) {
