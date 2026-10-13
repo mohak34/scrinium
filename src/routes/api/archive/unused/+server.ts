@@ -3,12 +3,13 @@ import type { RequestHandler } from './$types';
 import fs from 'node:fs/promises';
 import { binPath, listBin, listTree, readNotesUnder, safeResolve, type VaultEntry } from '$lib/server/vault';
 import type { UnusedFile } from '$lib/archive';
+import { unescapeMarkdown } from '$lib/relink';
 
 // Vault files (anything but notes) that no note mentions: mostly images
 // left behind when their note was trashed or the embed deleted. A file
 // counts as used when any live or archived note contains its name anywhere
 // (links, embeds, reference definitions, code), also once percent-encoding,
-// markdown escapes and `&amp;` in the notes are undone.
+// markdown escapes and character references in the notes are undone.
 // That keeps a few unused files on the list but never offers a referenced
 // one for the trash. A direct scan of the vault, like review: nothing to
 // keep in sync.
@@ -18,16 +19,13 @@ export const GET: RequestHandler = async () => {
 		for (const n of await readNotesUnder(binPath('archive', e.name))) texts.push(n.content);
 	}
 	const raw = texts.join('\n');
-	const plain = raw
-		.replace(/(%[\da-f]{2})+/gi, (m) => {
-			try {
-				return decodeURIComponent(m);
-			} catch {
-				return m;
-			}
-		})
-		.replace(/\\([!-/:-@[-`{-~])/g, '$1')
-		.replace(/&amp;/g, '&');
+	const plain = unescapeMarkdown(raw).replace(/(%[\da-f]{2})+/gi, (m) => {
+		try {
+			return decodeURIComponent(m);
+		} catch {
+			return m;
+		}
+	});
 
 	const files: string[] = [];
 	const walk = (entries: VaultEntry[]) => {

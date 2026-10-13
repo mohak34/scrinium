@@ -313,9 +313,9 @@ export function resolveAssetUrl(url: string, noteDir: string | null): string | n
 	if (clean.startsWith('<') && clean.endsWith('>')) clean = clean.slice(1, -1).trim();
 	if (!clean) return null;
 	if (/^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith('/')) return clean;
-	const joined = noteDir ? `${noteDir}/${clean}` : clean;
-	const parts: string[] = [];
-	for (const seg of joined.split('/')) {
+	// The note's folder is a real path; only the destination is decoded.
+	const parts = noteDir ? noteDir.split('/') : [];
+	for (const seg of clean.split('/')) {
 		if (!seg || seg === '.') continue;
 		if (seg === '..') {
 			parts.pop();

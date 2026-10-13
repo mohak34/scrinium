@@ -13,10 +13,10 @@ const LINK_NODES = new Set(['Link', 'Image', 'LinkReference']);
 
 const dirOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf('/')));
 
-// A destination as written to the file path it names: markdown escapes
-// (`\(`), character references (`&amp;`) and percent-encoding undone.
-function decode(s: string): string {
-	const plain = s
+// Markdown text as it renders: backslash escapes (`\(`) and character
+// references (`&amp;`, `&#40;`) undone. Also used by the unused-files scan.
+export function unescapeMarkdown(s: string): string {
+	return s
 		.replace(/\\([!-/:-@[-`{-~])/g, '$1')
 		.replace(/&(amp|lt|gt|quot|#\d+|#x[\da-f]+);/gi, (m, e: string) => {
 			const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' };
@@ -24,10 +24,13 @@ function decode(s: string): string {
 			const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
 			return code <= 0x10ffff ? String.fromCodePoint(code) : m;
 		});
+}
+
+function decode(s: string): string {
 	try {
-		return decodeURIComponent(plain);
+		return decodeURIComponent(s);
 	} catch {
-		return plain;
+		return s;
 	}
 }
 
@@ -72,7 +75,7 @@ function mapLinks(content: string, dir: string, fn: (link: Link) => string | nul
 			if (node.name !== 'URL' || !LINK_NODES.has(node.node.parent?.name ?? '')) return;
 			const raw = content.slice(node.from, node.to);
 			const angle = raw.startsWith('<');
-			const url = angle ? raw.slice(1, -1) : raw;
+			const url = unescapeMarkdown(angle ? raw.slice(1, -1) : raw);
 			const cut = url.search(/[?#]/);
 			const [pathPart, suffix] = cut < 0 ? [url, ''] : [url.slice(0, cut), url.slice(cut)];
 			const path = decode(pathPart);
