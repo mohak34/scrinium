@@ -268,7 +268,7 @@
 		if (['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) e.stopPropagation();
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
-			selected = Math.min(items.length - 1, selected + 1);
+			selected = Math.max(0, Math.min(items.length - 1, selected + 1));
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			selected = Math.max(0, selected - 1);
