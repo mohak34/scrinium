@@ -5,25 +5,32 @@ import {
 	writeNote,
 	createFolder,
 	renamePath,
-	moveToTrash,
 	isFolder,
+	isHiddenPath,
 	vaultRel
 } from '$lib/server/vault';
+import { moveIn } from '$lib/server/bins';
 import { effectiveTitle } from '$lib/editor/frontmatter';
 import {
 	upsertNoteMeta,
-	deleteNoteMetaByPrefix,
 	renameNoteMeta,
 	indexNote,
-	deleteNoteIndexByPrefix,
 	renameNoteIndex,
 	renameTaskLinks,
 	renameProjects
 } from '$lib/server/db';
-import { deleteSharesByPrefix, renameShares } from '$lib/server/shares';
+import { renameShares } from '$lib/server/shares';
 
 // Auth is already enforced in src/hooks.server.ts for everything under /api
 // except /api/auth itself - see that file for the actual gate.
+
+// Reads reach archived notes (".archive/..."), so the archive page and
+// agents can open them. Writes never touch a dot folder: archived notes are
+// read-only, and bins change only through /api/archive and /api/trash.
+function writable(path: string | undefined): string {
+	if (!path || isHiddenPath(path)) throw error(400, 'Invalid path');
+	return path;
+}
 
 export const GET: RequestHandler = async ({ params }) => {
 	if (!params.path) throw error(400, 'Invalid path');
@@ -32,43 +39,40 @@ export const GET: RequestHandler = async ({ params }) => {
 };
 
 export const PUT: RequestHandler = async ({ params, request }) => {
-	if (!params.path) throw error(400, 'Invalid path');
+	const path = writable(params.path);
 	const content = await request.text();
-	await writeNote(params.path, content);
+	await writeNote(path, content);
 
-	const title = effectiveTitle(content, params.path);
-	upsertNoteMeta(params.path, title, Date.now());
-	indexNote(params.path, title, content);
+	const title = effectiveTitle(content, path);
+	upsertNoteMeta(path, title, Date.now());
+	indexNote(path, title, content);
 
 	return new Response(null, { status: 204 });
 };
 
 export const POST: RequestHandler = async ({ params, request }) => {
-	if (!params.path) throw error(400, 'Invalid path');
+	const path = writable(params.path);
 	const body = await request.json().catch(() => null);
 	if (!body?.folder) throw error(400, 'Invalid request');
-	await createFolder(params.path);
+	await createFolder(path);
 	return json({ ok: true });
 };
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
-	if (!params.path) throw error(400, 'Invalid path');
+	const from = writable(params.path);
 	const body = await request.json().catch(() => null);
 	if (!body?.newPath || typeof body.newPath !== 'string') throw error(400, 'Invalid request');
-	await renamePath(params.path, body.newPath);
-	renameNoteMeta(params.path, body.newPath);
-	renameNoteIndex(params.path, body.newPath);
-	renameShares(params.path, body.newPath);
-	renameTaskLinks(params.path, body.newPath);
-	renameProjects(vaultRel(params.path), vaultRel(body.newPath), isFolder);
+	const to = writable(body.newPath);
+	await renamePath(from, to);
+	renameNoteMeta(from, to);
+	renameNoteIndex(from, to);
+	renameShares(from, to);
+	renameTaskLinks(from, to);
+	renameProjects(vaultRel(from), vaultRel(to), isFolder);
 	return new Response(null, { status: 204 });
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
-	if (!params.path) throw error(400, 'Invalid path');
-	await moveToTrash(params.path);
-	deleteNoteMetaByPrefix(params.path);
-	deleteNoteIndexByPrefix(params.path);
-	deleteSharesByPrefix(params.path);
+	await moveIn('trash', writable(params.path));
 	return new Response(null, { status: 204 });
 };

@@ -14,6 +14,8 @@
 		create_folder: 'Created folder',
 		delete_note: 'Trashed',
 		restore_from_trash: 'Restored',
+		archive_note: 'Archived',
+		unarchive_note: 'Unarchived',
 		share_note: 'Shared',
 		upload_attachment: 'Uploaded',
 		create_task: 'Created task',

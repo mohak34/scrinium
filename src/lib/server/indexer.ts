@@ -11,11 +11,13 @@ let done = false;
 // One-time scan of the vault so notes that were never saved through the app
 // (or were indexed before this feature existed) still show up in search.
 // Runs lazily on the first search request; afterwards individual writes keep
-// the FTS index up to date.
+// the FTS index up to date. The archive is scanned too, under its
+// ".archive/..." paths, so archive search works; plain search filters it out.
 export async function ensureIndex() {
 	if (done) return;
 	done = true;
 	await walkAndIndex(VAULT_DIR, '');
+	await walkAndIndex(path.join(VAULT_DIR, '.archive'), '.archive');
 }
 
 async function walkAndIndex(dir: string, rel: string) {

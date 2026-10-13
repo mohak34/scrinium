@@ -168,3 +168,9 @@ export function shareImages(markdown: string, notePath: string): { urls: string[
 	});
 	return { urls, paths };
 }
+
+// Every note with a live share link, for the archive's Review list.
+export function sharedNotePaths(): Set<string> {
+	const rows = db.prepare(`SELECT DISTINCT note_path FROM shares`).all() as { note_path: string }[];
+	return new Set(rows.map((r) => r.note_path));
+}

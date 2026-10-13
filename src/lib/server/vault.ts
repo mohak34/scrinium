@@ -176,181 +176,186 @@ async function exists(full: string): Promise<boolean> {
 	}
 }
 
-export function moveToTrash(relPath: string): Promise<void> {
-	return withVaultLock(() => trash(relPath));
+// Trash and archive are both bins: a dot folder in the vault holding each
+// moved-out note or folder as "<stamp>-<name>", plus .index.json recording
+// where it came from. The tree, tags, backlinks and manifest skip dot
+// folders, so a binned item leaves the vault view untouched. Emptying the
+// trash never reaches the archive.
+export type Bin = 'trash' | 'archive';
+const BIN_DIRS: Record<Bin, string> = { trash: TRASH_DIR, archive: path.join(VAULT_DIR, '.archive') };
+
+// Vault-relative path of a bin item, e.g. ".archive/1712-Ideas.md".
+export const binPath = (bin: Bin, name: string) => `.${bin}/${name}`;
+
+// True for a path inside any dot folder (bins, uploads in flight). Notes and
+// shares never write there: bins change only through the functions below.
+export function isHiddenPath(relPath: string): boolean {
+	return vaultRel(relPath).split('/').some((s) => s.startsWith('.'));
 }
 
-async function trash(relPath: string): Promise<void> {
-	const fullPath = safeResolve(relPath);
-	if (fullPath === VAULT_DIR || fullPath === TRASH_DIR) throw error(400, 'Invalid path');
-	await fs.mkdir(TRASH_DIR, { recursive: true });
-	// Bump the stamp if a same-named note was trashed in the same millisecond,
-	// keeping the "<number>-<name>" shape listTrash falls back on.
-	let stamp = Date.now();
-	while (await exists(path.join(TRASH_DIR, `${stamp}-${path.basename(fullPath)}`))) stamp++;
-	const trashName = `${stamp}-${path.basename(fullPath)}`;
-	const dest = path.join(TRASH_DIR, trashName);
-	await fs.rename(fullPath, dest);
-	// Record original location so we can restore. Index is best-effort; a missing
-	// entry just means restore falls back to vault root.
-	try {
-		const idx = await readTrashIndex();
-		let isDir = false;
-		try {
-			const st = await fs.stat(dest);
-			isDir = st.isDirectory();
-		} catch {}
-		idx[trashName] = { originalPath: relPath, deletedAt: Date.now(), isDir };
-		await writeTrashIndex(idx);
-	} catch {}
-}
-
-const TRASH_INDEX = path.join(TRASH_DIR, '.index.json');
-
-export interface TrashEntry {
-	trashName: string;
+export interface BinEntry {
+	name: string;
 	originalPath: string;
-	deletedAt: number;
+	// When it entered the bin; 0 when the index lost it.
+	movedAt: number;
 	isDir: boolean;
 	size?: number;
 }
 
-type TrashIndex = Record<string, { originalPath: string; deletedAt: number; isDir: boolean }>;
+// deletedAt is the field older trash indexes wrote.
+type BinIndex = Record<string, { originalPath: string; movedAt?: number; deletedAt?: number; isDir: boolean }>;
 
-async function readTrashIndex(): Promise<TrashIndex> {
+const indexFile = (bin: Bin) => path.join(BIN_DIRS[bin], '.index.json');
+
+async function readBinIndex(bin: Bin): Promise<BinIndex> {
 	try {
-		const raw = await fs.readFile(TRASH_INDEX, 'utf-8');
-		const parsed = JSON.parse(raw) as TrashIndex;
+		const parsed = JSON.parse(await fs.readFile(indexFile(bin), 'utf-8')) as BinIndex;
 		return parsed && typeof parsed === 'object' ? parsed : {};
 	} catch {
 		return {};
 	}
 }
 
-async function writeTrashIndex(idx: TrashIndex): Promise<void> {
-	await fs.mkdir(TRASH_DIR, { recursive: true });
-	const tmp = `${TRASH_INDEX}.tmp-${Date.now()}`;
+async function writeBinIndex(bin: Bin, idx: BinIndex): Promise<void> {
+	await fs.mkdir(BIN_DIRS[bin], { recursive: true });
+	const tmp = `${indexFile(bin)}.tmp-${Date.now()}`;
 	await fs.writeFile(tmp, JSON.stringify(idx, null, 2), 'utf-8');
-	await fs.rename(tmp, TRASH_INDEX);
+	await fs.rename(tmp, indexFile(bin));
 }
 
-export async function listTrash(): Promise<TrashEntry[]> {
-	await fs.mkdir(TRASH_DIR, { recursive: true });
-	const idx = await readTrashIndex();
-	const dirents = await fs.readdir(TRASH_DIR, { withFileTypes: true }).catch(() => []);
-	const entries: TrashEntry[] = [];
+// A bin item name from a client: one plain segment inside the bin.
+function binItem(bin: Bin, name: string): string {
+	if (!name || name.includes('/') || name.includes('\\') || name.startsWith('.')) throw error(400, 'Invalid name');
+	return path.join(BIN_DIRS[bin], name);
+}
+
+// Bump the stamp if a same-named item landed in the same millisecond,
+// keeping the "<number>-<name>" shape listBin falls back on.
+async function freeBinName(bin: Bin, base: string): Promise<string> {
+	let stamp = Date.now();
+	while (await exists(path.join(BIN_DIRS[bin], `${stamp}-${base}`))) stamp++;
+	return `${stamp}-${base}`;
+}
+
+// Moves a vault note or folder into a bin and returns its entry.
+export function moveToBin(bin: Bin, relPath: string): Promise<BinEntry> {
+	return withVaultLock(async () => {
+		const rel = vaultRel(relPath);
+		if (!rel || isHiddenPath(rel)) throw error(400, 'Invalid path');
+		const fullPath = safeResolve(rel);
+		const st = await fs.stat(fullPath).catch(() => null);
+		if (!st) throw error(404, 'Not found');
+		await fs.mkdir(BIN_DIRS[bin], { recursive: true });
+		const name = await freeBinName(bin, path.basename(fullPath));
+		await fs.rename(fullPath, path.join(BIN_DIRS[bin], name));
+		const entry = { name, originalPath: rel, movedAt: Date.now(), isDir: st.isDirectory() };
+		// Best-effort: without its entry an item restores to the vault root.
+		try {
+			const idx = await readBinIndex(bin);
+			idx[name] = { originalPath: rel, movedAt: entry.movedAt, isDir: entry.isDir };
+			await writeBinIndex(bin, idx);
+		} catch {}
+		return entry;
+	});
+}
+
+export async function listBin(bin: Bin): Promise<BinEntry[]> {
+	const dir = BIN_DIRS[bin];
+	await fs.mkdir(dir, { recursive: true });
+	const idx = await readBinIndex(bin);
+	const dirents = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+	const entries: BinEntry[] = [];
 	for (const d of dirents) {
-		if (d.name === '.index.json' || d.name.startsWith('.index.json.tmp')) continue;
 		if (d.name.startsWith('.')) continue;
 		const meta = idx[d.name];
 		let size: number | undefined;
 		try {
-			const st = await fs.stat(path.join(TRASH_DIR, d.name));
+			const st = await fs.stat(path.join(dir, d.name));
 			size = st.isDirectory() ? undefined : st.size;
 		} catch {}
 		entries.push({
-			trashName: d.name,
+			name: d.name,
 			originalPath: meta?.originalPath ?? d.name.replace(/^\d+-/, ''),
-			deletedAt: meta?.deletedAt ?? 0,
+			movedAt: meta?.movedAt ?? meta?.deletedAt ?? 0,
 			isDir: meta?.isDir ?? d.isDirectory(),
 			size
 		});
 	}
-	entries.sort((a, b) => b.deletedAt - a.deletedAt);
+	entries.sort((a, b) => b.movedAt - a.movedAt);
 	return entries;
 }
 
 // path is where the item landed: originalPath, or "name (1)" when that is
-// taken. deletedAt is null for items missing from the index.
+// taken. movedAt is null for items missing from the index.
 export interface Restored {
 	path: string;
 	originalPath: string;
-	deletedAt: number | null;
+	movedAt: number | null;
 }
 
-export function restoreFromTrash(trashName: string): Promise<Restored> {
-	return withVaultLock(() => restore(trashName));
-}
-
-async function restore(trashName: string): Promise<Restored> {
-	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
-		throw error(400, 'Invalid trash name');
-	const src = path.join(TRASH_DIR, trashName);
-	try {
-		await fs.access(src);
-	} catch {
-		throw error(404, 'Not in trash');
-	}
-	const idx = await readTrashIndex();
-	const meta = idx[trashName];
-	const originalPath = meta?.originalPath ?? trashName.replace(/^\d+-/, '');
-	let targetRel = originalPath;
-	// If original location now exists, pick a free name instead of overwriting.
-	let targetFull = safeResolve(targetRel);
-	try {
-		await fs.access(targetFull);
-		// Find a free name like "name (1).md"; never fall through to the taken original.
-		const dir = path.dirname(targetFull);
-		const ext = path.extname(targetFull);
-		const base = path.basename(targetFull, ext);
-		for (let i = 1; ; i++) {
-			const candBase = `${base} (${i})${ext}`;
-			const candRel = targetRel.includes('/')
-				? `${targetRel.slice(0, targetRel.lastIndexOf('/'))}/${candBase}`
-				: candBase;
-			const candFull = safeResolve(candRel);
-			try {
-				await fs.access(candFull);
-				continue;
-			} catch (e: unknown) {
-				if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-					targetRel = candRel;
-					targetFull = candFull;
-					break;
-				}
-				throw e;
-			}
-		}
-	} catch (e: unknown) {
-		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-	}
-	await fs.mkdir(path.dirname(targetFull), { recursive: true });
-	await fs.rename(src, targetFull);
-	delete idx[trashName];
-	try {
-		await writeTrashIndex(idx);
-	} catch {}
-	return { path: targetRel, originalPath, deletedAt: meta?.deletedAt ?? null };
-}
-
-export function purgeFromTrash(trashName: string): Promise<void> {
-	return withVaultLock(() => purge(trashName));
-}
-
-async function purge(trashName: string): Promise<void> {
-	if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.startsWith('.'))
-		throw error(400, 'Invalid trash name');
-	const full = path.join(TRASH_DIR, trashName);
-	// Ensure the path stays inside TRASH_DIR
-	const resolved = path.resolve(full);
-	if (resolved !== TRASH_DIR && !resolved.startsWith(TRASH_DIR + path.sep)) throw error(400, 'Invalid path');
-	try {
-		await fs.rm(full, { recursive: true, force: true });
-	} catch {}
-	const idx = await readTrashIndex();
-	if (trashName in idx) {
-		delete idx[trashName];
+export function restoreFromBin(bin: Bin, name: string): Promise<Restored> {
+	return withVaultLock(async () => {
+		const src = binItem(bin, name);
+		if (!(await exists(src))) throw error(404, `Not in ${bin}`);
+		const idx = await readBinIndex(bin);
+		const meta = idx[name];
+		const originalPath = meta?.originalPath ?? name.replace(/^\d+-/, '');
+		// Never overwrite: a taken original becomes "name (1).md", "name (2).md", ...
+		const ext = path.extname(originalPath);
+		const stem = originalPath.slice(0, originalPath.length - ext.length);
+		let targetRel = originalPath;
+		for (let i = 1; await exists(safeResolve(targetRel)); i++) targetRel = `${stem} (${i})${ext}`;
+		const targetFull = safeResolve(targetRel);
+		await fs.mkdir(path.dirname(targetFull), { recursive: true });
+		await fs.rename(src, targetFull);
+		delete idx[name];
 		try {
-			await writeTrashIndex(idx);
+			await writeBinIndex(bin, idx);
 		} catch {}
-	}
+		return { path: targetRel, originalPath, movedAt: meta?.movedAt ?? meta?.deletedAt ?? null };
+	});
+}
+
+// Moves an item from one bin to another (archive to trash), keeping its
+// original path so restoring it from the new bin puts it back in the vault.
+export function moveBetweenBins(from: Bin, to: Bin, name: string): Promise<BinEntry> {
+	return withVaultLock(async () => {
+		const src = binItem(from, name);
+		const st = await fs.stat(src).catch(() => null);
+		if (!st) throw error(404, `Not in ${from}`);
+		const fromIdx = await readBinIndex(from);
+		const originalPath = fromIdx[name]?.originalPath ?? name.replace(/^\d+-/, '');
+		await fs.mkdir(BIN_DIRS[to], { recursive: true });
+		const dest = await freeBinName(to, path.basename(originalPath) || name);
+		await fs.rename(src, path.join(BIN_DIRS[to], dest));
+		const entry = { name: dest, originalPath, movedAt: Date.now(), isDir: st.isDirectory() };
+		try {
+			delete fromIdx[name];
+			await writeBinIndex(from, fromIdx);
+			const toIdx = await readBinIndex(to);
+			toIdx[dest] = { originalPath, movedAt: entry.movedAt, isDir: entry.isDir };
+			await writeBinIndex(to, toIdx);
+		} catch {}
+		return entry;
+	});
+}
+
+// Deleting forever only exists for the trash.
+export function purgeFromTrash(name: string): Promise<void> {
+	return withVaultLock(async () => {
+		await fs.rm(binItem('trash', name), { recursive: true, force: true }).catch(() => {});
+		const idx = await readBinIndex('trash');
+		if (name in idx) {
+			delete idx[name];
+			try {
+				await writeBinIndex('trash', idx);
+			} catch {}
+		}
+	});
 }
 
 export async function emptyTrash(): Promise<void> {
-	const entries = await listTrash();
-	for (const e of entries) {
-		await purgeFromTrash(e.trashName);
-	}
+	for (const e of await listBin('trash')) await purgeFromTrash(e.name);
 }
 
 export interface NoteManifestEntry {

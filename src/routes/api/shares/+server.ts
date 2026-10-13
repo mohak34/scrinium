@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { readNote } from '$lib/server/vault';
+import { isHiddenPath, readNote } from '$lib/server/vault';
 import { createShare, listSharesForNote } from '$lib/server/shares';
 
 // Auth is enforced in hooks.server.ts - these endpoints need a session.
@@ -20,6 +20,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const path = typeof body?.path === 'string' ? body.path : '';
 	const password = body?.password === undefined ? undefined : String(body.password);
 	if (!path || !path.endsWith('.md')) throw error(400, 'Only markdown notes can be shared');
+	// Archived and trashed notes are put away; their links were dropped.
+	if (isHiddenPath(path)) throw error(400, 'Archived and trashed notes cannot be shared');
 	if (password !== undefined && (password.length < 4 || password.length > 200)) {
 		throw error(400, 'Password must be 4-200 characters');
 	}
