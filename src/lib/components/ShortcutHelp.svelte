@@ -5,24 +5,13 @@
 		onClose: () => void;
 	}
 	let { onClose }: Props = $props();
-
-	// Modal: take focus so keys never type into a field underneath, and
-	// hand it back on close.
-	let closeBtn: HTMLButtonElement;
-	$effect(() => {
-		const prev = document.activeElement;
-		closeBtn.focus();
-		return () => {
-			if (prev instanceof HTMLElement && prev.isConnected) prev.focus();
-		};
-	});
 </script>
 
 <div class="overlay" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onClose()}>
 	<div class="help" role="dialog" aria-label="Keyboard shortcuts">
 		<div class="head">
 			<span class="title">Keyboard shortcuts</span>
-			<button class="icon-btn" title="Close (Esc)" onclick={onClose} bind:this={closeBtn}>
+			<button class="icon-btn" title="Close (Esc)" onclick={onClose}>
 				<span class="material-symbols-outlined">close</span>
 			</button>
 		</div>

@@ -56,16 +56,14 @@
 	}
 
 	// The help overlay is modal: it swallows keys in the capture phase, like
-	// the settings dialog, so nothing fires underneath; Esc closes it.
+	// the settings dialog, so nothing fires underneath; Esc closes it. Focus
+	// stays where it was (the editor, say), so every default is blocked too:
+	// no typing into it behind the overlay, and it is still there on close.
 	function helpKey(e: KeyboardEvent) {
 		if (!get(shortcutHelpOpen)) return;
 		e.stopPropagation();
-		// Tab would walk focus out to the page underneath.
-		if (e.key === 'Tab') e.preventDefault();
-		if (e.key === 'Escape' || e.key === '?') {
-			e.preventDefault();
-			shortcutHelpOpen.set(false);
-		}
+		e.preventDefault();
+		if (e.key === 'Escape' || e.key === '?') shortcutHelpOpen.set(false);
 	}
 
 	// Plain-key shortcuts with vim motions on: Space leader and ? help. They

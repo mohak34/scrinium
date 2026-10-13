@@ -81,7 +81,8 @@ export function childrenOf(all: Task[], id: string): Task[] {
 		.sort((a, b) => a.position - b.position || a.created_at - b.created_at);
 }
 
-// Task writes in flight, and a count bumped as each starts and lands. A
+// Writes that change the task list (tasks, project removal, links) in
+// flight, and a count bumped as each starts and lands. A
 // list fetch that overlapped a write may predate it, so it is dropped
 // rather than painted over the write, and fetched again once writes settle.
 let writing = 0;
@@ -258,10 +259,12 @@ export async function setProjectArea(path: string, area: TaskArea | null): Promi
 
 /** Unregisters the project; the folder stays and its tasks join the main board. */
 export async function removeProject(path: string): Promise<boolean> {
-	const res = await fetch(`/api/projects?path=${encodeURIComponent(path)}`, {
-		method: 'DELETE',
-		credentials: 'include'
-	}).catch(() => null);
+	const res = await taskWrite(() =>
+		fetch(`/api/projects?path=${encodeURIComponent(path)}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		})
+	).catch(() => null);
 	if (!res?.ok) return false;
 	void loadProjects();
 	projects.update((all) => all.filter((p) => p.path !== path));
@@ -377,12 +380,14 @@ export async function loadTaskLinks(id: string): Promise<string[]> {
 }
 
 export async function addTaskLink(id: string, notePath: string): Promise<string[]> {
-	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/links`, {
-		method: 'POST',
-		credentials: 'include',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ note_path: notePath })
-	});
+	const res = await taskWrite(() =>
+		fetch(`/api/tasks/${encodeURIComponent(id)}/links`, {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ note_path: notePath })
+		})
+	);
 	if (!res.ok) return loadTaskLinks(id);
 	const rows = (await res.json()) as string[];
 	syncLinkCount(id, rows.length);
@@ -390,9 +395,11 @@ export async function addTaskLink(id: string, notePath: string): Promise<string[
 }
 
 export async function removeTaskLink(id: string, notePath: string): Promise<string[]> {
-	const res = await fetch(
-		`/api/tasks/${encodeURIComponent(id)}/links?note_path=${encodeURIComponent(notePath)}`,
-		{ method: 'DELETE', credentials: 'include' }
+	const res = await taskWrite(() =>
+		fetch(`/api/tasks/${encodeURIComponent(id)}/links?note_path=${encodeURIComponent(notePath)}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		})
 	);
 	if (!res.ok) return loadTaskLinks(id);
 	const rows = (await res.json()) as string[];
