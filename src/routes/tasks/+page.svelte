@@ -25,7 +25,7 @@
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 	import AppActions from '$lib/components/AppActions.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { usePageCommands } from '$lib/stores/palette';
 	import { keyNav } from '$lib/keyNav';
 
@@ -48,12 +48,22 @@
 	];
 
 	let addInput = $state<HTMLInputElement>();
+	let searchInput = $state<HTMLInputElement>();
 
 	onMount(() => {
 		void loadTasks();
 		return usePageCommands([
 			{ label: 'Add a task here', hint: 'Focus the add box', run: () => addInput?.focus() },
-			{ label: 'Search tasks', hint: 'Filter this list by text', run: () => (searching = true) },
+			{
+				label: 'Search tasks',
+				hint: 'Filter this list by text',
+				run: async () => {
+					// Already open: the attach won't rerun, so focus it here.
+					searching = true;
+					await tick();
+					searchInput?.focus();
+				}
+			},
 			...filters.map((f) => ({
 				label: `Show ${f.label.toLowerCase()}`,
 				hint: 'Task list filter',
@@ -233,6 +243,7 @@
 					placeholder="Search tasks"
 					bind:value={query}
 					aria-label="Search tasks"
+					bind:this={searchInput}
 					onkeydown={(e) => {
 						if (e.key === 'Escape') {
 							query = '';
