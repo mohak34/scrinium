@@ -106,18 +106,18 @@ function taskWrite(req: () => Promise<Response>): Promise<Response> {
 // across a dropped load's retry, whether it starts at once or waits for
 // writes to settle.
 let loads = 0;
-let latestLoad = 0;
+let latestTaskLoad = 0;
 
 export async function loadTasks(): Promise<Task[]> {
 	loads++;
-	const me = ++latestLoad;
+	const me = ++latestTaskLoad;
 	tasksLoading.set(true);
 	try {
 		const n = writes;
 		const res = await fetch('/api/tasks', { credentials: 'include' });
 		if (!res.ok) return get(tasks);
 		const rows = (await res.json()) as Task[];
-		if (me !== latestLoad) return get(tasks);
+		if (me !== latestTaskLoad) return get(tasks);
 		if (writes !== n || writing > 0) {
 			if (writing === 0) return loadTasks();
 			reloadWanted = true;
