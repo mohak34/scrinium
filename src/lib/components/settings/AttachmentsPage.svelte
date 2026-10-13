@@ -11,7 +11,7 @@
 
 	const att = $derived($settings.attachments);
 	// A worked example so the setting reads as a path, not an abstraction.
-	const example = $derived(attachmentDirFor('College/DSA', att));
+	const example = $derived(attachmentDirFor('Uni/DSA', att));
 
 	function patch(p: Partial<typeof att>) {
 		settings.update((s) => ({ ...s, attachments: { ...s.attachments, ...p } }));
@@ -43,7 +43,7 @@
 <div class="row">
 	<div class="txt">
 		<span class="lbl">Example</span>
-		<span class="hint">Pasting into <span class="mono">College/DSA/Lecture 14.md</span> saves to</span>
+		<span class="hint">Pasting into <span class="mono">Uni/DSA/Lecture 14.md</span> saves to</span>
 	</div>
 	<span class="mono path">{example ? `${example}/` : 'vault root'}</span>
 </div>

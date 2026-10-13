@@ -17,10 +17,10 @@ export type TaskStatus = (typeof STATUSES)[number]['key'];
 // Areas group tasks by part of life. Fixed on purpose: four buckets cover a
 // student's week, and a fixed set keeps colors and filters predictable.
 export const AREAS = [
-	{ key: 'college', label: 'College', color: '#8fb3ff' },
+	{ key: 'uni', label: 'Uni', color: '#8fb3ff' },
 	{ key: 'learning', label: 'Learning', color: '#c4a8ff' },
 	{ key: 'work', label: 'Work', color: '#f0a35e' },
-	{ key: 'life', label: 'Life', color: '#d6c3a1' }
+	{ key: 'quotidian', label: 'Quotidian', color: '#d6c3a1' }
 ] as const;
 
 export type TaskArea = (typeof AREAS)[number]['key'];

@@ -32,7 +32,7 @@ const NotePath = z
 	.string()
 	.min(1)
 	.refine((p) => !p.split('/').includes('..'), 'Paths stay inside the vault')
-	.describe('Vault-relative path, e.g. "College/DSA/Lecture 3.md"');
+	.describe('Vault-relative path, e.g. "Uni/DSA/Lecture 3.md"');
 
 const INSTRUCTIONS = `Scrinium is a personal notes and tasks app. Notes are markdown files in a vault, addressed by vault-relative path ending in .md. The first "# " heading of a note is its title and should match the filename. Use [[Note name]] to link notes and #tag for tags.
 
