@@ -59,11 +59,27 @@
 	// the settings dialog, so nothing fires underneath; Esc closes it. Focus
 	// stays where it was (the editor, say), so every default is blocked too:
 	// no typing into it behind the overlay, and it is still there on close.
+	// Scroll keys scroll the overlay by hand instead.
 	function helpKey(e: KeyboardEvent) {
 		if (!get(shortcutHelpOpen)) return;
 		e.stopPropagation();
 		e.preventDefault();
 		if (e.key === 'Escape' || e.key === '?') shortcutHelpOpen.set(false);
+		const el = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Keyboard shortcuts"]');
+		if (!el) return;
+		const page = el.clientHeight * 0.9;
+		const by: Record<string, number> = {
+			ArrowDown: 40,
+			j: 40,
+			ArrowUp: -40,
+			k: -40,
+			PageDown: page,
+			' ': page,
+			PageUp: -page,
+			Home: -el.scrollHeight,
+			End: el.scrollHeight
+		};
+		if (e.key in by) el.scrollBy(0, by[e.key]);
 	}
 
 	// Plain-key shortcuts with vim motions on: Space leader and ? help. They

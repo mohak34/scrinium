@@ -12,6 +12,7 @@
 		tasks,
 		projects,
 		loadTasks,
+		tasksLoading,
 		loadProjects,
 		createTask,
 		openTask,
@@ -211,9 +212,9 @@
 				.map((c): PaletteItem => ({ kind: 'command', item: c })),
 			...results.map((r): PaletteItem => ({ kind: 'note', item: r })),
 			...taskHits.map((t): PaletteItem => ({ kind: 'task', item: t })),
-			// Held back until notes answer, so a quick Enter never adds a task
-			// when a note was meant.
-			...(pending ? [] : [{ kind: 'add', title: query.trim() } as const])
+			// Held back until notes and tasks answer, so a quick Enter never adds
+			// a task when a note or an existing task was meant.
+			...(pending || $tasksLoading ? [] : [{ kind: 'add', title: query.trim() } as const])
 		];
 	});
 
