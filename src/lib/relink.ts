@@ -6,6 +6,7 @@
 // the same Lezer markdown parser the editor uses, so code is never touched.
 
 import { parser, GFM } from '@lezer/markdown';
+import { decodeHTMLStrict } from 'entities/decode';
 
 // No HTML blocks: the renderer (markdown-it, html off) shows links inside them.
 const markdown = parser.configure([GFM, { remove: ['HTMLBlock'] }]);
@@ -15,16 +16,14 @@ const LINK_NODES = new Set(['Link', 'Image', 'LinkReference']);
 const dirOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf('/')));
 
 // Markdown text as it renders: backslash escapes (`\(`) and character
-// references (`&amp;`, `&#40;`) undone. Also used by the unused-files scan.
+// references (`&amp;`, `&apos;`, `&#40;`) undone in one pass, so an escaped
+// `\&amp;` stays literal, like markdown-it's unescapeAll. Also used by the
+// unused-files scan.
 export function unescapeMarkdown(s: string): string {
-	return s
-		.replace(/\\([!-/:-@[-`{-~])/g, '$1')
-		.replace(/&(amp|lt|gt|quot|#\d+|#x[\da-f]+);/gi, (m, e: string) => {
-			const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' };
-			if (e[0] !== '#') return named[e.toLowerCase()] ?? m;
-			const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-			return code <= 0x10ffff ? String.fromCodePoint(code) : m;
-		});
+	return s.replace(
+		/\\([!-/:-@[-`{-~])|&(?:[a-z][a-z\d]{1,31}|#\d{1,7}|#x[\da-f]{1,6});/gi,
+		(m, esc?: string) => esc ?? decodeHTMLStrict(m)
+	);
 }
 
 function decode(s: string): string {
@@ -87,9 +86,9 @@ function mapLinks(content: string, dir: string, fn: (link: Link) => string | nul
 				path,
 				target,
 				rewrite(next) {
-					// Percent-encode what would end the destination or read as a
-					// query/fragment; angle brackets already allow spaces and parens.
-					const enc = next.replace(angle ? /[%#?<>\n]/g : /[%#?<>()\s\\]/g, (c) =>
+					// Percent-encode what would end the destination or read as an entity,
+					// a query or a fragment; angle brackets already allow spaces and parens.
+					const enc = next.replace(angle ? /[%&#?<>\n]/g : /[%&#?<>()\s\\]/g, (c) =>
 						encodeURIComponent(c).replace('(', '%28').replace(')', '%29')
 					);
 					return angle ? `<${enc}${suffix}>` : enc + suffix;
