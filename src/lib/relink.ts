@@ -7,7 +7,8 @@
 
 import { parser, GFM } from '@lezer/markdown';
 
-const markdown = parser.configure(GFM);
+// No HTML blocks: the renderer (markdown-it, html off) shows links inside them.
+const markdown = parser.configure([GFM, { remove: ['HTMLBlock'] }]);
 // Syntax nodes whose URL child is a link destination (not a bare autolink).
 const LINK_NODES = new Set(['Link', 'Image', 'LinkReference']);
 
@@ -75,10 +76,11 @@ function mapLinks(content: string, dir: string, fn: (link: Link) => string | nul
 			if (node.name !== 'URL' || !LINK_NODES.has(node.node.parent?.name ?? '')) return;
 			const raw = content.slice(node.from, node.to);
 			const angle = raw.startsWith('<');
-			const url = unescapeMarkdown(angle ? raw.slice(1, -1) : raw);
-			const cut = url.search(/[?#]/);
+			const url = angle ? raw.slice(1, -1) : raw;
+			// The ?query/#anchor is kept as written; a "#" inside "&#40;" is not one.
+			const cut = url.search(/\?|(?<!&)#/);
 			const [pathPart, suffix] = cut < 0 ? [url, ''] : [url.slice(0, cut), url.slice(cut)];
-			const path = decode(pathPart);
+			const path = decode(unescapeMarkdown(pathPart));
 			const target = resolveLink(dir, path);
 			if (target === null) return;
 			const text = fn({
