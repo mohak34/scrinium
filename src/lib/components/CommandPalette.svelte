@@ -48,7 +48,7 @@
 	}
 
 	async function addTask(title: string) {
-		const row = await createTask({ title });
+		const row = await createTask({ title, status: 'inbox' });
 		if (row && onTasksPage()) openTask(row.id);
 	}
 
@@ -261,9 +261,10 @@
 	}
 
 	// Keys the palette handles stop here, so Esc never also closes the task
-	// drawer or leaves preview underneath.
+	// drawer or leaves preview underneath. Esc is caught on the dialog, so it
+	// works from a tabbed-to result too.
 	function onKeyDown(e: KeyboardEvent) {
-		if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) e.stopPropagation();
+		if (['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) e.stopPropagation();
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			selected = Math.min(items.length - 1, selected + 1);
@@ -273,15 +274,19 @@
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
 			if (items.length) run(items[selected]);
-		} else if (e.key === 'Escape') {
-			e.preventDefault();
-			onClose();
 		}
+	}
+
+	function onDialogKey(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
+		e.preventDefault();
+		e.stopPropagation();
+		onClose();
 	}
 </script>
 
 <div class="overlay" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onClose()}>
-	<div class="palette" role="dialog" aria-label="Command palette">
+	<div class="palette" role="dialog" aria-label="Command palette" tabindex="-1" onkeydown={onDialogKey}>
 		<input
 			bind:this={inputEl}
 			class="palette-input"

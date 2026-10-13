@@ -60,6 +60,8 @@
 	function helpKey(e: KeyboardEvent) {
 		if (!get(shortcutHelpOpen)) return;
 		e.stopPropagation();
+		// Tab would walk focus out to the page underneath.
+		if (e.key === 'Tab') e.preventDefault();
 		if (e.key === 'Escape' || e.key === '?') {
 			e.preventDefault();
 			shortcutHelpOpen.set(false);
