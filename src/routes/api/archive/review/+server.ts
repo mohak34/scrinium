@@ -6,14 +6,7 @@ import { linkedNotePaths } from '$lib/server/db';
 import { sharedNotePaths } from '$lib/server/shares';
 import { effectiveTitle, stripFrontmatter } from '$lib/editor/frontmatter';
 import { findWikilinksInText, resolveWikilink } from '$lib/editor/wikilinks';
-
-export interface ReviewNote {
-	path: string;
-	title: string;
-	updatedAt: number;
-	// Words in the body, title heading and properties left out.
-	words: number;
-}
+import type { ReviewNote } from '$lib/archive';
 
 // Notes that look abandoned: not edited in `days` days (default 60), no
 // other note links to them, no task links to them, no share link. Pinning

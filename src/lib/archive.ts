@@ -25,3 +25,12 @@ export function fromArchivedPath(
 	const entry = m && entries.find((e) => e.name === m[1]);
 	return entry ? { entry, note: entry.originalPath + m[2] } : null;
 }
+
+// A stale note from /api/archive/review.
+export interface ReviewNote {
+	path: string;
+	title: string;
+	updatedAt: number;
+	// Words in the body, title heading and properties left out.
+	words: number;
+}

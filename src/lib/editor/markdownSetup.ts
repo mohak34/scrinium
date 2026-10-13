@@ -189,6 +189,10 @@ export const baseTheme = EditorView.theme(
 			textDecorationStyle: 'dashed',
 			textDecorationColor: 'var(--text-3)'
 		},
+		'.cm-wikilink-archived': {
+			color: 'var(--text-3)',
+			textDecorationColor: 'var(--text-4)'
+		},
 		'.cm-wikilink-source': {
 			backgroundColor: 'var(--accent-dim)',
 			borderRadius: '3px'

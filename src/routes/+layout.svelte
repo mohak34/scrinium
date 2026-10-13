@@ -8,6 +8,7 @@
 	import '$lib/design/theme.css';
 	import ReminderToasts from '$lib/components/ReminderToasts.svelte';
 	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
+	import BinsView from '$lib/components/bins/BinsView.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { APPS } from '$lib/apps';
@@ -62,4 +63,5 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 <ReminderToasts />
 {#if !page.url.pathname.startsWith('/login') && !page.url.pathname.startsWith('/s/')}
 	<SettingsDialog />
+	<BinsView />
 {/if}

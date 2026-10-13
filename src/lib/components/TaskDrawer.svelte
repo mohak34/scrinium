@@ -27,6 +27,7 @@
 		type TaskPriority
 	} from '$lib/stores/tasks';
 	import { tree, loadTree, openTab, type VaultEntry } from '$lib/stores/vault';
+	import { openBins } from '$lib/stores/bins';
 
 	const REMIND_QUICK = [
 		{ label: '15m before due', ms: 15 * 60000 },
@@ -230,9 +231,25 @@
 	}
 
 	function openNote(path: string) {
+		const bin = binOf(path);
+		if (bin) return openBins(bin, bin === 'archive' ? path.split('/')[1] : undefined);
 		openTab(path);
 		closeTask();
 		void goto('/');
+	}
+
+	// A link follows its note into the archive or trash (".archive/<stamp>-
+	// name/..."): shown by its old name, and a click opens that bin.
+	const binOf = (p: string) => (p.startsWith('.archive/') ? 'archive' : p.startsWith('.trash/') ? 'trash' : null);
+	function linkName(p: string): string {
+		const parts = p.split('/');
+		const last = binOf(p) && parts.length === 2 ? parts[1].replace(/^\d{13,}-/, '') : parts[parts.length - 1];
+		return last.replace(/\.md$/, '');
+	}
+	function linkWhere(p: string): string {
+		const bin = binOf(p);
+		if (bin) return bin === 'archive' ? 'Archived' : 'In trash';
+		return p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
 	}
 
 	// Short labels so all five statuses fit one segmented row.
@@ -532,8 +549,8 @@
 					<div class="note">
 						<button class="note-open" onclick={() => openNote(p)} title="Open note">
 							<span class="material-symbols-outlined">description</span>
-							<span class="note-name">{(p.split('/').pop() ?? p).replace(/\.md$/, '')}</span>
-							<span class="note-path">{p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''}</span>
+							<span class="note-name">{linkName(p)}</span>
+							<span class="note-path">{linkWhere(p)}</span>
 						</button>
 						<button class="icon" title="Unlink note" onclick={() => void detachLink(task, p)}>
 							<span class="material-symbols-outlined">link_off</span>

@@ -28,7 +28,7 @@ import { findCallouts } from './callouts';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, resolveAssetUrl, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
 	import { attachmentMarkdown } from '$lib/attachments';
-	import { tree } from '$lib/stores/vault';
+	import { tree, archiveEntries } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
 	import { tableBlockField } from './tableBlock';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
@@ -275,7 +275,8 @@ import { findCallouts } from './callouts';
 	$effect(() => {
 		if (!view) return;
 		const notes = notePathsFromTree($tree);
-		view.dispatch({ effects: wikiCtxEffect.of({ notes, current: notePath ?? null }) });
+		const archived = $archiveEntries.flatMap((e) => e.notes);
+		view.dispatch({ effects: wikiCtxEffect.of({ notes, archived, current: notePath ?? null }) });
 	});
 
 	// Feed the vault-wide tag list to `#` completion. Refetches when the

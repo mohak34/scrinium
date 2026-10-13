@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { linkFirstMention } from '$lib/editor/wikilinks';
 import { effectiveTitle, setEffectiveTitle, updateFrontmatterBlock } from '$lib/editor/frontmatter';
 import type { Document } from 'yaml';
+import type { ArchiveEntry } from '$lib/archive';
 
 export interface VaultEntry {
 	name: string;
@@ -97,8 +98,12 @@ export interface SearchResult {
 	snippet: string;
 }
 
-export async function searchNotes(q: string): Promise<SearchResult[]> {
-	const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+// Full-text search. The archive is left out unless scope asks for it.
+export async function searchNotes(
+	q: string,
+	scope: 'vault' | 'archive' | 'all' = 'vault'
+): Promise<SearchResult[]> {
+	const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&scope=${scope}`);
 	if (!res.ok) return [];
 	return res.json();
 }
@@ -477,14 +482,15 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 	return !!ok;
 }
 
-// Move a note or folder to trash. Runs in the save queue, so the trashed
-// copy has every keystroke saved before the delete; a failed save keeps the
-// note and its queued text. Text typed while the DELETE is in flight is
-// dropped on success (the note is gone; saving it would recreate the file)
-// and saved to the still-existing note on failure.
-export async function deletePath(path: string) {
-	const ok = await afterSaved(async () => {
-		const res = await fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' }).catch(() => null);
+// Move a note or folder out of the vault: to the trash (DELETE) or the
+// archive. Runs in the save queue, so the moved copy has every keystroke
+// saved first; a failed save keeps the note and its queued text. Text
+// typed while the request is in flight is dropped on success (the note is
+// gone; saving it would recreate the file) and saved to the still-existing
+// note on failure.
+function putAway(path: string, send: () => Promise<Response>): Promise<boolean> {
+	return afterSaved(async () => {
+		const res = await send().catch(() => null);
 		if (!res?.ok) return false;
 		for (const p of [...pending.keys()]) if (p === path || p.startsWith(path + '/')) pending.delete(p);
 		if (shown && (shown === path || shown.startsWith(path + '/'))) shown = null;
@@ -495,9 +501,27 @@ export async function deletePath(path: string) {
 		openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
 		pinnedPaths.update((pinned) => pinned.filter((p) => p !== path && !p.startsWith(path + '/')));
 		return true;
-	});
+	}).then((ok) => !!ok);
+}
+
+export async function deletePath(path: string) {
+	const ok = await putAway(path, () => fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' }));
 	await loadTree();
-	return !!ok;
+	if (ok) void loadTrash();
+	return ok;
+}
+
+export async function archivePath(path: string) {
+	const ok = await putAway(path, () =>
+		fetch('/api/archive', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ path })
+		})
+	);
+	await loadTree();
+	if (ok) void loadArchive();
+	return ok;
 }
 
 // Drag-and-drop move: a rename whose target is a folder (or null for the
@@ -535,7 +559,7 @@ export async function restoreTrash(trashName: string): Promise<string | null> {
 	const restoredPath = typeof data?.path === 'string' ? data.path : null;
 	await loadTree();
 	await loadTrash();
-	if (restoredPath) openTab(restoredPath);
+	if (restoredPath?.endsWith('.md')) openTab(restoredPath);
 	return restoredPath;
 }
 
@@ -547,4 +571,34 @@ export async function purgeTrash(trashName: string) {
 export async function emptyTrash() {
 	await fetch('/api/trash?all=1', { method: 'DELETE' });
 	await loadTrash();
+}
+
+// --- Archive ---
+
+export const archiveEntries = writable<ArchiveEntry[]>([]);
+
+export async function loadArchive() {
+	const res = await fetch('/api/archive');
+	if (res.ok) archiveEntries.set(await res.json());
+}
+
+const postJson = (url: string, body: unknown) =>
+	fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+// Back to its original path (or "name (1)" when taken), opened in a tab
+// when it is a note. Resolves the path it landed on, null on failure.
+export async function unarchive(name: string): Promise<string | null> {
+	const res = await postJson('/api/archive/restore', { name }).catch(() => null);
+	if (!res?.ok) return null;
+	const path: unknown = (await res.json().catch(() => null))?.path;
+	await Promise.all([loadTree(), loadArchive()]);
+	if (typeof path !== 'string') return null;
+	if (path.endsWith('.md')) openTab(path);
+	return path;
+}
+
+export async function archiveToTrash(name: string): Promise<boolean> {
+	const res = await postJson('/api/archive/trash', { name }).catch(() => null);
+	await Promise.all([loadArchive(), loadTrash()]);
+	return !!res?.ok;
 }

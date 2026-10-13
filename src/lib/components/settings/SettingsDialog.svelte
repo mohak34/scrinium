@@ -1,14 +1,13 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { settingsPage, type SettingsPage } from '$lib/stores/settingsDialog';
-	import { trashEntries, loadTrash, tree, loadTree } from '$lib/stores/vault';
+	import { loadTrash, loadArchive, tree, loadTree } from '$lib/stores/vault';
 	import EditorPage from './EditorPage.svelte';
 	import KeyboardPage from './KeyboardPage.svelte';
 	import AttachmentsPage from './AttachmentsPage.svelte';
 	import AccountPage from './AccountPage.svelte';
 	import DevicesPage from './DevicesPage.svelte';
 	import AgentsPage from './AgentsPage.svelte';
-	import TrashPage from './TrashPage.svelte';
 	import AboutPage from './AboutPage.svelte';
 
 	// One dialog for preferences, account and vault housekeeping, mounted in
@@ -33,7 +32,6 @@
 		{
 			label: 'Vault',
 			pages: [
-				{ key: 'trash', title: 'Trash', icon: 'delete' },
 				{ key: 'about', title: 'About', icon: 'info' }
 			]
 		}
@@ -49,6 +47,7 @@
 	$effect(() => {
 		if (!isOpen) return;
 		void loadTrash();
+		void loadArchive();
 		if ($tree.length === 0) void loadTree();
 		const prev = document.activeElement as HTMLElement | null;
 		void tick().then(() => dlg?.focus());
@@ -81,9 +80,6 @@
 						<button class="ni" class:on={p.key === current.key} onclick={() => settingsPage.set(p.key)}>
 							<span class="material-symbols-outlined" class:fill={p.key === current.key}>{p.icon}</span>
 							{p.title}
-							{#if p.key === 'trash' && $trashEntries.length}
-								<span class="c">{$trashEntries.length}</span>
-							{/if}
 						</button>
 					{/each}
 				{/each}
@@ -103,7 +99,6 @@
 					{:else if current.key === 'account'}<AccountPage />
 					{:else if current.key === 'devices'}<DevicesPage />
 				{:else if current.key === 'agents'}<AgentsPage />
-					{:else if current.key === 'trash'}<TrashPage onRestored={close} />
 					{:else}<AboutPage />
 					{/if}
 				</div>
@@ -175,11 +170,6 @@
 	}
 	.ni.on .material-symbols-outlined {
 		color: var(--accent);
-	}
-	.c {
-		margin-left: auto;
-		color: var(--text-4);
-		font: 11px var(--font-mono);
 	}
 	.body {
 		flex: 1;

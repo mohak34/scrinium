@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
-	import { tree, trashEntries, type VaultEntry } from '$lib/stores/vault';
+	import { tree, trashEntries, archiveEntries, type VaultEntry } from '$lib/stores/vault';
 
 	function count(entries: VaultEntry[]): { notes: number; folders: number } {
 		let notes = 0;
@@ -25,6 +25,7 @@
 <div class="stats">
 	<div><b>{stats.notes}</b><small>notes</small></div>
 	<div><b>{stats.folders}</b><small>folders</small></div>
+	<div><b>{$archiveEntries.length}</b><small>archived</small></div>
 	<div><b>{$trashEntries.length}</b><small>in trash</small></div>
 </div>
 <div class="row">

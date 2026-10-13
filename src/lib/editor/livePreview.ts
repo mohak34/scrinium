@@ -46,6 +46,7 @@ import {
 } from './wikilinks';
 import { findTagsInText } from './tags';
 import { createNote, flushSave, openTab } from '$lib/stores/vault';
+import { openBins } from '$lib/stores/bins';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
 // regardless of where the cursor is. Entered with Escape, exited by clicking
@@ -68,16 +69,19 @@ export const noteDirField = StateField.define<string | null>({
 	}
 });
 
-// Vault-wide link context for wikilinks: flat `.md` paths plus the open
-// note (creation folder for unresolved targets). Mirrored from the vault
-// store by CodeEditor; the decoration set rebuilds when it flips.
+// Vault-wide link context for wikilinks: flat `.md` paths, the original
+// paths of archived notes (a link to one opens the archive instead of
+// creating a duplicate), and the open note (creation folder for
+// unresolved targets). Mirrored from the vault store by CodeEditor; the
+// decoration set rebuilds when it flips.
 export interface WikiCtx {
 	notes: string[];
+	archived: string[];
 	current: string | null;
 }
 export const wikiCtxEffect = StateEffect.define<WikiCtx>();
 export const wikiCtxField = StateField.define<WikiCtx>({
-	create: () => ({ notes: [], current: null }),
+	create: () => ({ notes: [], archived: [], current: null }),
 	update(value, tr) {
 		for (const e of tr.effects) {
 			if (e.is(wikiCtxEffect)) return e.value;
@@ -159,8 +163,9 @@ class CheckboxWidget extends WidgetType {
 }
 
 // A `[[wikilink]]` rendered as a clickable pill when the cursor is off
-// the line. Click navigates; clicking an unresolved target creates the
-// note first (same folder as the open note, vault root otherwise).
+// the line. Click navigates; a link to an archived note opens it in the
+// archive; clicking an unresolved target creates the note first (same
+// folder as the open note, vault root otherwise).
 class WikilinkWidget extends WidgetType {
 	constructor(
 		readonly target: string,
@@ -173,16 +178,28 @@ class WikilinkWidget extends WidgetType {
 	}
 	toDOM(view: EditorView) {
 		const span = document.createElement('span');
-		const resolved = resolveWikilink(this.target, view.state.field(wikiCtxField, false)?.notes ?? []);
-		span.className = resolved ? 'cm-wikilink' : 'cm-wikilink cm-wikilink-unresolved';
+		const ctx = view.state.field(wikiCtxField, false);
+		const resolved = resolveWikilink(this.target, ctx?.notes ?? []);
+		const archived = resolved ? null : resolveWikilink(this.target, ctx?.archived ?? []);
+		span.className = resolved
+			? 'cm-wikilink'
+			: archived
+				? 'cm-wikilink cm-wikilink-archived'
+				: 'cm-wikilink cm-wikilink-unresolved';
+		if (archived) span.title = 'Archived';
 		span.textContent = this.display;
 		span.onmousedown = (e) => {
 			e.preventDefault();
-			const notes = view.state.field(wikiCtxField, false)?.notes ?? [];
-			const current = view.state.field(wikiCtxField, false)?.current ?? null;
-			const path = resolveWikilink(this.target, notes);
+			const ctx = view.state.field(wikiCtxField, false);
+			const current = ctx?.current ?? null;
+			const path = resolveWikilink(this.target, ctx?.notes ?? []);
 			if (path) {
 				void flushSave().then(() => openTab(path));
+				return;
+			}
+			const gone = resolveWikilink(this.target, ctx?.archived ?? []);
+			if (gone) {
+				openBins('archive', gone);
 				return;
 			}
 			const name = wikilinkFilename(this.target);

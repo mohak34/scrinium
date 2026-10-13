@@ -15,6 +15,7 @@
 	import {
 		activePath,
 		loadTree,
+		loadArchive,
 		openTabs,
 		scheduleSave,
 		flushSave,
@@ -94,6 +95,7 @@
 			sidebarWidth = savedWidth;
 		}
 		loadTree();
+		void loadArchive();
 
 		// The sidebar owns the inline rename input, so open it for a rename
 		// asked from the note bar or palette; it picks the request up on mount.
