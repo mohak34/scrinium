@@ -246,6 +246,12 @@ State channels you will touch:
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
   in the root layout; polls `POST /api/tasks/due` every 30 s).
+  `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
+  drag-and-drop. Tree rows move into folders (a file row means its folder,
+  the Files header the root), notes dropped on Pinned get pinned, pins
+  reorder or unpin when dragged out. Targets are found by `data-*`
+  attributes under the pointer; the lifted row and its "Move to X" label
+  live in Sidebar.svelte.
   `settings/SettingsDialog.svelte` is the one settings and trash surface:
   a modal mounted in the root layout, opened through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer

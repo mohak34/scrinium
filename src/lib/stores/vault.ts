@@ -45,6 +45,17 @@ export function togglePin(path: string) {
 	);
 }
 
+// Drag onto the Pinned list: pin `path` (or move it if already pinned) to sit
+// before `before`, or last when null.
+export function movePin(path: string, before: string | null) {
+	pinnedPaths.update((paths) => {
+		const rest = paths.filter((p) => p !== path);
+		const at = before === null ? -1 : rest.indexOf(before);
+		if (at === -1) return [...rest, path];
+		return [...rest.slice(0, at), path, ...rest.slice(at)];
+	});
+}
+
 // Sort a level of the tree so pinned entries come first, preserving the
 // existing alphabetical/type order within each group.
 export function sortPinnedFirst(entries: VaultEntry[]): VaultEntry[] {

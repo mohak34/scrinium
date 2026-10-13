@@ -1,0 +1,194 @@
+import { get, writable } from 'svelte/store';
+import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
+
+// Pointer-driven drag for the notes sidebar. Tree rows move into folders,
+// notes dropped on Pinned get pinned, pins reorder or unpin when dragged out.
+// Built on pointer events instead of HTML5 drag-and-drop so the lifted row,
+// the target highlight and Esc-to-cancel are drawn by us, and hovering a
+// file or a folder's children still counts as that folder.
+//
+// Targets are found in the DOM under the pointer:
+//   [data-drop-pins]  the Pinned section; [data-pin=path] its rows
+//   [data-tree-entry] a tree row (data-path, data-type)
+//   [data-drop-root]  the vault root (Files header, empty tree space)
+//   [data-drag-scroll] the container that autoscrolls near its edges
+
+export interface DragSource {
+	path: string;
+	kind: 'file' | 'directory';
+	fromPins: boolean;
+}
+
+export type DropTarget =
+	| { kind: 'move'; dir: string | null }
+	| { kind: 'pin'; before: string | null }
+	| { kind: 'unpin' };
+
+export interface DragState {
+	source: DragSource;
+	target: DropTarget | null;
+	// Where the lifted row is drawn: it keeps the picked-up row's column and
+	// follows the pointer vertically.
+	top: number;
+	left: number;
+	width: number;
+}
+
+export const drag = writable<DragState | null>(null);
+
+const THRESHOLD = 4;
+const EXPAND_DELAY = 600;
+const EDGE = 32;
+
+// A move is valid unless it lands where the item already is, or puts a
+// folder inside itself.
+export function canMove(source: DragSource, dir: string | null): boolean {
+	if (parentDirOf(source.path) === dir) return false;
+	if (source.kind === 'directory' && dir !== null) {
+		if (dir === source.path || dir.startsWith(source.path + '/')) return false;
+	}
+	return true;
+}
+
+// Insert position from the pointer's height against the pin rows; null when
+// the drop would leave the order unchanged.
+function pinTarget(source: DragSource, pins: HTMLElement, y: number): DropTarget | null {
+	const rows = Array.from(pins.querySelectorAll<HTMLElement>('[data-pin]'));
+	let at = rows.findIndex((r) => {
+		const b = r.getBoundingClientRect();
+		return y < b.top + b.height / 2;
+	});
+	if (at === -1) at = rows.length;
+	const paths = rows.map((r) => r.dataset.pin ?? '');
+	const from = paths.indexOf(source.path);
+	if (from !== -1 && (at === from || at === from + 1)) return null;
+	return { kind: 'pin', before: paths[at] ?? null };
+}
+
+function resolve(source: DragSource, x: number, y: number): DropTarget | null {
+	const el = document.elementFromPoint(x, y);
+	const pins = el?.closest<HTMLElement>('[data-drop-pins]');
+	if (source.fromPins) return pins ? pinTarget(source, pins, y) : { kind: 'unpin' };
+	if (pins) {
+		return source.kind === 'file' && source.path.endsWith('.md') ? pinTarget(source, pins, y) : null;
+	}
+	const entry = el?.closest<HTMLElement>('[data-tree-entry]');
+	let dir: string | null;
+	if (entry?.dataset.path) {
+		dir = entry.dataset.type === 'directory' ? entry.dataset.path : parentDirOf(entry.dataset.path);
+	} else if (el?.closest('[data-drop-root]')) {
+		dir = null;
+	} else {
+		return null;
+	}
+	return canMove(source, dir) ? { kind: 'move', dir } : null;
+}
+
+function swallowClick(e: MouseEvent) {
+	e.preventDefault();
+	e.stopPropagation();
+}
+
+// Called from a row's pointerdown. Nothing happens until the pointer travels
+// a few pixels, so plain clicks keep opening and toggling rows.
+export function beginDrag(
+	e: PointerEvent,
+	source: DragSource,
+	onDrop: (source: DragSource, target: DropTarget) => void
+) {
+	if (e.button !== 0 || get(drag)) return;
+	const row = e.currentTarget as HTMLElement;
+	const scroller = row.closest<HTMLElement>('[data-drag-scroll]');
+	const rect = row.getBoundingClientRect();
+	const startX = e.clientX;
+	const startY = e.clientY;
+	const grabY = startY - rect.top;
+	let x = startX;
+	let y = startY;
+	let started = false;
+	let frame = 0;
+	let expandFor: string | null = null;
+	let expandTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function update() {
+		const target = resolve(source, x, y);
+		// Hovering a collapsed folder opens it after a beat.
+		const dir = target?.kind === 'move' ? target.dir : null;
+		if (dir !== expandFor) {
+			clearTimeout(expandTimer);
+			expandFor = dir;
+			if (dir && get(collapsedDirs).has(dir)) {
+				expandTimer = setTimeout(() => expandDir(dir), EXPAND_DELAY);
+			}
+		}
+		drag.set({ source, target, top: y - grabY, left: rect.left, width: rect.width });
+	}
+
+	// Scrolls while the pointer sits near the top or bottom edge of the list;
+	// the scroll listener re-resolves the target under the pointer.
+	function autoscroll() {
+		frame = 0;
+		if (!scroller) return;
+		const b = scroller.getBoundingClientRect();
+		if (x < b.left || x > b.right) return;
+		const depth = y < b.top + EDGE ? y - (b.top + EDGE) : y > b.bottom - EDGE ? y - (b.bottom - EDGE) : 0;
+		if (!depth) return;
+		scroller.scrollTop += Math.max(-EDGE, Math.min(EDGE, depth)) / 2;
+		frame = requestAnimationFrame(autoscroll);
+	}
+
+	function move(ev: PointerEvent) {
+		if (ev.pointerId !== e.pointerId) return;
+		x = ev.clientX;
+		y = ev.clientY;
+		if (!started) {
+			if (Math.hypot(x - startX, y - startY) < THRESHOLD) return;
+			started = true;
+			document.documentElement.classList.add('sidebar-dragging');
+		}
+		update();
+		if (!frame) frame = requestAnimationFrame(autoscroll);
+	}
+
+	function finish(drop: boolean) {
+		window.removeEventListener('pointermove', move);
+		window.removeEventListener('pointerup', up);
+		window.removeEventListener('pointercancel', cancel);
+		window.removeEventListener('keydown', key, true);
+		scroller?.removeEventListener('scroll', onScroll);
+		cancelAnimationFrame(frame);
+		clearTimeout(expandTimer);
+		const target = get(drag)?.target ?? null;
+		drag.set(null);
+		if (!started) return;
+		document.documentElement.classList.remove('sidebar-dragging');
+		// The release still fires a click on whatever row is under it; a drop
+		// must never also open or toggle that row.
+		window.addEventListener('click', swallowClick, { capture: true, once: true });
+		setTimeout(() => window.removeEventListener('click', swallowClick, true), 0);
+		if (drop && target) onDrop(source, target);
+	}
+
+	function up(ev: PointerEvent) {
+		if (ev.pointerId === e.pointerId) finish(true);
+	}
+	function cancel(ev: PointerEvent) {
+		if (ev.pointerId === e.pointerId) finish(false);
+	}
+	// Esc cancels the drag and stops there, so it doesn't also toggle preview.
+	function key(ev: KeyboardEvent) {
+		if (!started || ev.key !== 'Escape') return;
+		ev.preventDefault();
+		ev.stopPropagation();
+		finish(false);
+	}
+	function onScroll() {
+		if (started) update();
+	}
+
+	window.addEventListener('pointermove', move);
+	window.addEventListener('pointerup', up);
+	window.addEventListener('pointercancel', cancel);
+	window.addEventListener('keydown', key, true);
+	scroller?.addEventListener('scroll', onScroll);
+}
