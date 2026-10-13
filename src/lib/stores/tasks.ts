@@ -81,12 +81,19 @@ export function childrenOf(all: Task[], id: string): Task[] {
 		.sort((a, b) => a.position - b.position || a.created_at - b.created_at);
 }
 
+// Bumped when a task write starts and when it lands. A list fetch that
+// overlapped a write may predate it, so it is dropped and fetched again
+// rather than painted over the write.
+let writes = 0;
+
 export async function loadTasks(): Promise<Task[]> {
 	tasksLoading.set(true);
 	try {
+		const n = writes;
 		const res = await fetch('/api/tasks', { credentials: 'include' });
 		if (!res.ok) return get(tasks);
 		const rows = (await res.json()) as Task[];
+		if (writes !== n) return loadTasks();
 		tasks.set(rows);
 		return rows;
 	} finally {
@@ -95,15 +102,16 @@ export async function loadTasks(): Promise<Task[]> {
 }
 
 export async function createTask(input: NewTaskInput): Promise<Task | null> {
+	writes++;
 	const res = await fetch('/api/tasks', {
 		method: 'POST',
 		credentials: 'include',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(input)
-	});
+	}).finally(() => writes++);
 	if (!res.ok) return null;
 	const row = (await res.json()) as Task;
-	tasks.update((all) => [...all, row]);
+	tasks.update((all) => [...all.filter((t) => t.id !== row.id), row]);
 	return row;
 }
 
@@ -119,12 +127,15 @@ export async function updateTask(id: string, patch: TaskUpdate): Promise<Task | 
 	editSeq.set(id, n);
 	const before = get(tasks).find((t) => t.id === id);
 	tasks.update((all) => all.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+	writes++;
 	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
 		method: 'PATCH',
 		credentials: 'include',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(patch)
-	}).catch(() => null);
+	})
+		.catch(() => null)
+		.finally(() => writes++);
 	const row = res?.ok ? ((await res.json()) as Task) : null;
 	if (editSeq.get(id) !== n) return row;
 	if (!row) {
@@ -151,13 +162,19 @@ export async function deleteTask(id: string): Promise<boolean> {
 	}
 	tasks.update((all) => all.filter((t) => !doomed.has(t.id)));
 	if (doomed.has(get(openTaskId) ?? '')) closeTask();
+	writes++;
 	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
 		method: 'DELETE',
 		credentials: 'include'
-	}).catch(() => null);
+	})
+		.catch(() => null)
+		.finally(() => writes++);
 	if (!res?.ok) {
 		// Put back only the subtree, not the whole list as it was.
-		tasks.update((all) => [...all, ...before.filter((t) => doomed.has(t.id))]);
+		tasks.update((all) => [
+			...all.filter((t) => !doomed.has(t.id)),
+			...before.filter((t) => doomed.has(t.id))
+		]);
 		return false;
 	}
 	return true;

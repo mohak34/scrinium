@@ -69,7 +69,11 @@ export function keyNav(root: HTMLElement) {
 
 // Put focus back on a task's card or row once it re-renders, e.g. after a
 // keyboard move to another column, so the next key keeps working on it.
+// Only when focus fell to the body or is still on that task: never steals
+// it from somewhere the user went meanwhile.
 export async function refocusTask(id: string) {
 	await tick();
+	const a = document.activeElement;
+	if (a && a !== document.body && !(a instanceof HTMLElement && a.dataset.task === id)) return;
 	document.querySelector<HTMLElement>(`[data-task="${CSS.escape(id)}"]`)?.focus();
 }

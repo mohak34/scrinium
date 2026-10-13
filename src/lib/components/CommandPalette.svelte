@@ -221,7 +221,8 @@
 		if (it.kind === 'note') return 'n:' + it.item.path;
 		if (it.kind === 'task') return 't:' + it.item.id;
 		if (it.kind === 'add') return 'add';
-		return 'c:' + it.item.label;
+		// Two projects can share a folder name; the hint is the full path.
+		return 'c:' + it.item.label + '|' + it.item.hint;
 	}
 
 	function itemLabel(it: PaletteItem): string {
@@ -259,7 +260,10 @@
 		onClose();
 	}
 
+	// Keys the palette handles stop here, so Esc never also closes the task
+	// drawer or leaves preview underneath.
 	function onKeyDown(e: KeyboardEvent) {
+		if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) e.stopPropagation();
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			selected = Math.min(items.length - 1, selected + 1);

@@ -76,6 +76,9 @@
 	});
 
 	let collapsed = $state(false);
+	// A rename or create asked from another page opens the sidebar, even if
+	// it was left collapsed. Read before Sidebar mounts and consumes it.
+	const requestOnLoad = !!(get(createRequest) || get(renameRequest));
 	let rightCollapsed = $state(false);
 	let sidebarWidth = $state(260);
 	let resizing = $state(false);
@@ -88,7 +91,7 @@
 	const ZOOM_STEP = 10;
 
 	onMount(() => {
-		collapsed = localStorage.getItem('scrinium:sidebarCollapsed') === '1';
+		collapsed = !requestOnLoad && localStorage.getItem('scrinium:sidebarCollapsed') === '1';
 		rightCollapsed = localStorage.getItem('scrinium:rightCollapsed') === '1';
 		const savedWidth = Number(localStorage.getItem('scrinium:sidebarWidth'));
 		if (Number.isFinite(savedWidth) && savedWidth >= 180 && savedWidth <= 480) {
@@ -151,6 +154,8 @@
 				// Toggle the left sidebar from anywhere, editor included.
 				e.preventDefault();
 				toggleCollapse();
+			} else if (e.key === 'Escape' && (e.defaultPrevented || $leaderPending)) {
+				// Esc cancelled the Space leader (root layout); nothing else.
 			} else if (e.key === 'Escape' && imagePreview) {
 				imagePreview = null;
 			} else if (e.key === 'Escape' && (editorRef?.exitPreview() ?? false)) {

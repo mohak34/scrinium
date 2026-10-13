@@ -77,6 +77,7 @@
 			clearLeader();
 			// A modifier combo aborts the leader and falls through to its
 			// own handler; Esc just cancels.
+			if (e.key === 'Escape') e.preventDefault();
 			if (e.metaKey || e.ctrlKey || e.altKey || e.key === 'Escape' || blocked) return;
 			e.preventDefault();
 			runLeader(e.key);

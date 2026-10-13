@@ -343,6 +343,8 @@
 					e.key === 'ArrowLeft' || e.key === 'ArrowRight'
 						? shiftColumn(t, dir)
 						: shiftOrder(t, dir, laneOf(key));
+				// Once for the optimistic paint, again when a renumber settles.
+				void refocusTask(t.id);
 				void move.then(() => refocusTask(t.id));
 			}
 		}}
