@@ -2,7 +2,8 @@ import { get, writable } from 'svelte/store';
 import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 
 // Pointer-driven drag for the notes sidebar. Tree rows move into folders,
-// notes dropped on Pinned get pinned, pins reorder or unpin when dragged out.
+// notes dropped on Pinned get pinned, pins reorder, move into a folder when
+// dropped on one (staying pinned), and unpin when dropped anywhere else.
 // Built on pointer events instead of HTML5 drag-and-drop so the lifted row,
 // the target highlight and Esc-to-cancel are drawn by us, and hovering a
 // file or a folder's children still counts as that folder.
@@ -65,23 +66,28 @@ function pinTarget(source: DragSource, pins: HTMLElement, y: number): DropTarget
 	return { kind: 'pin', before: paths[at] ?? null };
 }
 
+// The folder a tree row stands for: a folder row itself, a file row its
+// parent, the Files header or empty tree space the root (null). Undefined
+// when the pointer is not over the tree.
+function treeDir(el: Element | null): string | null | undefined {
+	const entry = el?.closest<HTMLElement>('[data-tree-entry]');
+	if (entry?.dataset.path) {
+		return entry.dataset.type === 'directory' ? entry.dataset.path : parentDirOf(entry.dataset.path);
+	}
+	return el?.closest('[data-drop-root]') ? null : undefined;
+}
+
 function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	const el = document.elementFromPoint(x, y);
 	const pins = el?.closest<HTMLElement>('[data-drop-pins]');
-	if (source.fromPins) return pins ? pinTarget(source, pins, y) : { kind: 'unpin' };
 	if (pins) {
-		return source.kind === 'file' && source.path.endsWith('.md') ? pinTarget(source, pins, y) : null;
+		const pinnable = source.fromPins || (source.kind === 'file' && source.path.endsWith('.md'));
+		return pinnable ? pinTarget(source, pins, y) : null;
 	}
-	const entry = el?.closest<HTMLElement>('[data-tree-entry]');
-	let dir: string | null;
-	if (entry?.dataset.path) {
-		dir = entry.dataset.type === 'directory' ? entry.dataset.path : parentDirOf(entry.dataset.path);
-	} else if (el?.closest('[data-drop-root]')) {
-		dir = null;
-	} else {
-		return null;
-	}
-	return canMove(source, dir) ? { kind: 'move', dir } : null;
+	const dir = treeDir(el);
+	if (dir !== undefined && canMove(source, dir)) return { kind: 'move', dir };
+	// A pin let go anywhere else leaves the Pinned list.
+	return source.fromPins ? { kind: 'unpin' } : null;
 }
 
 function swallowClick(e: MouseEvent) {
