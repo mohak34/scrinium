@@ -28,8 +28,7 @@ export const DELETE: RequestHandler = async ({ url, request }) => {
 	}
 	// No name = empty entire trash (explicit action). Require ?all=1 to avoid accidents.
 	if (url.searchParams.get('all') === '1') {
-		await emptyTrash();
-		deleteTaskLinksByPrefix('.trash');
+		for (const name of await emptyTrash()) deleteTaskLinksByPrefix(binPath('trash', name));
 		return json({ ok: true });
 	}
 	throw error(400, 'Missing trashName. Use ?trashName=<name> or ?all=1 to empty trash.');

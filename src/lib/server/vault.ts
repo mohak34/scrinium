@@ -291,6 +291,24 @@ export interface Restored {
 	path: string;
 	originalPath: string;
 	movedAt: number | null;
+	// The .md notes that came back with their text, read under the lock so
+	// the caller can reindex them before any later move can take them.
+	notes: { path: string; content: string }[];
+}
+
+// Every .md note at or under a vault path, with its text.
+async function readNotesUnder(rel: string): Promise<{ path: string; content: string }[]> {
+	const full = safeResolve(rel);
+	const st = await fs.stat(full).catch(() => null);
+	if (!st?.isDirectory()) {
+		const content = st && rel.endsWith('.md') ? await fs.readFile(full, 'utf-8').catch(() => null) : null;
+		return content === null ? [] : [{ path: rel, content }];
+	}
+	const out: { path: string; content: string }[] = [];
+	for (const d of await fs.readdir(full, { withFileTypes: true }).catch(() => [])) {
+		if (!d.name.startsWith('.')) out.push(...(await readNotesUnder(`${rel}/${d.name}`)));
+	}
+	return out;
 }
 
 export function restoreFromBin(bin: Bin, name: string): Promise<Restored> {
@@ -312,7 +330,12 @@ export function restoreFromBin(bin: Bin, name: string): Promise<Restored> {
 		try {
 			await writeBinIndex(bin, idx);
 		} catch {}
-		return { path: targetRel, originalPath, movedAt: meta?.movedAt ?? meta?.deletedAt ?? null };
+		return {
+			path: targetRel,
+			originalPath,
+			movedAt: meta?.movedAt ?? meta?.deletedAt ?? null,
+			notes: await readNotesUnder(targetRel)
+		};
 	});
 }
 
@@ -354,8 +377,12 @@ export function purgeFromTrash(name: string): Promise<void> {
 	});
 }
 
-export async function emptyTrash(): Promise<void> {
-	for (const e of await listBin('trash')) await purgeFromTrash(e.name);
+// Resolves the names it purged, so callers drop only their task links (an
+// item trashed meanwhile stays, links and all).
+export async function emptyTrash(): Promise<string[]> {
+	const names = (await listBin('trash')).map((e) => e.name);
+	for (const name of names) await purgeFromTrash(name);
+	return names;
 }
 
 export interface NoteManifestEntry {

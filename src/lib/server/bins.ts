@@ -1,11 +1,9 @@
-import fs from 'node:fs/promises';
 import {
 	binPath,
 	isFolder,
 	moveBetweenBins,
 	moveToBin,
 	restoreFromBin,
-	safeResolve,
 	vaultRel,
 	type Bin,
 	type BinEntry,
@@ -50,7 +48,13 @@ export async function restore(bin: Bin, name: string): Promise<Restored> {
 	// Landed under a new name: projects that lived in the folder follow it.
 	const [was, now] = [vaultRel(restored.originalPath), vaultRel(restored.path)];
 	if (was !== now && restored.movedAt != null) moveTrashedProjects(was, now, restored.movedAt, isFolder);
-	await reindex(restored.path);
+	// Put the notes back in the sidebar cache and search index. No await
+	// since the move: a later archive of the same note books after this.
+	for (const n of restored.notes) {
+		const title = effectiveTitle(n.content, n.path);
+		upsertNoteMeta(n.path, title, Date.now());
+		indexNote(n.path, title, n.content);
+	}
 	return restored;
 }
 
@@ -60,21 +64,4 @@ export async function archiveToTrash(name: string): Promise<BinEntry> {
 	renameTaskLinks(from, binPath('trash', entry.name));
 	deleteNoteIndexByPrefix(from);
 	return entry;
-}
-
-// Put a restored note or folder back in the sidebar cache and search index.
-async function reindex(rel: string): Promise<void> {
-	const full = safeResolve(rel);
-	const st = await fs.stat(full).catch(() => null);
-	if (st?.isDirectory()) {
-		for (const d of await fs.readdir(full, { withFileTypes: true }).catch(() => [])) {
-			if (!d.name.startsWith('.')) await reindex(`${rel}/${d.name}`);
-		}
-	} else if (st && rel.endsWith('.md')) {
-		const content = await fs.readFile(full, 'utf-8').catch(() => null);
-		if (content === null) return;
-		const title = effectiveTitle(content, rel);
-		upsertNoteMeta(rel, title, Date.now());
-		indexNote(rel, title, content);
-	}
 }
