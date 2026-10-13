@@ -81,29 +81,68 @@ export function childrenOf(all: Task[], id: string): Task[] {
 		.sort((a, b) => a.position - b.position || a.created_at - b.created_at);
 }
 
+// Writes that change the task list (tasks, project removal, links) in
+// flight, and a count bumped as each starts and lands. A
+// list fetch that overlapped a write may predate it, so it is dropped
+// rather than painted over the write, and fetched again once writes settle.
+let writing = 0;
+let writes = 0;
+let reloadWanted = false;
+
+function taskWrite(req: () => Promise<Response>): Promise<Response> {
+	writing++;
+	writes++;
+	return req().finally(() => {
+		writing--;
+		writes++;
+		if (writing === 0 && reloadWanted) {
+			reloadWanted = false;
+			void loadTasks();
+		}
+	});
+}
+
+// Loads in flight; only the newest one paints. tasksLoading stays true
+// across a dropped load's retry, whether it starts at once or waits for
+// writes to settle.
+let loads = 0;
+let latestTaskLoad = 0;
+
 export async function loadTasks(): Promise<Task[]> {
+	loads++;
+	const me = ++latestTaskLoad;
 	tasksLoading.set(true);
 	try {
+		const n = writes;
 		const res = await fetch('/api/tasks', { credentials: 'include' });
 		if (!res.ok) return get(tasks);
 		const rows = (await res.json()) as Task[];
+		if (me !== latestTaskLoad) return get(tasks);
+		if (writes !== n || writing > 0) {
+			if (writing === 0) return loadTasks();
+			reloadWanted = true;
+			return get(tasks);
+		}
 		tasks.set(rows);
 		return rows;
 	} finally {
-		tasksLoading.set(false);
+		loads--;
+		tasksLoading.set(loads > 0 || reloadWanted);
 	}
 }
 
 export async function createTask(input: NewTaskInput): Promise<Task | null> {
-	const res = await fetch('/api/tasks', {
-		method: 'POST',
-		credentials: 'include',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(input)
-	});
+	const res = await taskWrite(() =>
+		fetch('/api/tasks', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(input)
+		})
+	);
 	if (!res.ok) return null;
 	const row = (await res.json()) as Task;
-	tasks.update((all) => [...all, row]);
+	tasks.update((all) => [...all.filter((t) => t.id !== row.id), row]);
 	return row;
 }
 
@@ -119,12 +158,14 @@ export async function updateTask(id: string, patch: TaskUpdate): Promise<Task | 
 	editSeq.set(id, n);
 	const before = get(tasks).find((t) => t.id === id);
 	tasks.update((all) => all.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-		method: 'PATCH',
-		credentials: 'include',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(patch)
-	}).catch(() => null);
+	const res = await taskWrite(() =>
+		fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(patch)
+		})
+	).catch(() => null);
 	const row = res?.ok ? ((await res.json()) as Task) : null;
 	if (editSeq.get(id) !== n) return row;
 	if (!row) {
@@ -151,13 +192,18 @@ export async function deleteTask(id: string): Promise<boolean> {
 	}
 	tasks.update((all) => all.filter((t) => !doomed.has(t.id)));
 	if (doomed.has(get(openTaskId) ?? '')) closeTask();
-	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-		method: 'DELETE',
-		credentials: 'include'
-	}).catch(() => null);
+	const res = await taskWrite(() =>
+		fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		})
+	).catch(() => null);
 	if (!res?.ok) {
 		// Put back only the subtree, not the whole list as it was.
-		tasks.update((all) => [...all, ...before.filter((t) => doomed.has(t.id))]);
+		tasks.update((all) => [
+			...all.filter((t) => !doomed.has(t.id)),
+			...before.filter((t) => doomed.has(t.id))
+		]);
 		return false;
 	}
 	return true;
@@ -223,10 +269,12 @@ export async function setProjectArea(path: string, area: TaskArea | null): Promi
 
 /** Unregisters the project; the folder stays and its tasks join the main board. */
 export async function removeProject(path: string): Promise<boolean> {
-	const res = await fetch(`/api/projects?path=${encodeURIComponent(path)}`, {
-		method: 'DELETE',
-		credentials: 'include'
-	}).catch(() => null);
+	const res = await taskWrite(() =>
+		fetch(`/api/projects?path=${encodeURIComponent(path)}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		})
+	).catch(() => null);
 	if (!res?.ok) return false;
 	void loadProjects();
 	projects.update((all) => all.filter((p) => p.path !== path));
@@ -342,12 +390,14 @@ export async function loadTaskLinks(id: string): Promise<string[]> {
 }
 
 export async function addTaskLink(id: string, notePath: string): Promise<string[]> {
-	const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/links`, {
-		method: 'POST',
-		credentials: 'include',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ note_path: notePath })
-	});
+	const res = await taskWrite(() =>
+		fetch(`/api/tasks/${encodeURIComponent(id)}/links`, {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ note_path: notePath })
+		})
+	);
 	if (!res.ok) return loadTaskLinks(id);
 	const rows = (await res.json()) as string[];
 	syncLinkCount(id, rows.length);
@@ -355,9 +405,11 @@ export async function addTaskLink(id: string, notePath: string): Promise<string[
 }
 
 export async function removeTaskLink(id: string, notePath: string): Promise<string[]> {
-	const res = await fetch(
-		`/api/tasks/${encodeURIComponent(id)}/links?note_path=${encodeURIComponent(notePath)}`,
-		{ method: 'DELETE', credentials: 'include' }
+	const res = await taskWrite(() =>
+		fetch(`/api/tasks/${encodeURIComponent(id)}/links?note_path=${encodeURIComponent(notePath)}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		})
 	);
 	if (!res.ok) return loadTaskLinks(id);
 	const rows = (await res.json()) as string[];
