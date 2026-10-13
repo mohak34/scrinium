@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { deletePath } from '$lib/stores/vault';
+	import { deletePath, flushSave } from '$lib/stores/vault';
 	import type { UnusedFile } from '$lib/archive';
 	import { kindIcon, longDate, split } from './lists';
 	import NotePreview from './NotePreview.svelte';
@@ -12,10 +12,18 @@
 	let selPath = $state<string | null>(null);
 	let busy = $state(false);
 
+	// The scan reads saved notes, so unsaved text (a just-pasted embed) is
+	// written first; a failed save means the list could be wrong.
+	async function load(): Promise<UnusedFile[]> {
+		if (!(await flushSave())) throw new Error('unsaved notes');
+		const r = await fetch('/api/archive/unused');
+		if (!r.ok) throw new Error('scan failed');
+		return r.json();
+	}
+
 	$effect(() => {
 		let live = true;
-		void fetch('/api/archive/unused')
-			.then((r) => (r.ok ? (r.json() as Promise<UnusedFile[]>) : Promise.reject()))
+		load()
 			.then((list) => {
 				if (!live) return;
 				files = list;
@@ -41,16 +49,23 @@
 
 	const toggleAll = () => (picked = allPicked ? new Set() : new Set(files.map((f) => f.path)));
 
-	// One at a time through the save queue; whatever moved leaves the list.
+	// One at a time through the save queue. The list is scanned again first,
+	// so a file a note started using since it loaded is never trashed.
 	async function trash(paths: string[]) {
 		const what = paths.length === 1 ? `"${paths[0]}"` : `${paths.length} files`;
 		if (!confirm(`Move ${what} to the trash?`)) return;
 		busy = true;
 		try {
-			const done = new Set<string>();
-			for (const p of paths) if (await deletePath(p)) done.add(p);
-			files = files.filter((f) => !done.has(f.path));
-			picked = new Set([...picked].filter((p) => !done.has(p)));
+			try {
+				files = await load();
+			} catch {
+				status = 'error';
+				return;
+			}
+			const unused = new Set(files.map((f) => f.path));
+			for (const p of paths) if (unused.has(p) && (await deletePath(p))) unused.delete(p);
+			files = files.filter((f) => unused.has(f.path));
+			picked = new Set([...picked].filter((p) => unused.has(p)));
 		} finally {
 			busy = false;
 		}

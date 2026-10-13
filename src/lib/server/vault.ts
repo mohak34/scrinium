@@ -162,7 +162,10 @@ export async function createFolder(relPath: string): Promise<void> {
 // and the move must not interleave with other mutations: hold the vault lock.
 // Relative links that the move broke are fixed in the same lock, in the
 // moved notes and in every note linking into the move (a whole-vault scan,
-// like backlinks). Resolves the notes it rewrote, under their new paths.
+// like backlinks). Archived notes are fixed too, read from where they came
+// from, so a restore brings them back with working links. A note that fails
+// to rewrite keeps its old links rather than failing a move already made.
+// Resolves the notes it rewrote, under their current paths.
 export async function renamePath(
 	oldRelPath: string,
 	newRelPath: string
@@ -176,12 +179,24 @@ export async function renamePath(
 		const [was, now] = [vaultRel(oldRelPath), vaultRel(newRelPath)];
 		const moved = movedBy(was, now);
 		const back = movedBy(now, was);
+		const notes = (await readNotesUnder('')).map((n) => ({ ...n, from: back(n.path), to: n.path }));
+		for (const e of await listBin('archive')) {
+			const at = binPath('archive', e.name);
+			for (const n of await readNotesUnder(at)) {
+				const original = e.originalPath + n.path.slice(at.length);
+				notes.push({ ...n, from: original, to: original });
+			}
+		}
 		const changed: { path: string; content: string }[] = [];
-		for (const n of await readNotesUnder('')) {
-			const out = relinkNote(n.content, back(n.path), n.path, moved);
+		for (const n of notes) {
+			const out = relinkNote(n.content, n.from, n.to, moved);
 			if (out === n.content) continue;
-			await writeAtomic(safeResolve(n.path), out);
-			changed.push({ path: n.path, content: out });
+			try {
+				await writeAtomic(safeResolve(n.path), out);
+				changed.push({ path: n.path, content: out });
+			} catch (e) {
+				console.error(`relink ${n.path}:`, e);
+			}
 		}
 		return changed;
 	});

@@ -72,10 +72,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	renameTaskLinks(from, to);
 	renameProjects(vaultRel(from), vaultRel(to), isFolder);
 	// Notes whose relative links the move rewrote; the editor fixes its
-	// copy of the open one the same way (relinkNote).
+	// copy of the open one the same way (relinkNote). Archived ones stay
+	// searchable but have no metadata, like every binned note.
 	for (const n of relinked) {
 		const title = effectiveTitle(n.content, n.path);
-		upsertNoteMeta(n.path, title, Date.now());
+		if (!isHiddenPath(n.path)) upsertNoteMeta(n.path, title, Date.now());
 		indexNote(n.path, title, n.content);
 	}
 	return json({ relinked: relinked.map((n) => n.path) });
