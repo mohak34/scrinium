@@ -261,7 +261,11 @@ State channels you will touch:
   an Inbox task from the query, and holds the global commands; a page adds
   its own (editor formatting on Notes, views on Board) with
   `usePageCommands` from its `onMount`. A new feature that can run from
-  the keyboard gets a palette command in one of the two places.
+  the keyboard gets a palette command in one of the two places. The root
+  layout also owns the Space leader and the `?` overlay on every page;
+  `leader: 'x'` on a page command makes it Space x. `src/lib/keyNav.ts`
+  moves focus between task cards and rows (`data-nav` items) on Tasks and
+  Board.
   `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
   drag-and-drop. Tree rows move into folders (a file row means its folder,
   the Files header the root), notes dropped on Pinned get pinned, pins

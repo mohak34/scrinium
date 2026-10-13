@@ -27,6 +27,7 @@
 	import AppActions from '$lib/components/AppActions.svelte';
 	import { onMount } from 'svelte';
 	import { usePageCommands } from '$lib/stores/palette';
+	import { keyNav } from '$lib/keyNav';
 
 	let newTitle = $state('');
 	let newDue = $state('');
@@ -185,7 +186,7 @@
 	}
 </script>
 
-<div class="page">
+<div class="page" {@attach keyNav}>
 	<aside class="side" aria-label="Task filters">
 		<div class="side-head"><AppSwitcher current="tasks" /></div>
 		<nav class="filters">
@@ -296,6 +297,8 @@
 								role="button"
 								tabindex="0"
 								aria-label="Open {t.title} details"
+								data-task={t.id}
+								data-nav="list"
 								onkeydown={(e) => {
 									if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('tr'))
 										openTask(t.id);

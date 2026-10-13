@@ -3,11 +3,11 @@
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
 	import { searchNotes, flushSave, openTab, type SearchResult } from '$lib/stores/vault';
-	import { createRequest } from '$lib/stores/actions';
+	import { startCreate } from '$lib/stores/actions';
 	import { openSettings, type SettingsPage } from '$lib/stores/settingsDialog';
 	import { openBins } from '$lib/stores/bins';
 	import { settings } from '$lib/stores/settings';
-	import { pageCommands, type PaletteCommand } from '$lib/stores/palette';
+	import { pageCommands, shortcutHelpOpen, type PaletteCommand } from '$lib/stores/palette';
 	import {
 		tasks,
 		projects,
@@ -67,18 +67,12 @@
 		{
 			label: 'New note',
 			hint: 'Create a note at the vault root',
-			run: () => {
-				createRequest.set({ parent: null, kind: 'note' });
-				void go('/');
-			}
+			run: () => void startCreate('note')
 		},
 		{
 			label: 'New folder',
 			hint: 'Create a folder at the vault root',
-			run: () => {
-				createRequest.set({ parent: null, kind: 'folder' });
-				void go('/');
-			}
+			run: () => void startCreate('folder')
 		},
 		...APPS.map((a, i) => ({
 			label: `Go to ${a.label}`,
@@ -102,11 +96,7 @@
 			hint,
 			run: () => openSettings(key)
 		})),
-		{
-			label: 'Keyboard shortcuts',
-			hint: 'Settings > Keyboard',
-			run: () => openSettings('keyboard')
-		},
+		{ label: 'Keyboard shortcuts', hint: '?', run: () => shortcutHelpOpen.set(true) },
 		{
 			label: $settings.editor.vimMotions ? 'Turn vim motions off' : 'Turn vim motions on',
 			hint: 'Editor and single-key shortcuts',

@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { usePageCommands } from '$lib/stores/palette';
+	import { keyNav, refocusTask } from '$lib/keyNav';
 	import {
 		tasks,
 		loadTasks,
@@ -329,13 +330,21 @@
 		role="button"
 		tabindex="0"
 		aria-label="Open {t.title} details"
+		data-task={t.id}
+		data-nav={t.status}
+		data-nav-row={laneOf(key) ?? ''}
 		onkeydown={(e) => {
 			if (e.target !== e.currentTarget) return;
 			if (e.key === 'Enter') openTask(t.id);
-			else if (e.altKey && e.key === 'ArrowLeft') void shiftColumn(t, -1);
-			else if (e.altKey && e.key === 'ArrowRight') void shiftColumn(t, 1);
-			else if (e.altKey && e.key === 'ArrowUp') void shiftOrder(t, -1, laneOf(key));
-			else if (e.altKey && e.key === 'ArrowDown') void shiftOrder(t, 1, laneOf(key));
+			else if (e.altKey && e.key.startsWith('Arrow')) {
+				e.preventDefault();
+				const dir = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1;
+				const move =
+					e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+						? shiftColumn(t, dir)
+						: shiftOrder(t, dir, laneOf(key));
+				void move.then(() => refocusTask(t.id));
+			}
 		}}
 	>
 		{#if overId === t.id && dragId && dragId !== t.id}<div class="ins"></div>{/if}
@@ -420,7 +429,7 @@
 	{/if}
 {/snippet}
 
-<div class="page">
+<div class="page" {@attach keyNav}>
 	<header class="page-h">
 		<AppSwitcher current="board" size="lg" />
 		<select

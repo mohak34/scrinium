@@ -10,7 +10,17 @@
 	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
 	import BinsView from '$lib/components/bins/BinsView.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
-	import { paletteOpen } from '$lib/stores/palette';
+	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
+	import { get } from 'svelte/store';
+	import {
+		paletteOpen,
+		pageCommands,
+		shortcutHelpOpen,
+		leaderPending,
+		isTyping
+	} from '$lib/stores/palette';
+	import { startCreate } from '$lib/stores/actions';
+	import { settings } from '$lib/stores/settings';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { APPS } from '$lib/apps';
@@ -20,6 +30,71 @@
 
 	const appChrome = () =>
 		!page.url.pathname.startsWith('/login') && !page.url.pathname.startsWith('/s/');
+
+	// Space leader: two-key commands (Space then a key), on every app page.
+	// p opens the palette and n / N create a note / folder anywhere; other
+	// keys come from the page's commands. Times out after a second so a
+	// stray Space never leaves the app armed.
+	let leaderTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function startLeader() {
+		leaderPending.set(true);
+		clearTimeout(leaderTimer);
+		leaderTimer = setTimeout(() => leaderPending.set(false), 1000);
+	}
+
+	function clearLeader() {
+		leaderPending.set(false);
+		clearTimeout(leaderTimer);
+	}
+
+	function runLeader(key: string) {
+		if (key === ' ' || key === 'p') paletteOpen.set(true);
+		else if (key === 'n') void startCreate('note');
+		else if (key === 'N') void startCreate('folder');
+		else get(pageCommands).find((c) => c.leader === key)?.run();
+	}
+
+	// The help overlay is modal: it swallows keys in the capture phase, like
+	// the settings dialog, so nothing fires underneath; Esc closes it.
+	function helpKey(e: KeyboardEvent) {
+		if (!get(shortcutHelpOpen)) return;
+		e.stopPropagation();
+		if (e.key === 'Escape' || e.key === '?') {
+			e.preventDefault();
+			shortcutHelpOpen.set(false);
+		}
+	}
+
+	// Plain-key shortcuts with vim motions on: Space leader and ? help. They
+	// only fire outside text inputs, so typing is never hijacked, and never
+	// over the palette. A page that owns the key (an open image preview, say)
+	// claims it with preventDefault in the capture phase.
+	function vimKey(e: KeyboardEvent) {
+		if (!appChrome()) return;
+		const blocked = e.defaultPrevented || isTyping(e.target) || get(paletteOpen);
+		if (get(leaderPending)) {
+			clearLeader();
+			// A modifier combo aborts the leader and falls through to its
+			// own handler; Esc just cancels.
+			if (e.metaKey || e.ctrlKey || e.altKey || e.key === 'Escape' || blocked) return;
+			e.preventDefault();
+			runLeader(e.key);
+			return;
+		}
+		if (!get(settings).editor.vimMotions || e.metaKey || e.ctrlKey || e.altKey || blocked) return;
+		if (e.key === '?') {
+			e.preventDefault();
+			shortcutHelpOpen.set(true);
+		} else if (e.key === ' ') {
+			// Space keeps its native behaviour on controls (buttons use it
+			// to activate); the leader only starts from dead areas.
+			const t = e.target;
+			if (t instanceof Element && t.closest('button, a, [role="button"]')) return;
+			e.preventDefault();
+			startLeader();
+		}
+	}
 
 	onMount(() => {
 		// Kill the browser's native right-click menu everywhere - Scrinium
@@ -48,9 +123,13 @@
 			void flushSave().then(() => goto(APPS[Number(n) - 1].href));
 		};
 		window.addEventListener('keydown', jump);
+		window.addEventListener('keydown', vimKey);
+		window.addEventListener('keydown', helpKey, true);
 		return () => {
 			window.removeEventListener('contextmenu', block);
 			window.removeEventListener('keydown', jump);
+			window.removeEventListener('keydown', vimKey);
+			window.removeEventListener('keydown', helpKey, true);
 		};
 	});
 </script>
@@ -77,4 +156,27 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 	{#if $paletteOpen}
 		<CommandPalette onClose={() => paletteOpen.set(false)} />
 	{/if}
+	{#if $shortcutHelpOpen}
+		<ShortcutHelp onClose={() => shortcutHelpOpen.set(false)} />
+	{/if}
+	{#if $leaderPending}
+		<div class="leader" role="status">Space…</div>
+	{/if}
 {/if}
+
+<style>
+	.leader {
+		position: fixed;
+		left: 12px;
+		bottom: 12px;
+		z-index: 940;
+		background: var(--surface-container);
+		border: 1px solid var(--border-raised);
+		border-radius: var(--radius);
+		box-shadow: var(--shadow-pop);
+		color: var(--on-surface-variant);
+		font-family: var(--font-mono);
+		font-size: var(--font-ui-small);
+		padding: 4px 10px;
+	}
+</style>

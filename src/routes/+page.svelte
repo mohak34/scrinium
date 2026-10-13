@@ -31,9 +31,8 @@
 		hideNote
 	} from '$lib/stores/vault';
 	import { settings } from '$lib/stores/settings';
-	import { createRequest, focusSearchRequest, renameRequest } from '$lib/stores/actions';
-	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
-	import { paletteOpen, usePageCommands } from '$lib/stores/palette';
+	import { createRequest, focusSearchRequest, renameRequest, startCreate } from '$lib/stores/actions';
+	import { paletteOpen, leaderPending, usePageCommands, isTyping } from '$lib/stores/palette';
 	import { goto } from '$app/navigation';
 
 	let editorRef = $state<CodeEditor>();
@@ -81,9 +80,6 @@
 	let sidebarWidth = $state(260);
 	let resizing = $state(false);
 	let shareOpen = $state(false);
-	let helpOpen = $state(false);
-	let leaderPending = $state(false);
-	let leaderTimer: ReturnType<typeof setTimeout> | undefined;
 	let imagePreview = $state<string | null>(null);
 	let zoom = $state(100);
 
@@ -111,55 +107,31 @@
 			if (req && collapsed) toggleCollapse();
 		});
 
+		// The image preview owns Space and ?: claim them before the root
+		// layout's leader and help see them.
+		const claim = (e: KeyboardEvent) => {
+			if (imagePreview && (e.key === ' ' || e.key === '?')) e.preventDefault();
+		};
 		const key = (e: KeyboardEvent) => {
-			// Vim-style keys (? help, / search, [ ] tabs). Plain keys with no
-			// modifiers never clash with browser shortcuts, and they only
-			// fire outside text inputs so typing is never hijacked.
-			if (e.key === 'Escape' && helpOpen) {
-				helpOpen = false;
-				return;
-			}
-			if (leaderPending) {
-				clearLeader();
-				// A modifier combo aborts the leader and falls through to the
-				// normal handling below; Esc just cancels.
-				if (e.metaKey || e.ctrlKey || e.altKey || e.key === 'Escape') return;
-				const t = e.target as HTMLElement | null;
-				const typing = !!t?.closest?.(
-					'input, textarea, select, [contenteditable="true"], .cm-content, .cm-editor'
-				);
-				if (!typing && !$paletteOpen && !imagePreview && !helpOpen) {
-					e.preventDefault();
-					runLeader(e.key);
-				}
-				return;
-			}
+			// Vim-style keys (/ search, [ ] tabs; Space and ? live in the root
+			// layout). Plain keys with no modifiers never clash with browser
+			// shortcuts, and they only fire outside text inputs.
 			if (
 				get(settings).editor.vimMotions &&
 				!e.metaKey &&
 				!e.ctrlKey &&
 				!e.altKey &&
-				(e.key === '?' ||
-					e.key === '/' ||
-					e.key === '[' ||
-					e.key === ']' ||
-					e.key === ' ')
+				(e.key === '/' || e.key === '[' || e.key === ']') &&
+				!isTyping(e.target) &&
+				!$paletteOpen &&
+				!$leaderPending &&
+				!e.defaultPrevented &&
+				!imagePreview
 			) {
-				const t = e.target as HTMLElement | null;
-				const typing = !!t?.closest?.(
-					'input, textarea, select, [contenteditable="true"], .cm-content, .cm-editor'
-				);
-				// Space keeps its native behaviour on controls (buttons use
-				// it to activate); the leader only starts from dead areas.
-				const onControl = e.key === ' ' && !!t?.closest?.('button, a, [role="button"]');
-				if (!typing && !onControl && !$paletteOpen && !imagePreview && !helpOpen) {
-					e.preventDefault();
-					if (e.key === '?') helpOpen = true;
-					else if (e.key === '/') focusSearch();
-					else if (e.key === ' ') startLeader();
-					else stepTab(e.key === ']' ? 1 : -1);
-					return;
-				}
+				e.preventDefault();
+				if (e.key === '/') focusSearch();
+				else stepTab(e.key === ']' ? 1 : -1);
+				return;
 			}
 			// App-wide find: CodeMirror only sees keys while its editor has
 			// focus, so a bare Mod+F anywhere else would hit the browser's
@@ -187,6 +159,7 @@
 			}
 		};
 		window.addEventListener('keydown', key);
+		window.addEventListener('keydown', claim, true);
 
 		// Best-effort: save any pending edits if the tab is closed mid-debounce.
 		window.addEventListener('pagehide', () => {
@@ -194,6 +167,7 @@
 		});
 		return () => {
 			window.removeEventListener('keydown', key);
+			window.removeEventListener('keydown', claim, true);
 			unsubRename();
 			unsubCreate();
 		};
@@ -230,64 +204,6 @@
 		if (next && next !== cur) void openNote(next);
 	}
 
-	// Space leader: two-key app commands (Space then a letter). Times out
-	// after a second so a stray Space never leaves the app armed.
-	function startLeader() {
-		leaderPending = true;
-		clearTimeout(leaderTimer);
-		leaderTimer = setTimeout(() => (leaderPending = false), 1000);
-	}
-
-	function clearLeader() {
-		leaderPending = false;
-		clearTimeout(leaderTimer);
-	}
-
-	// Ask the sidebar for an inline create input. The request value persists
-	// until the sidebar consumes it, so this works while collapsed too.
-	function newEntry(kind: 'note' | 'folder') {
-		createRequest.set({ parent: null, kind });
-	}
-
-	function runLeader(key: string) {
-		switch (key) {
-			case ' ':
-			case 'p':
-				paletteOpen.set(true);
-				break;
-			case 'n':
-				newEntry('note');
-				break;
-			case 'N':
-				newEntry('folder');
-				break;
-			case 's':
-				toggleCollapse();
-				break;
-			case 'r':
-				toggleRightCollapse();
-				break;
-			case 'e': {
-				const path = get(activePath);
-				if (path) editorRef?.focus();
-				break;
-			}
-			case 'f':
-				focusSearch();
-				break;
-			case 'x': {
-				const path = get(activePath);
-				if (path) closeTab(path);
-				break;
-			}
-			case 'P': {
-				const path = get(activePath);
-				if (path) togglePin(path);
-				break;
-			}
-		}
-	}
-
 	// Run fn on the open note, if there is one.
 	const withNote = (fn: (path: string) => void) => () => {
 		const p = get(activePath);
@@ -301,11 +217,11 @@
 	// and the editor. Global ones live in CommandPalette.svelte.
 	onMount(() =>
 		usePageCommands([
-			{ label: 'Open search', hint: 'Jump to the sidebar search box', run: focusSearch },
-			{ label: 'Toggle sidebar', hint: `${mod}/`, run: toggleCollapse },
-			{ label: 'Toggle right panel', hint: 'Outline, backlinks, tasks, tags', run: toggleRightCollapse },
-			{ label: 'Focus editor', hint: 'Space e', run: withNote(() => editorRef?.focus()) },
-			{ label: 'Pin / unpin note', hint: 'Keep the open note at the top of the sidebar', run: withNote(togglePin) },
+			{ label: 'Open search', hint: 'Jump to the sidebar search box', leader: 'f', run: focusSearch },
+			{ label: 'Toggle sidebar', hint: `${mod}/`, leader: 's', run: toggleCollapse },
+			{ label: 'Toggle right panel', hint: 'Outline, backlinks, tasks, tags', leader: 'r', run: toggleRightCollapse },
+			{ label: 'Focus editor', hint: 'Space e', leader: 'e', run: withNote(() => editorRef?.focus()) },
+			{ label: 'Pin / unpin note', hint: 'Keep the open note at the top of the sidebar', leader: 'P', run: withNote(togglePin) },
 			{ label: 'Rename note', hint: 'Rename the open note in the file tree', run: withNote((path) => renameRequest.set({ path })) },
 			{ label: 'Share note', hint: 'Public link, optional password', run: withNote(() => (shareOpen = true)) },
 			{
@@ -313,11 +229,10 @@
 				hint: 'Vault path of the open note',
 				run: withNote((path) => void navigator.clipboard?.writeText(path).catch(() => {}))
 			},
-			{ label: 'Close tab', hint: 'Close the open note', run: withNote(closeTab) },
+			{ label: 'Close tab', hint: 'Close the open note', leader: 'x', run: withNote(closeTab) },
 			{ label: 'Next tab', hint: ']', run: () => stepTab(1) },
 			{ label: 'Previous tab', hint: '[', run: () => stepTab(-1) },
-			{ label: 'Show shortcut overlay', hint: '?', run: () => (helpOpen = true) },
-			{
+						{
 				label: 'Archive note',
 				hint: 'Put the open note away, out of the tree and search',
 				run: withNote((path) => void archivePath(path))
@@ -453,7 +368,7 @@
 			onActivate={openNote}
 			sidebarCollapsed={collapsed}
 			onToggleSidebar={toggleCollapse}
-			onNewNote={() => newEntry('note')}
+			onNewNote={() => void startCreate('note')}
 		/>
 		{#if $activePath}
 			<NoteBar
@@ -476,7 +391,7 @@
 				<div class="empty">
 					<span class="material-symbols-outlined">description</span>
 					<p>Open a note from the sidebar, or start a new one.</p>
-					<button class="new" onclick={() => newEntry('note')}>
+					<button class="new" onclick={() => void startCreate('note')}>
 						<span class="material-symbols-outlined">edit_square</span>New note
 					</button>
 				</div>
@@ -504,14 +419,6 @@
 		</aside>
 	{/if}
 </div>
-
-{#if helpOpen}
-	<ShortcutHelp onClose={() => (helpOpen = false)} />
-{/if}
-
-{#if leaderPending}
-	<div class="leader" role="status">Space…</div>
-{/if}
 
 {#if imagePreview}
 	<div class="img-overlay" role="presentation">
@@ -674,20 +581,6 @@
 	}
 	.new:hover {
 		background: var(--accent-fill-hi);
-	}
-	.leader {
-		position: fixed;
-		left: 12px;
-		bottom: 12px;
-		z-index: 940;
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius);
-		box-shadow: var(--shadow-pop);
-		color: var(--on-surface-variant);
-		font-family: var(--font-mono);
-		font-size: var(--font-ui-small);
-		padding: 4px 10px;
 	}
 	.img-overlay {
 		position: fixed;

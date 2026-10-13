@@ -5,7 +5,8 @@ export interface ShortcutRow {
 }
 
 // Sections titled "vim motions on" only fire with Settings > Keyboard > Vim
-// motions enabled (key handlers in src/routes/+page.svelte and Sidebar.svelte).
+// motions enabled (key handlers in src/routes/+layout.svelte, +page.svelte,
+// Sidebar.svelte and src/lib/keyNav.ts).
 export const SHORTCUTS: { title: string; rows: ShortcutRow[] }[] = [
 	{
 		title: 'File tree',
@@ -27,19 +28,19 @@ export const SHORTCUTS: { title: string; rows: ShortcutRow[] }[] = [
 		rows: [
 			{ keys: 'Space p / Space', desc: 'Command palette' },
 			{ keys: 'Space n / N', desc: 'New note / new folder' },
-			{ keys: 'Space e', desc: 'Focus editor' },
-			{ keys: 'Space f', desc: 'Focus note search' },
-			{ keys: 'Space s / r', desc: 'Toggle left / right sidebar' },
-			{ keys: 'Space x', desc: 'Close current tab' },
-			{ keys: 'Space P', desc: 'Pin / unpin current note' }
+			{ keys: 'Space e', desc: 'Focus editor (Notes)' },
+			{ keys: 'Space f', desc: 'Focus note search (Notes)' },
+			{ keys: 'Space s / r', desc: 'Toggle left / right sidebar (Notes)' },
+			{ keys: 'Space x', desc: 'Close current tab (Notes)' },
+			{ keys: 'Space P', desc: 'Pin / unpin current note (Notes)' }
 		]
 	},
 	{
 		title: 'Single keys (vim motions on)',
 		rows: [
-			{ keys: '/', desc: 'Focus note search' },
 			{ keys: '?', desc: 'This help' },
-			{ keys: '[ / ]', desc: 'Previous / next tab' }
+			{ keys: '/', desc: 'Focus note search (Notes)' },
+			{ keys: '[ / ]', desc: 'Previous / next tab (Notes)' }
 		]
 	},
 	{
@@ -51,8 +52,12 @@ export const SHORTCUTS: { title: string; rows: ShortcutRow[] }[] = [
 		]
 	},
 	{
-		title: 'Board',
-		rows: [{ keys: 'Alt arrows', desc: 'Move the focused card' }]
+		title: 'Tasks and Board',
+		rows: [
+			{ keys: 'Arrows (j k h l)', desc: 'Move between cards and rows' },
+			{ keys: 'Enter', desc: 'Open the focused task' },
+			{ keys: 'Alt arrows', desc: 'Move the focused card (Board)' }
+		]
 	},
 	{
 		title: 'Sidebar',
