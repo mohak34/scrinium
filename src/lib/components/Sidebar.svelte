@@ -16,6 +16,7 @@
 		syncFilenameToTitle,
 		deletePath,
 		movePath,
+		movePin,
 		downloadNote,
 		type VaultEntry
 	} from '$lib/stores/vault';
@@ -24,12 +25,9 @@
 		renameDir,
 		parentDirOf,
 		toggleDir,
-		collapsedDirs,
-		dragPath,
-		dragKind,
-		dropRoot,
-		canDrop
+		collapsedDirs
 	} from '$lib/stores/filetree';
+	import { drag, beginDrag, type DragSource, type DropTarget } from './sidebarDrag';
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest } from '$lib/stores/actions';
 	import AppSwitcher from './AppSwitcher.svelte';
@@ -201,21 +199,38 @@
 		if (ok && toDir) expandDir(toDir);
 	}
 
-	function rootDragOver(e: DragEvent) {
-		e.preventDefault();
-		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		if (canDrop($dragPath, null, $dragKind)) dropRoot.set(true);
+	function onDrop(source: DragSource, target: DropTarget) {
+		if (target.kind === 'move') void onMove(source.path, target.dir);
+		else if (target.kind === 'pin') movePin(source.path, target.before);
+		else togglePin(source.path);
 	}
 
-	function rootDrop(e: DragEvent) {
-		e.preventDefault();
-		dropRoot.set(false);
-		const source = $dragPath;
-		const kind = $dragKind;
-		dragPath.set(null);
-		dragKind.set(null);
-		if (source && kind && canDrop(source, null, kind)) void onMove(source, null);
+	function startDrag(e: PointerEvent, path: string, kind: 'file' | 'directory', fromPins: boolean) {
+		beginDrag(e, { path, kind, fromPins }, onDrop);
 	}
+
+	const dropTarget = $derived($drag?.target ?? null);
+	const pinBefore = $derived(dropTarget?.kind === 'pin' ? dropTarget.before : undefined);
+	// A note dragged from the tree can be pinned even when nothing is pinned yet.
+	const pinDropOpen = $derived(
+		!!$drag && !$drag.source.fromPins && $drag.source.path.endsWith('.md')
+	);
+	// What releasing would do, shown on the lifted row.
+	const dropLabel = $derived.by(() => {
+		if (!$drag || !dropTarget) return null;
+		if (dropTarget.kind === 'unpin') return 'Unpin';
+		if (dropTarget.kind === 'pin') return $pinnedPaths.includes($drag.source.path) ? null : 'Pin';
+		return dropTarget.dir ? `Move to ${dropTarget.dir.split('/').pop()}` : 'Move to top level';
+	});
+	const dragIcon = $derived(
+		!$drag
+			? ''
+			: $drag.source.kind === 'directory'
+				? 'folder'
+				: $drag.source.path.endsWith('.md')
+					? 'description'
+					: 'draft'
+	);
 
 	function countNotes(entries: VaultEntry[]): number {
 		let n = 0;
@@ -320,50 +335,58 @@
 		</button>
 	</div>
 	<SearchBox {onSelect} />
-	<div class="scroll">
-		{#if shownPins.length > 0}
-			<div class="group"><span class="material-symbols-outlined">keep</span>Pinned</div>
-			{#each shownPins as p (p)}
-				<button
-					class="pin-row"
-					class:active={$activePath === p}
-					title={p}
-					onclick={() => onSelect(p)}
-					oncontextmenu={(e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						menu = {
-							x: e.clientX,
-							y: e.clientY,
-							entry: { name: pinName(p), path: p, type: 'file' },
-							pinRow: true
-						};
-					}}
-				>
-					<span class="material-symbols-outlined">description</span>
-					<span class="pin-name">{pinName(p)}</span>
-				</button>
-			{/each}
+	<div class="scroll" data-drag-scroll>
+		{#if shownPins.length > 0 || pinDropOpen}
+			<div class="pins" data-drop-pins>
+				<div class="group"><span class="material-symbols-outlined">keep</span>Pinned</div>
+				{#each shownPins as p, i (p)}
+					<button
+						class="pin-row"
+						class:active={$activePath === p}
+						class:dragging={$drag?.source.fromPins && $drag.source.path === p}
+						class:ins-before={pinBefore === p}
+						class:ins-after={pinBefore === null && i === shownPins.length - 1}
+						title={p}
+						data-pin={p}
+						onclick={() => onSelect(p)}
+						onpointerdown={(e) => startDrag(e, p, 'file', true)}
+						oncontextmenu={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							menu = {
+								x: e.clientX,
+								y: e.clientY,
+								entry: { name: pinName(p), path: p, type: 'file' },
+								pinRow: true
+							};
+						}}
+					>
+						<span class="material-symbols-outlined">description</span>
+						<span class="pin-name">{pinName(p)}</span>
+					</button>
+				{/each}
+				{#if shownPins.length === 0}
+					<div class="pin-empty" class:drop-target={pinBefore === null}>Drop to pin</div>
+				{/if}
+			</div>
 		{/if}
-		<div class="group"><span class="material-symbols-outlined">folder</span>Files</div>
+		<div class="group" data-drop-root><span class="material-symbols-outlined">folder</span>Files</div>
 		<div
 			class="tree"
-			class:drop-root={$dropRoot}
+			class:drop-root={dropTarget?.kind === 'move' && dropTarget.dir === null}
+			data-drop-root
 			role="tree"
 			aria-label="Vault files"
 			tabindex="-1"
 			bind:this={treeEl}
 			onkeydown={treeKey}
-			ondragover={rootDragOver}
-			ondragleave={() => dropRoot.set(false)}
-			ondrop={rootDrop}
 		>
 			<FileTree
 				entries={$tree}
 				{onSelect}
 				{onOpenAsset}
 				onContextMenu={onEntryContextMenu}
-				{onMove}
+				onDragStart={(e, entry) => startDrag(e, entry.path, entry.type, false)}
 				{createTarget}
 				{renameTarget}
 				onCreate={commitCreate}
@@ -380,6 +403,13 @@
 	</div>
 	{#if menu}
 		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
+	{/if}
+	{#if $drag}
+		<div class="drag-card" style="top: {$drag.top}px; left: {$drag.left}px; width: {$drag.width}px">
+			<span class="material-symbols-outlined">{dragIcon}</span>
+			<span class="drag-name">{pinName($drag.source.path)}</span>
+			{#if dropLabel}<span class="drop-label">{dropLabel}</span>{/if}
+		</div>
 	{/if}
 </aside>
 
@@ -439,6 +469,7 @@
 		font-size: 16px;
 	}
 	.pin-row {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 8px;
@@ -453,6 +484,45 @@
 		font-size: var(--fs);
 		text-align: left;
 		cursor: pointer;
+	}
+	:global(html.sidebar-dragging) .pin-row:not(.active):hover {
+		background: none;
+		color: var(--text-2);
+	}
+	.pin-row.dragging {
+		opacity: 0.4;
+	}
+	/* Insertion line where a dragged note would land in the pin order. */
+	.pin-row.ins-before::before,
+	.pin-row.ins-after::after {
+		content: '';
+		position: absolute;
+		left: 8px;
+		right: 8px;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--accent);
+	}
+	.pin-row.ins-before::before {
+		top: -1px;
+	}
+	.pin-row.ins-after::after {
+		bottom: -1px;
+	}
+	.pin-empty {
+		display: flex;
+		align-items: center;
+		height: 29px;
+		margin: 0 6px;
+		padding: 0 14px;
+		border: 1px dashed var(--line-2);
+		border-radius: var(--r);
+		color: var(--text-3);
+		font-size: var(--fs-sm);
+	}
+	.pin-empty.drop-target {
+		border-color: var(--accent);
+		color: var(--text);
 	}
 	.pin-row .material-symbols-outlined {
 		font-size: 16px;
@@ -492,5 +562,45 @@
 	.count {
 		color: var(--text-3);
 		font-size: var(--fs-xs);
+	}
+	/* The lifted row: opaque so the list never shows through, pointer-events
+	   off so hit-testing sees the rows beneath it. */
+	.drag-card {
+		position: fixed;
+		z-index: 1000;
+		pointer-events: none;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 29px;
+		padding: 0 10px;
+		border-radius: var(--r);
+		background: var(--hover);
+		box-shadow:
+			0 8px 24px rgb(0 0 0 / 0.6),
+			inset 0 0 0 1px var(--line-2);
+		color: var(--text);
+		font: var(--fs) var(--font-ui);
+	}
+	.drag-card .material-symbols-outlined {
+		font-size: 16px;
+		color: var(--text-3);
+	}
+	.drag-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.drop-label {
+		margin-left: auto;
+		flex-shrink: 0;
+		color: var(--accent);
+		font-size: var(--fs-xs);
+	}
+	:global(html.sidebar-dragging),
+	:global(html.sidebar-dragging *) {
+		cursor: grabbing !important;
+		user-select: none;
 	}
 </style>
