@@ -91,6 +91,11 @@
 			hint: 'Old notes nothing links to, to archive or trash',
 			run: () => openBins('review')
 		},
+		{
+			label: 'Review unused files',
+			hint: 'Attachments no note links to, to trash',
+			run: () => openBins('unused')
+		},
 		...SETTINGS.map(([key, name, hint]) => ({
 			label: `Settings: ${name}`,
 			hint,

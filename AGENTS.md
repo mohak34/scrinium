@@ -279,9 +279,19 @@ State channels you will touch:
   wikilinks to archived notes. Each tab is a list plus a read-only
   `NotePreview` (renderNoteToHtml). Review lists stale notes (old, nothing
   links to them, no task, share or pin) from `/api/archive/review` for
-  bulk archive or trash. It swallows keydown like the settings dialog.
+  bulk archive or trash. Unused files lists vault files no note links to
+  (archived notes count, read from their original path) from
+  `/api/archive/unused`, to trash in bulk. It swallows keydown like the
+  settings dialog.
   `src/lib/archive.ts` holds the archive types and path mapping shared by
   the routes, MCP and the view.
+  `src/lib/relink.ts` parses relative markdown links (`[t](url)`,
+  `![a](url)`, outside code). `renamePath` in vault.ts uses it inside the
+  vault lock to fix the links a move broke, in the moved notes and in every
+  note linking into the move; the PATCH route returns those paths and
+  `renameNote` applies the same `relinkNote` to the open note's live text,
+  so autosave never writes the old links back. Moves that skip
+  `renamePath` leave broken images.
   `settings/SettingsDialog.svelte` is the one settings surface:
   a modal mounted in the root layout, opened through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
