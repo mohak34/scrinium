@@ -13,11 +13,21 @@ const LINK_NODES = new Set(['Link', 'Image', 'LinkReference']);
 
 const dirOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf('/')));
 
+// A destination as written to the file path it names: markdown escapes
+// (`\(`), character references (`&amp;`) and percent-encoding undone.
 function decode(s: string): string {
+	const plain = s
+		.replace(/\\([!-/:-@[-`{-~])/g, '$1')
+		.replace(/&(amp|lt|gt|quot|#\d+|#x[\da-f]+);/gi, (m, e: string) => {
+			const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' };
+			if (e[0] !== '#') return named[e.toLowerCase()] ?? m;
+			const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+			return code <= 0x10ffff ? String.fromCodePoint(code) : m;
+		});
 	try {
-		return decodeURIComponent(s);
+		return decodeURIComponent(plain);
 	} catch {
-		return s;
+		return plain;
 	}
 }
 
@@ -48,8 +58,8 @@ interface Link {
 	// The url's path as written (decoded), and the vault path it reaches.
 	path: string;
 	target: string;
-	// The url rebuilt around a new path; keeps the ?query/#anchor, angle
-	// brackets and percent-encoding of the original.
+	// The url rebuilt around a new path; keeps the ?query/#anchor and angle
+	// brackets of the original.
 	rewrite(path: string): string;
 }
 
@@ -68,16 +78,16 @@ function mapLinks(content: string, dir: string, fn: (link: Link) => string | nul
 			const path = decode(pathPart);
 			const target = resolveLink(dir, path);
 			if (target === null) return;
-			const encoded = !angle && path !== pathPart;
 			const text = fn({
 				path,
 				target,
 				rewrite(next) {
-					// Encode per segment so a "#" or "?" in a file name never reads as a
-					// fragment or query, and parens never close the link early.
-					if (encoded) return encodeSegments(next) + suffix;
-					const url = next + suffix;
-					return angle || /[\s()<>]/.test(url) ? `<${url}>` : url;
+					// Percent-encode what would end the destination or read as a
+					// query/fragment; angle brackets already allow spaces and parens.
+					const enc = next.replace(angle ? /[%#?<>\n]/g : /[%#?<>()\s\\]/g, (c) =>
+						encodeURIComponent(c).replace('(', '%28').replace(')', '%29')
+					);
+					return angle ? `<${enc}${suffix}>` : enc + suffix;
 				}
 			});
 			if (text !== null) edits.push({ from: node.from, to: node.to, text });
@@ -87,12 +97,6 @@ function mapLinks(content: string, dir: string, fn: (link: Link) => string | nul
 	for (const e of edits.reverse()) out = out.slice(0, e.from) + e.text + out.slice(e.to);
 	return out;
 }
-
-const encodeSegments = (p: string) =>
-	p
-		.split('/')
-		.map((s) => encodeURIComponent(s).replace(/\(/g, '%28').replace(/\)/g, '%29'))
-		.join('/');
 
 // Maps a vault path through a rename of `from` (a file or folder) to `to`.
 export function movedBy(from: string, to: string): (p: string) => string {

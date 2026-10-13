@@ -177,26 +177,32 @@ export async function renamePath(
 		if (await exists(to)) throw error(409, 'Target already exists');
 		await fs.rename(from, to);
 		const [was, now] = [vaultRel(oldRelPath), vaultRel(newRelPath)];
-		const moved = movedBy(was, now);
-		const back = movedBy(now, was);
-		const notes = (await readNotesUnder('')).map((n) => ({ ...n, from: back(n.path), to: n.path }));
-		for (const e of await listBin('archive')) {
-			const at = binPath('archive', e.name);
-			for (const n of await readNotesUnder(at)) {
-				const original = e.originalPath + n.path.slice(at.length);
-				notes.push({ ...n, from: original, to: original });
-			}
-		}
 		const changed: { path: string; content: string }[] = [];
-		for (const n of notes) {
-			const out = relinkNote(n.content, n.from, n.to, moved);
-			if (out === n.content) continue;
-			try {
-				await writeAtomic(safeResolve(n.path), out);
-				changed.push({ path: n.path, content: out });
-			} catch (e) {
-				console.error(`relink ${n.path}:`, e);
+		try {
+			const moved = movedBy(was, now);
+			const back = movedBy(now, was);
+			const notes = (await readNotesUnder('')).map((n) => ({ ...n, from: back(n.path), to: n.path, moved }));
+			for (const e of await listBin('archive')) {
+				const at = binPath('archive', e.name);
+				// Files archived with the note come back with it: only links
+				// leaving the archived item follow the move.
+				const o = e.originalPath;
+				const keep = (p: string) => (p === o || p.startsWith(o + '/') ? p : moved(p));
+				for (const n of await readNotesUnder(at)) {
+					const original = e.originalPath + n.path.slice(at.length);
+					notes.push({ ...n, from: original, to: original, moved: keep });
+				}
 			}
+			for (const n of notes) {
+				const out = relinkNote(n.content, n.from, n.to, n.moved);
+				if (out === n.content) continue;
+				await writeAtomic(safeResolve(n.path), out).then(
+					() => changed.push({ path: n.path, content: out }),
+					(e) => console.error(`relink ${n.path}:`, e)
+				);
+			}
+		} catch (e) {
+			console.error('relink after move:', e);
 		}
 		return changed;
 	});

@@ -6,8 +6,9 @@ import type { UnusedFile } from '$lib/archive';
 
 // Vault files (anything but notes) that no note mentions: mostly images
 // left behind when their note was trashed or the embed deleted. A file
-// counts as used when any live or archived note contains its name, plain
-// or url-encoded, anywhere (links, embeds, reference definitions, code).
+// counts as used when any live or archived note contains its name anywhere
+// (links, embeds, reference definitions, code), also once percent-encoding,
+// markdown escapes and `&amp;` in the notes are undone.
 // That keeps a few unused files on the list but never offers a referenced
 // one for the trash. A direct scan of the vault, like review: nothing to
 // keep in sync.
@@ -16,13 +17,23 @@ export const GET: RequestHandler = async () => {
 	for (const e of await listBin('archive')) {
 		for (const n of await readNotesUnder(binPath('archive', e.name))) texts.push(n.content);
 	}
-	const all = texts.join('\n');
+	const raw = texts.join('\n');
+	const plain = raw
+		.replace(/(%[\da-f]{2})+/gi, (m) => {
+			try {
+				return decodeURIComponent(m);
+			} catch {
+				return m;
+			}
+		})
+		.replace(/\\([!-/:-@[-`{-~])/g, '$1')
+		.replace(/&amp;/g, '&');
 
 	const files: string[] = [];
 	const walk = (entries: VaultEntry[]) => {
 		for (const e of entries) {
 			if (e.type === 'directory') walk(e.children ?? []);
-			else if (!e.path.endsWith('.md') && !mentioned(all, e.name)) files.push(e.path);
+			else if (!e.path.endsWith('.md') && !raw.includes(e.name) && !plain.includes(e.name)) files.push(e.path);
 		}
 	};
 	walk(await listTree());
@@ -36,5 +47,3 @@ export const GET: RequestHandler = async () => {
 	return json(out);
 };
 
-const mentioned = (text: string, name: string) =>
-	text.includes(name) || text.includes(encodeURIComponent(name)) || text.includes(encodeURI(name));

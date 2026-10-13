@@ -306,8 +306,11 @@ class CalloutHeaderWidget extends WidgetType {
 // folder of the note being edited and served through the auth-gated asset API.
 // Turn a markdown image reference into a browser-loadable URL. Shared with
 // the print renderer (renderNote.ts) so pasted images resolve identically.
+// A destination may be written in angle brackets and percent-encoded
+// (`<my img.png>`, `my%20img.png`); both reach the same file.
 export function resolveAssetUrl(url: string, noteDir: string | null): string | null {
-	const clean = url.trim();
+	let clean = url.trim();
+	if (clean.startsWith('<') && clean.endsWith('>')) clean = clean.slice(1, -1).trim();
 	if (!clean) return null;
 	if (/^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith('/')) return clean;
 	const joined = noteDir ? `${noteDir}/${clean}` : clean;
@@ -318,10 +321,18 @@ export function resolveAssetUrl(url: string, noteDir: string | null): string | n
 			parts.pop();
 			continue;
 		}
-		parts.push(seg);
+		parts.push(decodeSegment(seg));
 	}
 	if (!parts.length) return null;
 	return '/api/assets/' + parts.map(encodeURIComponent).join('/');
+}
+
+function decodeSegment(seg: string): string {
+	try {
+		return decodeURIComponent(seg);
+	} catch {
+		return seg;
+	}
 }
 
 class ImageWidget extends WidgetType {
