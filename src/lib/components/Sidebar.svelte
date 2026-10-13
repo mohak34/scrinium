@@ -15,6 +15,7 @@
 		renameNote,
 		syncFilenameToTitle,
 		deletePath,
+		archivePath,
 		movePath,
 		movePin,
 		downloadNote,
@@ -268,6 +269,7 @@
 		if (entry.type === 'file') {
 			const items: { label: string; danger?: boolean; action: () => void }[] = [
 				{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) },
+				{ label: 'Archive', action: () => void archivePath(entry.path) },
 				{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
 			];
 			// Notes download as plain text; other assets open in the preview
@@ -302,6 +304,7 @@
 				}
 			},
 			{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) },
+			{ label: 'Archive', action: () => void archivePath(entry.path) },
 			{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
 		];
 	});

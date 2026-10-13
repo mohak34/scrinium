@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { pinnedPaths, togglePin, deletePath, downloadNote, flushSave } from '$lib/stores/vault';
+	import { pinnedPaths, togglePin, deletePath, archivePath, downloadNote, flushSave } from '$lib/stores/vault';
 	import { renameRequest } from '$lib/stores/actions';
 	import ContextMenu from './ContextMenu.svelte';
 	import ShareModal from './ShareModal.svelte';
@@ -26,6 +26,7 @@
 		{ label: 'Rename', action: () => renameRequest.set({ path }) },
 		{ label: 'Copy path', action: () => void navigator.clipboard?.writeText(path).catch(() => {}) },
 		{ label: 'Download .md', action: () => void downloadNote(path).catch(() => {}) },
+		{ label: 'Archive', action: () => void archivePath(path) },
 		{ label: 'Move to trash', danger: true, action: () => void deletePath(path) }
 	]);
 

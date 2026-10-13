@@ -7,10 +7,12 @@
 		downloadNote,
 		togglePin,
 		closeTab,
+		archivePath,
 		type SearchResult
 	} from '$lib/stores/vault';
 	import { createRequest, focusSearchRequest, renameRequest } from '$lib/stores/actions';
 	import { openSettings } from '$lib/stores/settingsDialog';
+	import { openBins } from '$lib/stores/bins';
 	import { signOut } from '$lib/auth-client';
 
 	interface Props {
@@ -91,9 +93,16 @@
 		{ label: 'Go to Board', hint: 'Ctrl+Shift+3', run: () => goto('/tasks/kanban') },
 		{ label: 'Go to Calendar', hint: 'Ctrl+Shift+4', run: () => goto('/tasks/calendar') },
 		{
-			label: 'Open trash',
-			hint: 'View and restore deleted notes',
-			run: () => openSettings('trash')
+			label: 'Archive note',
+			hint: 'Put the open note away, out of the tree and search',
+			run: withNote((path) => void archivePath(path))
+		},
+		{ label: 'Open archive', hint: 'Browse, search and unarchive notes', run: () => openBins('archive') },
+		{ label: 'Open trash', hint: 'View and restore deleted notes', run: () => openBins('trash') },
+		{
+			label: 'Review stale notes',
+			hint: 'Old notes nothing links to, to archive or trash',
+			run: () => openBins('review')
 		},
 		{
 			label: 'Open settings',

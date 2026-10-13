@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { AREAS, PRIORITIES, STATUSES, onMainBoard } from '$lib/taskModel';
 import { attachmentMarkdown, isImagePath } from '$lib/attachments';
 import type { ProjectRow, TaskRow } from './db';
-import type { TrashEntry } from './vault';
+import { fromArchivedPath, type ArchiveEntry } from '$lib/archive';
+
+type TrashRow = { trashName: string; originalPath: string; deletedAt: number };
 
 // MCP tools for agents (Muse, Claude, ...). Every tool calls the app's own
 // REST routes through SvelteKit's in-process fetch, so validation, search
@@ -38,7 +40,7 @@ Tasks are separate from notes. Status: ${STATUSES.map((s) => `${s.key} (${s.hint
 
 Dates are ISO 8601 with a UTC offset. An all-day due date is midnight in the user's local time, e.g. 2026-10-07T00:00:00-04:00. Timestamps in results are UTC.
 
-For "what is on today" questions call get_agenda once. Before creating a task, search with list_tasks(query) to avoid duplicates. delete_note moves notes to the trash, where restore_from_trash can bring them back.`;
+For "what is on today" questions call get_agenda once. Before creating a task, search with list_tasks(query) to avoid duplicates. delete_note moves notes to the trash, where restore_from_trash can bring them back. archive_note puts a note or folder away without deleting it: archived notes leave the vault tree and plain search, are read-only, and come back with unarchive_note. search_notes with include_archived finds them; read_note reads them by the path it returns.`;
 
 const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
 const ms = (v: string | null | undefined) => (v == null ? v : Date.parse(v));
@@ -123,16 +125,36 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		'search_notes',
 		{
 			description:
-				'Full-text search over note titles and bodies. Returns up to 30 notes with a snippet. An empty query returns recently edited notes.',
-			inputSchema: { query: z.string() },
+				'Full-text search over note titles and bodies. Returns up to 30 notes with a snippet. An empty query returns recently edited notes. Archived notes are left out unless include_archived is true.',
+			inputSchema: {
+				query: z.string(),
+				include_archived: z.boolean().optional().describe('Also search archived notes (default false)')
+			},
 			annotations: readOnly
 		},
-		async ({ query }) => result(await getJson(`/api/search?q=${encodeURIComponent(query)}`))
+		async ({ query, include_archived }) => {
+			const scope = include_archived ? '&scope=all' : '';
+			const rows = await getJson<{ path: string }[]>(`/api/search?q=${encodeURIComponent(query)}${scope}`);
+			if (!include_archived) return result(rows);
+			// Archived hits carry their ".archive/<name>/..." path; name the item
+			// and where it came from so unarchive_note can bring it back.
+			const archive = await getJson<ArchiveEntry[]>('/api/archive');
+			return result(
+				rows.map((r) => {
+					const hit = fromArchivedPath(archive, r.path);
+					return hit ? { ...r, archived: true, archive_name: hit.entry.name, original_path: hit.note } : r;
+				})
+			);
+		}
 	);
 
 	server.registerTool(
 		'read_note',
-		{ description: 'Read a note as raw markdown.', inputSchema: { path: NotePath }, annotations: readOnly },
+		{
+			description: 'Read a note as raw markdown. Archived notes are read by the ".archive/..." path search_notes returns.',
+			inputSchema: { path: NotePath },
+			annotations: readOnly
+		},
 		async ({ path }) => result(await readNote(path))
 	);
 
@@ -246,7 +268,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		'list_trash',
 		{ description: 'List trashed notes and folders, newest first.', annotations: readOnly },
 		async () => {
-			const rows = await getJson<TrashEntry[]>('/api/trash');
+			const rows = await getJson<TrashRow[]>('/api/trash');
 			return result(
 				rows.map((r) => ({ trash_name: r.trashName, original_path: r.originalPath, deleted: iso(r.deletedAt || null) }))
 			);
@@ -262,6 +284,55 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		async ({ trash_name }) => {
 			const out = (await (await send('POST', '/api/trash/restore', { trashName: trash_name })).json()) as { path: string };
 			onWrite('restore_from_trash', out.path);
+			return result(out);
+		}
+	);
+
+	server.registerTool(
+		'archive_note',
+		{
+			description:
+				'Archive a note or folder: it leaves the vault tree, plain search and [[link]] completion but is kept (emptying the trash never touches it). Its share links are removed; task links follow it. Bring it back with unarchive_note.',
+			inputSchema: { path: NotePath }
+		},
+		async ({ path }) => {
+			const out = (await (await send('POST', '/api/archive', { path })).json()) as { name: string };
+			onWrite('archive_note', path);
+			return result({ archive_name: out.name, original_path: path });
+		}
+	);
+
+	server.registerTool(
+		'list_archive',
+		{
+			description: 'List archived notes and folders, newest first, with the notes inside each by original path.',
+			annotations: readOnly
+		},
+		async () => {
+			const rows = await getJson<ArchiveEntry[]>('/api/archive');
+			return result(
+				rows.map((r) => ({
+					archive_name: r.name,
+					original_path: r.originalPath,
+					archived: iso(r.archivedAt || null),
+					is_folder: r.isDir,
+					notes: r.notes
+				}))
+			);
+		}
+	);
+
+	server.registerTool(
+		'unarchive_note',
+		{
+			description: 'Move an archived item back to its original path (or a free name next to it).',
+			inputSchema: { archive_name: z.string().min(1).describe('archive_name from list_archive or search_notes') }
+		},
+		async ({ archive_name }) => {
+			const out = (await (await send('POST', '/api/archive/restore', { name: archive_name })).json()) as {
+				path: string;
+			};
+			onWrite('unarchive_note', out.path);
 			return result(out);
 		}
 	);

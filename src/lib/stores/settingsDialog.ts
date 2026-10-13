@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 // The settings dialog (root layout) is open on this page, or closed when
-// null. Sidebar buttons and palette commands open it; trash is one page.
+// null. Sidebar buttons and palette commands open it.
 export type SettingsPage =
 	| 'editor'
 	| 'keyboard'
@@ -9,7 +9,6 @@ export type SettingsPage =
 	| 'account'
 	| 'devices'
 	| 'agents'
-	| 'trash'
 	| 'about';
 
 export const settingsPage = writable<SettingsPage | null>(null);

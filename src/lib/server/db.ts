@@ -184,7 +184,17 @@ export interface SearchResult {
 	snippet: string;
 }
 
-export function searchNotes(q: string): SearchResult[] {
+// Which notes a search covers. Archived notes stay indexed under their
+// ".archive/..." path so the archive page and agents can search them, but
+// plain search leaves them out.
+export type SearchScope = 'vault' | 'archive' | 'all';
+const SCOPE_SQL: Record<SearchScope, string> = {
+	vault: `AND NOT ${under('path')}`,
+	archive: `AND ${under('path')}`,
+	all: ''
+};
+
+export function searchNotes(q: string, scope: SearchScope = 'vault'): SearchResult[] {
 	// Quote each whitespace-separated token so arbitrary user input can't break
 	// the FTS5 MATCH syntax. A trailing * turns a term into a prefix query, so
 	// partial words ("lis") still match whole tokens ("list"). Run both an exact
@@ -202,9 +212,10 @@ export function searchNotes(q: string): SearchResult[] {
 
 	type Row = { path: string; title: string; rank: number; snip: string | null };
 	const sel = `SELECT path, title, rank, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
-		 FROM note_fts WHERE note_fts MATCH ? ORDER BY rank LIMIT 30`;
-	const rows = db.prepare(sel).all(exact) as Row[];
-	const extra = db.prepare(sel).all(prefixed) as Row[];
+		 FROM note_fts WHERE note_fts MATCH ? ${SCOPE_SQL[scope]} ORDER BY rank LIMIT 30`;
+	const args = scope === 'all' ? [] : underArgs('.archive');
+	const rows = db.prepare(sel).all(exact, ...args) as Row[];
+	const extra = db.prepare(sel).all(prefixed, ...args) as Row[];
 
 	const seen = new Set(rows.map((r) => r.path));
 	for (const r of extra) {
@@ -492,6 +503,16 @@ export function renameTaskLinks(oldPath: string, newPath: string) {
 			drop.run(note_path);
 		}
 	})();
+}
+
+export function deleteTaskLinksByPrefix(path: string) {
+	db.prepare(`DELETE FROM task_links WHERE ${under('note_path')}`).run(...underArgs(path));
+}
+
+// Every note some task links to, for the archive's Review list.
+export function linkedNotePaths(): Set<string> {
+	const rows = db.prepare(`SELECT DISTINCT note_path FROM task_links`).all() as { note_path: string }[];
+	return new Set(rows.map((r) => r.note_path));
 }
 
 export function listTaskLinks(taskId: string): string[] {

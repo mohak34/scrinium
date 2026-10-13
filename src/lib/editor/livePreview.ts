@@ -38,6 +38,7 @@ import { findTableRanges } from './tableRanges';
 import { parseFrontmatter } from './frontmatter';
 import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
 import {
+	exactWikilink,
 	findWikilinksInText,
 	resolveWikilink,
 	wikilinkDisplay,
@@ -46,6 +47,7 @@ import {
 } from './wikilinks';
 import { findTagsInText } from './tags';
 import { createNote, flushSave, openTab } from '$lib/stores/vault';
+import { openBins } from '$lib/stores/bins';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
 // regardless of where the cursor is. Entered with Escape, exited by clicking
@@ -68,16 +70,19 @@ export const noteDirField = StateField.define<string | null>({
 	}
 });
 
-// Vault-wide link context for wikilinks: flat `.md` paths plus the open
-// note (creation folder for unresolved targets). Mirrored from the vault
-// store by CodeEditor; the decoration set rebuilds when it flips.
+// Vault-wide link context for wikilinks: flat `.md` paths, the original
+// paths of archived notes (a link to one opens the archive instead of
+// creating a duplicate), and the open note (creation folder for
+// unresolved targets). Mirrored from the vault store by CodeEditor; the
+// decoration set rebuilds when it flips.
 export interface WikiCtx {
 	notes: string[];
+	archived: string[];
 	current: string | null;
 }
 export const wikiCtxEffect = StateEffect.define<WikiCtx>();
 export const wikiCtxField = StateField.define<WikiCtx>({
-	create: () => ({ notes: [], current: null }),
+	create: () => ({ notes: [], archived: [], current: null }),
 	update(value, tr) {
 		for (const e of tr.effects) {
 			if (e.is(wikiCtxEffect)) return e.value;
@@ -158,9 +163,28 @@ class CheckboxWidget extends WidgetType {
 	}
 }
 
+// Where a link points: a full-path match wins over a basename match, so
+// [[Project/Note]] reaches the archived Project/Note.md even when a live
+// Other/Note.md exists; on a tie the live note wins.
+function linkTarget(target: string, ctx: WikiCtx | undefined): { path: string; archived: boolean } | null {
+	const notes = ctx?.notes ?? [];
+	const archived = ctx?.archived ?? [];
+	for (const [find, list, isArchived] of [
+		[exactWikilink, notes, false],
+		[exactWikilink, archived, true],
+		[resolveWikilink, notes, false],
+		[resolveWikilink, archived, true]
+	] as const) {
+		const path = find(target, list);
+		if (path) return { path, archived: isArchived };
+	}
+	return null;
+}
+
 // A `[[wikilink]]` rendered as a clickable pill when the cursor is off
-// the line. Click navigates; clicking an unresolved target creates the
-// note first (same folder as the open note, vault root otherwise).
+// the line. Click navigates; a link to an archived note opens it in the
+// archive; clicking an unresolved target creates the note first (same
+// folder as the open note, vault root otherwise).
 class WikilinkWidget extends WidgetType {
 	constructor(
 		readonly target: string,
@@ -173,15 +197,26 @@ class WikilinkWidget extends WidgetType {
 	}
 	toDOM(view: EditorView) {
 		const span = document.createElement('span');
-		const resolved = resolveWikilink(this.target, view.state.field(wikiCtxField, false)?.notes ?? []);
-		span.className = resolved ? 'cm-wikilink' : 'cm-wikilink cm-wikilink-unresolved';
+		const ctx = view.state.field(wikiCtxField, false);
+		const hit = linkTarget(this.target, ctx);
+		span.className = !hit
+			? 'cm-wikilink cm-wikilink-unresolved'
+			: hit.archived
+				? 'cm-wikilink cm-wikilink-archived'
+				: 'cm-wikilink';
+		if (hit?.archived) span.title = 'Archived';
 		span.textContent = this.display;
 		span.onmousedown = (e) => {
 			e.preventDefault();
-			const notes = view.state.field(wikiCtxField, false)?.notes ?? [];
-			const current = view.state.field(wikiCtxField, false)?.current ?? null;
-			const path = resolveWikilink(this.target, notes);
-			if (path) {
+			const ctx = view.state.field(wikiCtxField, false);
+			const current = ctx?.current ?? null;
+			const hit = linkTarget(this.target, ctx);
+			if (hit?.archived) {
+				openBins('archive', hit.path);
+				return;
+			}
+			if (hit) {
+				const path = hit.path;
 				void flushSave().then(() => openTab(path));
 				return;
 			}

@@ -10,7 +10,7 @@ import { isArea } from '$lib/taskModel';
 // folder rename may have set to anything the vault accepts.
 
 // "Projects/scrinium" from whatever the user typed. Hidden segments are
-// refused so a project can't live in .trash.
+// refused so a project can't live in the trash or archive.
 function cleanPath(v: unknown): string {
 	if (typeof v !== 'string') throw error(400, 'Bad path');
 	const parts = v.split('/').map((p) => p.trim()).filter(Boolean);

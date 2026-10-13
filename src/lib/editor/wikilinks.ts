@@ -70,17 +70,26 @@ function stem(p: string): string {
 	return base.replace(/\.md$/i, '');
 }
 
+// The note a link names by its full path (case-insensitive), no basename
+// fallback.
+export function exactWikilink(target: string, notePaths: string[]): string | null {
+	const t = target.trim();
+	if (!t) return null;
+	const withExt = /\.md$/i.test(t) ? t : `${t}.md`;
+	return notePaths.find((p) => p === withExt || p.toLowerCase() === withExt.toLowerCase()) ?? null;
+}
+
 /**
  * Resolve a link target to a vault-relative `.md` path. Exact path first
  * (`target` or `target.md`), then basename-stem match case-insensitively
  * with shortest path winning (Obsidian's rule). Null when unresolved.
  */
 export function resolveWikilink(target: string, notePaths: string[]): string | null {
+	const exact = exactWikilink(target, notePaths);
+	if (exact) return exact;
 	const t = target.trim();
 	if (!t) return null;
 	const withExt = /\.md$/i.test(t) ? t : `${t}.md`;
-	const exact = notePaths.find((p) => p === withExt || p.toLowerCase() === withExt.toLowerCase());
-	if (exact) return exact;
 	const want = stem(withExt).toLowerCase();
 	const cands = notePaths.filter((p) => stem(p).toLowerCase() === want);
 	if (!cands.length) return null;

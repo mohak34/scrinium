@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { openSettings } from '$lib/stores/settingsDialog';
+	import { openBins } from '$lib/stores/bins';
 	import { signOut } from '$lib/auth-client';
 
-	// Trash, Settings and Sign out: the bottom-left buttons on Notes, Tasks and Board.
+	// Archive, Trash, Settings and Sign out: the bottom-left buttons on Notes,
+	// Tasks and Board.
 </script>
 
-<button class="icon-btn" title="Trash" onclick={() => openSettings('trash')}>
+<button class="icon-btn" title="Archive" onclick={() => openBins('archive')}>
+	<span class="material-symbols-outlined">inventory_2</span>
+</button>
+<button class="icon-btn" title="Trash" onclick={() => openBins('trash')}>
 	<span class="material-symbols-outlined">delete</span>
 </button>
 <button class="icon-btn" title="Settings" onclick={() => openSettings()}>

@@ -84,10 +84,17 @@ Scrinium is small, but there are a few footguns specific to it.
    without going through `renameNote` (moves included), or tabs/pins/
    activePath and queued saves drift. A rename of the open note moves
    `shownNote()` with it, so the page keeps the editor instead of reloading.
-5. **Bypassing the trash index.** Deletes move files into `VAULT_DIR/.trash/`
-   and record the original path in `.trash/.index.json`. If you touch trash
-   internals, keep that file in sync or restore falls back to guessing from
-   the timestamp-prefixed name.
+5. **Bypassing the bin indexes.** Deletes move files into `VAULT_DIR/.trash/`,
+   archiving into `VAULT_DIR/.archive/`, flat as `<stamp>-<name>`, with the
+   original path in that bin's `.index.json`. Both bins go through
+   `moveIn` / `restore` / `archiveToTrash` in `src/lib/server/bins.ts`,
+   which also move task links to the bin path and back, drop share links
+   and metadata, and keep archived notes in the search index under their
+   `.archive/` path (search leaves them out unless `scope` asks). If you
+   touch bin internals, keep the index in sync or restore falls back to
+   guessing from the name. Emptying the trash never touches the archive.
+   The notes API reads dot paths (so archived notes open read-only) but
+   refuses to write to them.
 6. **Vertical margins on block widgets.** CodeMirror measures block widgets
    without their margins, so `margin: X 0` on `.cm-math-block` / `.cm-image`
    desyncs the height map — gutter numbers, cursor coords and arrow targets
@@ -204,8 +211,10 @@ State channels you will touch:
   "<N> lines yanked" status notice via the facade dialog signal, read off
   live selection state so a stale range can never paint),
   formatting.ts.
-- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus trash
-  move/list/restore/purge backed by `.trash/.index.json`), db.ts (sqlite cache
+- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus the
+  trash and archive bins: move/list/restore/purge backed by each bin's
+  `.index.json`), bins.ts (the bookkeeping around a bin move that routes
+  call), db.ts (sqlite cache
   + api_tokens table), shares.ts (public share links: random id → live vault
   path, optional scrypt password hash; rename/delete follow the file),
   auth.ts (better-auth, Google, allowlist), indexer.ts,
@@ -234,7 +243,8 @@ State channels you will touch:
   success, which the route records in `agent_actions` for bearer callers -
   a new write tool must call it too).
 - `src/lib/stores/` — client state: vault.ts (notes + debounced autosave +
-  tabs + title↔filename sync + trash actions), filetree.ts, actions.ts,
+  tabs + title↔filename sync + trash and archive actions), bins.ts (the
+  open Archive/Trash/Review view), filetree.ts, actions.ts,
   settings.ts (editor prefs persisted to localStorage), tasks.ts (tasks
   and projects: lists, open drawer, API calls), editor.ts / vim.ts (caret
   and vim mode for the StatusBar), settingsDialog.ts.
@@ -253,18 +263,27 @@ State channels you will touch:
   unpin when dropped anywhere else. Targets are found by `data-*`
   attributes under the pointer; the lifted row and its "Move to X" label
   live in Sidebar.svelte.
-  `settings/SettingsDialog.svelte` is the one settings and trash surface:
+  `bins/BinsView.svelte` is the full-page Archive / Trash / Review view,
+  mounted in the root layout and opened through `openBins(tab, focus?)`
+  (`stores/bins.ts`) from the sidebar footer, the palette, task links and
+  wikilinks to archived notes. Each tab is a list plus a read-only
+  `NotePreview` (renderNoteToHtml). Review lists stale notes (old, nothing
+  links to them, no task, share or pin) from `/api/archive/review` for
+  bulk archive or trash. It swallows keydown like the settings dialog.
+  `src/lib/archive.ts` holds the archive types and path mapping shared by
+  the routes, MCP and the view.
+  `settings/SettingsDialog.svelte` is the one settings surface:
   a modal mounted in the root layout, opened through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
   and the palette. Pages: Editor, Keyboard (vim toggle + the shortcut list
   from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,
   Account (Google Calendar status), Devices (phone tokens, the unlabeled
-  ones), Agents (MCP URL, labeled agent tokens and their activity), Trash,
+  ones), Agents (MCP URL, labeled agent tokens and their activity),
   About. While open
   it swallows keydown in the capture phase so app shortcuts never fire
   underneath; Esc closes it.
 - `src/routes/` — `/` (+page.svelte shell), `/login`, `/print`, `/tasks/*`,
-  api/{auth,notes,tree,search,assets,attachments,tokens,trash,backlinks,
+  api/{auth,notes,tree,search,assets,attachments,tokens,trash,archive,backlinks,
   tags,tagged,tasks,projects,calendar}.
   `/api/mcp` is the stateless MCP endpoint (streamable HTTP, JSON
   responses) behind the normal /api gate. Mobile-only
@@ -289,7 +308,7 @@ State channels you will touch:
   `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
   `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`
   (crumbs + preview/PDF/more/Share/right-panel toggle), `StatusBar.svelte`,
-  `AppActions.svelte` (Trash/Settings/Sign out buttons: notes sidebar, Tasks
+  `AppActions.svelte` (Archive/Trash/Settings/Sign out buttons: notes sidebar, Tasks
   sidebar, Board footer via `PageFooter actions`; not on Calendar),
   `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,
   NoteTasks, Tags, FileInfo in that order), `PageFooter.svelte`.
