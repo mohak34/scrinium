@@ -321,15 +321,11 @@ export function renderNoteToHtml(
 	});
 	// 6. Relative image URLs resolve against the note's folder (same rule as
 	// the editor) - otherwise they 404 against /print and only alt shows.
-	// markdown-it hands back the src HTML-escaped and percent-encoded; undo
-	// both so "my image.png" resolves to the file, not "my%20image.png".
+	// markdown-it hands back the src HTML-escaped and percent-encoded; the
+	// escaping is undone here, the encoding by resolveAssetUrl (once).
 	html = html.replace(/<img([^>]*?)src="([^"]*)"/g, (m, rest, url: string) => {
 		if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('/')) return m;
-		let raw = url.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-		try {
-			raw = decodeURI(raw);
-		} catch {}
-		const resolved = resolve(raw);
+		const resolved = resolve(url.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
 		return resolved == null ? m : `<img${rest}src="${resolved.replace(/"/g, '&quot;')}"`;
 	});
 	return renderCallouts(html);
