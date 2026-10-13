@@ -249,7 +249,8 @@ State channels you will touch:
   `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
   drag-and-drop. Tree rows move into folders (a file row means its folder,
   the Files header the root), notes dropped on Pinned get pinned, pins
-  reorder or unpin when dragged out. Targets are found by `data-*`
+  reorder, move into a folder they are dropped on (staying pinned), and
+  unpin when dropped anywhere else. Targets are found by `data-*`
   attributes under the pointer; the lifted row and its "Move to X" label
   live in Sidebar.svelte.
   `settings/SettingsDialog.svelte` is the one settings and trash surface:
