@@ -546,6 +546,12 @@ db.exec(`
 	);
 `);
 
+// Areas renamed: college -> uni, life -> quotidian.
+for (const t of ['tasks', 'projects']) {
+	db.exec(`UPDATE ${t} SET area = 'uni' WHERE area = 'college'`);
+	db.exec(`UPDATE ${t} SET area = 'quotidian' WHERE area = 'life'`);
+}
+
 export interface ProjectRow {
 	path: string;
 	area: TaskArea | null;
