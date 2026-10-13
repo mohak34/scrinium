@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { env } from '$env/dynamic/private';
 import { indexNote } from './db';
@@ -36,6 +37,10 @@ async function walkAndIndex(dir: string, rel: string) {
 		} else if (dirent.name.endsWith('.md')) {
 			try {
 				const body = await fs.readFile(full, 'utf-8');
+				// Moved (trashed, archived, renamed) during the read: its
+				// bookkeeping already ran, so a row now would be stale. The
+				// check and insert are synchronous, so nothing moves between.
+				if (!existsSync(full)) continue;
 				const title = effectiveTitle(body, childRel);
 				indexNote(childRel, title, body);
 			} catch {

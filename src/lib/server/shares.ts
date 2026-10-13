@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { db, under, underArgs } from './db';
+import { vaultRel } from './vault';
 import { renderNoteToHtml } from '$lib/print/renderNote';
 import { resolveAssetUrl } from '$lib/editor/livePreview';
 
@@ -17,6 +18,19 @@ db.exec(`
 	);
 	CREATE INDEX IF NOT EXISTS idx_shares_note_path ON shares(note_path);
 `);
+
+// Older rows could hold a non-canonical path ("./a.md") that rename,
+// archive and delete never matched by prefix. Rewrite them once.
+for (const row of db.prepare(`SELECT id, note_path FROM shares`).all() as { id: string; note_path: string }[]) {
+	try {
+		const canonical = vaultRel(row.note_path);
+		if (canonical !== row.note_path) {
+			db.prepare(`UPDATE shares SET note_path = ? WHERE id = ?`).run(canonical, row.id);
+		}
+	} catch {
+		// Outside the vault: the viewer already refuses it.
+	}
+}
 
 export interface ShareRow {
 	id: string;

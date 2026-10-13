@@ -4,8 +4,9 @@
 	import { groupByDate, when, longDate, split, kindIcon } from './lists';
 	import NotePreview from './NotePreview.svelte';
 
-	// focus selects an item on open: its archive name, or the original path
-	// of a note inside it (a wikilink to an archived note).
+	// focus selects an item on open: the original path of a note inside it
+	// (a wikilink to an archived note) or its ".archive/..." path (a task
+	// link that followed it).
 	let { focus, onOpened }: { focus?: string; onOpened: () => void } = $props();
 
 	let filter = $state('');
@@ -46,11 +47,13 @@
 	$effect(() => {
 		const f = focus;
 		if (!f || f === applied) return;
-		const e = $archiveEntries.find((x) => x.name === f || x.notes.includes(f));
+		const binned = fromArchivedPath($archiveEntries, f);
+		const e = binned?.entry ?? $archiveEntries.find((x) => x.notes.includes(f));
 		if (!e) return;
+		const n = binned?.note ?? f;
 		applied = f;
 		selName = e.name;
-		selNote = e.notes.includes(f) ? f : null;
+		selNote = e.notes.includes(n) ? n : null;
 	});
 
 	const sel = $derived(shown.find((e) => e.name === selName) ?? shown[0] ?? null);

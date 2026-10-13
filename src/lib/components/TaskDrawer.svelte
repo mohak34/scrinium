@@ -232,7 +232,7 @@
 
 	function openNote(path: string) {
 		const bin = binOf(path);
-		if (bin) return openBins(bin, bin === 'archive' ? path.split('/')[1] : undefined);
+		if (bin) return openBins(bin, bin === 'archive' ? path : undefined);
 		openTab(path);
 		closeTask();
 		void goto('/');

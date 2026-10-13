@@ -27,9 +27,11 @@ import { renameShares } from '$lib/server/shares';
 // Reads reach archived notes (".archive/..."), so the archive page and
 // agents can open them. Writes never touch a dot folder: archived notes are
 // read-only, and bins change only through /api/archive and /api/trash.
+// Canonical ("a/b.md", never "./a/b.md"), so the cache, shares and task
+// links all store the same spelling and prefix lookups find them.
 function writable(path: string | undefined): string {
 	if (!path || isHiddenPath(path)) throw error(400, 'Invalid path');
-	return path;
+	return vaultRel(path);
 }
 
 export const GET: RequestHandler = async ({ params }) => {
