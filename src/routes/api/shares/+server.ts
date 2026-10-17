@@ -1,15 +1,15 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { isHiddenPath, readNote, vaultRel } from '$lib/server/vault';
-import { createShare, listSharesForNote } from '$lib/server/shares';
+import { createShare, listAllShares, listSharesForNote } from '$lib/server/shares';
 
 // Auth is enforced in hooks.server.ts - these endpoints need a session.
 
 // GET /api/shares?path=Notes/foo.md -> shares for that note, newest first.
+// Without ?path, every share in the vault grouped by note.
 export const GET: RequestHandler = async ({ url }) => {
 	const path = url.searchParams.get('path');
-	if (!path) throw error(400, 'Missing path');
-	return json(listSharesForNote(vaultRel(path)));
+	return json(path ? listSharesForNote(vaultRel(path)) : listAllShares());
 };
 
 // POST /api/shares { path, password? } -> { id, notePath, hasPassword }.

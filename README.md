@@ -10,6 +10,8 @@ The editor is CodeMirror 6. It hides markdown syntax and shows it again on the l
 
 Notes you are done with can be archived from the note menu, the file tree, or the palette. Archived notes leave the tree and normal search but stay on disk under `.archive/` and are searchable from the Archive view (the box icon beside the trash). Emptying the trash never touches the archive. The Review tab lists stale notes (untouched for a while, nothing links to them, no task, share link or pin) to archive or trash in bulk. Archiving a note removes its share links.
 
+**Settings > Shared links** lists every public share link, grouped by note. From there you can copy a link, add, change or remove its password, revoke it, or open the note. New links are still made from a note's Share button.
+
 A project is a vault folder with its own board. Pick one or make one from the project menu on the Board. The folder holds the project's notes. The project's Inbox is its backlog and stays on the project board. Its tasks show on the main board and task list once they move to This week or later.
 
 ## Getting started (local)
