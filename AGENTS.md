@@ -302,7 +302,8 @@ State channels you will touch:
   from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,
   Account (Google Calendar status), Devices (phone tokens, the unlabeled
   ones), Agents (MCP URL, labeled agent tokens and their activity),
-  About. While open
+  Shared links (every share from `GET /api/shares` without `?path`:
+  copy, revoke, set or remove the password), About. While open
   it swallows keydown in the capture phase so app shortcuts never fire
   underneath; Esc closes it.
 - `src/routes/` — `/` (+page.svelte shell), `/login`, `/print`, `/tasks/*`,
@@ -312,7 +313,9 @@ State channels you will touch:
   responses) behind the normal /api gate. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
-  authed `GET/POST /api/shares` + `DELETE /api/shares/[id]`, public
+  authed `GET/POST /api/shares` + `PATCH/DELETE /api/shares/[id]` (PATCH
+  sets or, with `null`, removes the password and drops that link's image
+  proofs), public
   `GET/POST /api/share/[id]` (+ `/assets/<n>`: the n-th image the note
   references, from `shareImages` in shares.ts - never a vault path) and the `/s/[id]`
   viewer (ShareModal.svelte manages links from the note bar).
