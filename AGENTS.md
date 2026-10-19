@@ -200,6 +200,8 @@ State channels you will touch:
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),
+  mathRender.ts (KaTeX for the math widgets, imported with its CSS on
+  the first widget drawn; a widget shows its source until then),
   mathComplete.ts (`\command` completion source, math regions only),
   mathSnippets.ts (Tab word/subscript and Space fraction triggers),
   tableBlock.ts (top-level GFM tables as a StateField like mathBlock:

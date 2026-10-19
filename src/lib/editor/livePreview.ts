@@ -31,8 +31,7 @@ import {
 	type DecorationSet,
 	type ViewUpdate
 } from '@codemirror/view';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
+import { fillMath } from './mathRender';
 import { resolveAssetUrl } from '$lib/attachments';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
 import { findTableRanges } from './tableRanges';
@@ -336,20 +335,6 @@ class ImageWidget extends WidgetType {
 
 // Inline `$...$` only (single line). Block math lives in mathBlock.ts as a
 // StateField so multi-line replaces do not corrupt the ViewPlugin layout.
-const katexCache = new Map<string, string>();
-function renderInlineMath(content: string): string {
-	const key = content;
-	const hit = katexCache.get(key);
-	if (hit !== undefined) return hit;
-	try {
-		const html = katex.renderToString(content, { throwOnError: false, displayMode: false });
-		katexCache.set(key, html);
-		return html;
-	} catch {
-		return `$${content}$`;
-	}
-}
-
 class InlineMathWidget extends WidgetType {
 	constructor(readonly content: string) {
 		super();
@@ -357,10 +342,10 @@ class InlineMathWidget extends WidgetType {
 	eq(other: InlineMathWidget) {
 		return other.content === this.content;
 	}
-	toDOM() {
+	toDOM(view: EditorView) {
 		const span = document.createElement('span');
 		span.className = 'cm-math-inline';
-		span.innerHTML = renderInlineMath(this.content);
+		fillMath(span, view, this.content, false);
 		return span;
 	}
 	ignoreEvent() {

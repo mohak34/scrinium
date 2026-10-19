@@ -32,10 +32,14 @@ import { findWikilinksInText } from './wikilinks';
 type Render = typeof import('$lib/print/renderNote').renderNoteToHtml;
 let render: Render | null = null;
 let loading: Promise<void> | null = null;
+// KaTeX's CSS comes along for math in cells: the editor otherwise only
+// loads it with its own math widgets (mathRender.ts).
 const loadRenderer = () =>
-	(loading ??= import('$lib/print/renderNote').then((m) => {
-		render = m.renderNoteToHtml;
-	}));
+	(loading ??= Promise.all([import('$lib/print/renderNote'), import('katex/dist/katex.min.css')]).then(
+		([m]) => {
+			render = m.renderNoteToHtml;
+		}
+	));
 
 // Dispatched once the renderer has loaded, so pending widgets rebuild.
 const rendererReady = StateEffect.define<null>();
