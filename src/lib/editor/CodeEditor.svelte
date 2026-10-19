@@ -15,7 +15,6 @@ import { foldDoc, headingFoldRange, listFoldRange, mayFold, type FoldDoc } from 
 import { findCallouts } from './callouts';
 import { perDoc } from './docRanges';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-	import { vim, getCM } from '@replit/codemirror-vim';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
 	import {
 	openSearchPanel,
@@ -70,6 +69,10 @@ import { perDoc } from './docRanges';
 	const wrapCompartment = new Compartment();
 	const fontSizeCompartment = new Compartment();
 	const vimCompartment = new Compartment();
+	// Vim's code loads the first time vim motions are on; until then there
+	// is no vim facade and every vim check below reads as "vim off".
+	let vimLib: typeof import('@replit/codemirror-vim') | null = null;
+	const cmOf = (view: EditorView) => vimLib?.getCM(view) ?? null;
 	// One view serves every note, so undo history is swapped out on a note
 	// switch: Ctrl+Z must never pull the previous note's text into this one.
 	const historyCompartment = new Compartment();
@@ -88,7 +91,7 @@ import { perDoc } from './docRanges';
 	// indent) bail out in that case so vim owns the key.
 	function inVimNormal(view: EditorView): boolean {
 		if (!get(settings).editor.vimMotions) return false;
-		const vimState = getCM(view)?.state.vim;
+		const vimState = cmOf(view)?.state.vim;
 		return !!vimState && !vimState.insertMode;
 	}
 
@@ -190,7 +193,7 @@ import { perDoc } from './docRanges';
 		// Close signals carry no dialog; vim-off leaves a stale facade that
 		// never fires again, but guard anyway.
 		const dlg = get(settings).editor.vimMotions
-			? (getCM(view)?.state.dialog as HTMLElement | null | undefined)
+			? (cmOf(view)?.state.dialog as HTMLElement | null | undefined)
 			: null;
 		if (!dlg) return;
 		if (dlg.querySelector('input')) {
@@ -251,7 +254,7 @@ import { perDoc } from './docRanges';
 		if (e.mode === 'insert') vimMode.set('insert');
 		else if (e.mode === 'replace') vimMode.set('replace');
 		else if (e.mode === 'visual') {
-			const st = view ? getCM(view)?.state.vim : null;
+			const st = view ? cmOf(view)?.state.vim : null;
 			vimMode.set(st?.visualLine ? 'visual-line' : st?.visualBlock ? 'visual-block' : 'visual');
 		} else vimMode.set('normal');
 	}
@@ -261,7 +264,7 @@ import { perDoc } from './docRanges';
 	// readout - e.g. INSERT shown while vim stayed normal.
 	function syncVimMode() {
 		if (!view) return;
-		const st = getCM(view)?.state.vim;
+		const st = cmOf(view)?.state.vim;
 		if (!st) return;
 		let next: VimChromeMode = 'normal';
 		if (st.insertMode) next = 'insert';
@@ -356,7 +359,7 @@ import { perDoc } from './docRanges';
 				// insert-mode helpers below (Enter/Tab/Space bail out via
 				// inVimNormal anyway). No status bar: the mode pill, toasts
 				// and command line below replace it.
-				vimCompartment.of(initialSettings.editor.vimMotions ? vim() : []),
+				vimCompartment.of([]),
 				// Visible selection in vim visual mode: the vim theme blanks
 				// native selection, so restore the theme selection color. The
 				// doubled class outranks vim's rule however the equal-
@@ -496,7 +499,7 @@ import { perDoc } from './docRanges';
 							// kept); only normal-mode Esc enters full preview.
 							// Returning false lets vim claim the key.
 							if (get(settings).editor.vimMotions) {
-								const vimState = getCM(view)?.state.vim;
+								const vimState = cmOf(view)?.state.vim;
 								if (vimState && (vimState.insertMode || vimState.visualMode)) return false;
 							}
 							// Full preview: render the whole note, stop the cursor
@@ -573,9 +576,9 @@ import { perDoc } from './docRanges';
 		// Yank notices and `/`/`:` dialogs arrive on the vim facade's
 		// "dialog" signal; mode changes on "vim-mode-change". Turning vim off
 		// and on builds a new facade, so hook whichever one is live.
-		let hooked: ReturnType<typeof getCM> = null;
+		let hooked: ReturnType<typeof cmOf> = null;
 		const hookVim = () => {
-			const cm = view ? getCM(view) : null;
+			const cm = view ? cmOf(view) : null;
 			if (!cm || cm === hooked) return;
 			cm.on('dialog', onVimDialog);
 			cm.on('vim-mode-change', onVimMode);
@@ -584,25 +587,38 @@ import { perDoc } from './docRanges';
 
 		// Vim is only reconfigured when its toggle flips: a fresh vim() on
 		// every settings change (font size, wrap) would reset its mode and
-		// registers mid-edit.
-		let vimWas = initialSettings.editor.vimMotions;
+		// registers mid-edit. The compartment starts empty; turning vim on
+		// loads its code first, then applies whatever the toggle says by then.
+		let vimWas = false;
+		let mounted = true;
+		const applyVim = (on: boolean) => {
+			if (!view || !mounted || on === vimWas) return;
+			const lib = vimLib;
+			if (on && !lib) {
+				void import('@replit/codemirror-vim').then((m) => {
+					vimLib = m;
+					applyVim(get(settings).editor.vimMotions);
+				});
+				return;
+			}
+			vimWas = on;
+			view.dispatch({ effects: vimCompartment.reconfigure(on && lib ? lib.vim() : []) });
+			hookVim();
+			syncVimMode();
+		};
 		const unsubscribe = settings.subscribe((s) => {
 			if (!view) return;
-			const vimChanged = s.editor.vimMotions !== vimWas;
-			vimWas = s.editor.vimMotions;
 			view.dispatch({
 				effects: [
 					fontSizeCompartment.reconfigure(themeForFontSize(s.editor.fontSize)),
 					lineNumbersCompartment.reconfigure(
 						s.editor.showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []
 					),
-					wrapCompartment.reconfigure(s.editor.wordWrap ? EditorView.lineWrapping : []),
-					...(vimChanged ? [vimCompartment.reconfigure(s.editor.vimMotions ? vim() : [])] : [])
+					wrapCompartment.reconfigure(s.editor.wordWrap ? EditorView.lineWrapping : [])
 				]
 			});
 			vimOn = s.editor.vimMotions;
-			hookVim();
-			syncVimMode();
+			applyVim(s.editor.vimMotions);
 		});
 
 		// The adapter removes hosted dialogs on close; an empty command
@@ -613,6 +629,7 @@ import { perDoc } from './docRanges';
 		if (cmdBar) cmdObserver.observe(cmdBar, { childList: true });
 
 		return () => {
+			mounted = false;
 			unsubscribe();
 			cmdObserver.disconnect();
 		};

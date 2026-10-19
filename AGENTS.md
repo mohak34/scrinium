@@ -188,7 +188,8 @@ State channels you will touch:
   CodeMirror `Compartment`s; Tab indents via `indentWithTab`; math blocks
   reveal source when the cursor is on an adjacent line so arrows never
   have to cross hidden lines; vim motions via `@replit/codemirror-vim` in
-  a `Compartment` gated by `settings.editor.vimMotions` - insert-mode
+  a `Compartment` gated by `settings.editor.vimMotions`, its code
+  imported the first time the toggle is on (`cmOf` is null until then) - insert-mode
   helpers bail out in normal mode via `inVimNormal`, editor Esc drops to
   normal mode, normal-mode Esc enters preview, and app-level Esc exits
   preview via `exitPreview` so keyboard flow never strands on the mouse;
