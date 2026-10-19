@@ -196,15 +196,19 @@
 		return candidate;
 	}
 
+	// A typed name may be a path: `work/test1` makes the note inside a new
+	// `work` folder, and a trailing `/` makes the whole thing a folder.
 	async function commitCreate(parent: string | null, kind: 'note' | 'folder', rawName: string) {
-		const name = sanitizeName(rawName, kind);
-		if (!name) {
+		const parts = rawName.split('/').map((p) => p.trim());
+		if (rawName.trim().endsWith('/')) kind = 'folder';
+		const segments = parts.filter(Boolean).map((p, i, all) => sanitizeName(p, i === all.length - 1 ? kind : 'folder'));
+		if (!segments.length || segments.some((s) => s === null)) {
 			createTarget = null;
 			return;
 		}
-		const path = uniquePath(parent, name);
+		const path = uniquePath(parent, segments.join('/'));
+		for (let i = path.indexOf('/'); i !== -1; i = path.indexOf('/', i + 1)) expandDir(path.slice(0, i));
 		if (kind === 'folder') {
-			if (parent) expandDir(parent);
 			await createFolder(path);
 		} else {
 			await createNote(path);

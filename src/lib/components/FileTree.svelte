@@ -245,7 +245,7 @@
 				class="rename-input"
 				bind:this={createInput}
 				bind:value={createName}
-				placeholder={t.kind === 'folder' ? 'Folder name' : 'Note name'}
+				placeholder={t.kind === 'folder' ? 'Folder name' : 'Note name, or folder/'}
 				onkeydown={(e) => {
 					if (e.key === 'Enter') commitCreate();
 					if (e.key === 'Escape') cancelCreate();
