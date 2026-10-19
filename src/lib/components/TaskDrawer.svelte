@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { get } from 'svelte/store';
+	import { leaderPending } from '$lib/stores/palette';
 	import {
 		tasks,
 		projects,
@@ -147,7 +148,8 @@
 		if ($openTaskId) {
 			void loadTree();
 			const key = (e: KeyboardEvent) => {
-				if (e.key !== 'Escape') return;
+				// A handled Esc (Space leader cancel) is not a close.
+				if (e.key !== 'Escape' || e.defaultPrevented || get(leaderPending)) return;
 				// Title, notes and waiting-on save on change, which only fires
 				// on blur: blur first so Esc never throws a draft away.
 				const el = document.activeElement;

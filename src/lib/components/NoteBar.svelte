@@ -12,11 +12,13 @@
 		rightOpen: boolean;
 		onTogglePreview: () => void;
 		onToggleRight: () => void;
+		// Bound so the palette's Share command can open the modal too.
+		shareOpen?: boolean;
 	}
-	let { path, rightOpen, onTogglePreview, onToggleRight }: Props = $props();
+	let { path, rightOpen, onTogglePreview, onToggleRight, shareOpen = $bindable(false) }: Props =
+		$props();
 
 	let menu = $state<{ x: number; y: number } | null>(null);
-	let shareOpen = $state(false);
 
 	const segments = $derived(path.replace(/\.md$/, '').split('/'));
 	const pinned = $derived($pinnedPaths.includes(path));

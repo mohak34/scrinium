@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store';
+import { movedBy, relinkNote } from '$lib/relink';
 import { linkFirstMention } from '$lib/editor/wikilinks';
 import { effectiveTitle, setEffectiveTitle, updateFrontmatterBlock } from '$lib/editor/frontmatter';
 import type { Document } from 'yaml';
@@ -222,12 +223,14 @@ function afterSaved<T>(fn: () => Promise<T>): Promise<T | null> {
 	return enqueue(async () => ((await writePending()) ? fn() : null));
 }
 
-// Pending text follows a rename so a late save never recreates the old file.
+// Pending text follows a rename so a late save never recreates the old file,
+// and gets the relative-link fix the server gave the saved copies, so it
+// never writes the old links back.
 function remapPending(from: string, to: string) {
+	const moved = movedBy(from, to);
 	for (const [path, content] of [...pending]) {
-		if (path !== from && !path.startsWith(from + '/')) continue;
 		pending.delete(path);
-		pending.set(to + path.slice(from.length), content);
+		pending.set(moved(path), relinkNote(content, path, moved(path), moved));
 	}
 }
 
@@ -454,8 +457,17 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 		}).catch(() => null);
 		if (!res?.ok) return false;
 		remapPending(oldPath, newPath);
-		if (shown && (shown === oldPath || shown.startsWith(oldPath + '/'))) {
-			shown = newPath + shown.slice(oldPath.length);
+		const moved = movedBy(oldPath, newPath);
+		const before = shown;
+		if (shown) shown = moved(shown);
+		// The server fixed the relative links the move broke; the open note
+		// gets the same fix in its live text (which may hold links typed
+		// during the request), autosaved like typing, so the next save never
+		// puts the old links back.
+		if (before && shown && editorHost) {
+			const text = editorHost.read();
+			const out = relinkNote(text, before, shown, moved);
+			if (out !== text) editorHost.write(out);
 		}
 		const current = get(activePath);
 		if (current && (current === oldPath || current.startsWith(oldPath + '/'))) {

@@ -261,6 +261,16 @@ State channels you will touch:
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
   in the root layout; polls `POST /api/tasks/due` every 30 s).
+  CommandPalette is mounted in the root layout too, so Ctrl+K works on
+  every app page (`stores/palette.ts`). It searches notes and tasks, adds
+  an Inbox task from the query, and holds the global commands; a page adds
+  its own (editor formatting on Notes, views on Board) with
+  `usePageCommands` from its `onMount`. A new feature that can run from
+  the keyboard gets a palette command in one of the two places. The root
+  layout also owns the Space leader and the `?` overlay on every page;
+  `leader: 'x'` on a page command makes it Space x. `src/lib/keyNav.ts`
+  moves focus between task cards and rows (`data-nav` items) on Tasks and
+  Board.
   `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
   drag-and-drop. Tree rows move into folders (a file row means its folder,
   the Files header the root), notes dropped on Pinned get pinned, pins
@@ -274,9 +284,22 @@ State channels you will touch:
   wikilinks to archived notes. Each tab is a list plus a read-only
   `NotePreview` (renderNoteToHtml). Review lists stale notes (old, nothing
   links to them, no task, share or pin) from `/api/archive/review` for
-  bulk archive or trash. It swallows keydown like the settings dialog.
+  bulk archive or trash. Unused files lists vault files whose name no live
+  or archived note contains (a plain text match, so it errs toward keeping)
+  from `/api/archive/unused`, to trash in bulk; it flushes saves before
+  scanning and scans again before trashing. It swallows keydown like the
+  settings dialog.
   `src/lib/archive.ts` holds the archive types and path mapping shared by
   the routes, MCP and the view.
+  `src/lib/relink.ts` finds relative markdown link destinations
+  (`[t](url)`, `![a](url)`, `[ref]: url`) with the editor's Lezer parser,
+  so code is never touched. `renamePath` in vault.ts uses it inside the
+  vault lock to fix the links a move broke, in the moved notes, in every
+  note linking into the move and in archived notes (from their original
+  path); the PATCH route reindexes and returns those paths. `renameNote`
+  applies the same `relinkNote` to the open note's live text and to queued
+  unsaved text, so autosave never writes the old links back. Moves that
+  skip `renamePath` leave broken images.
   `settings/SettingsDialog.svelte` is the one settings surface:
   a modal mounted in the root layout, opened through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
@@ -284,7 +307,8 @@ State channels you will touch:
   from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,
   Account (Google Calendar status), Devices (phone tokens, the unlabeled
   ones), Agents (MCP URL, labeled agent tokens and their activity),
-  About. While open
+  Shared links (every share from `GET /api/shares` without `?path`:
+  copy, revoke, set or remove the password), About. While open
   it swallows keydown in the capture phase so app shortcuts never fire
   underneath; Esc closes it.
 - `src/routes/` — `/` (+page.svelte shell), `/login`, `/print`, `/tasks/*`,
@@ -294,7 +318,9 @@ State channels you will touch:
   responses) behind the normal /api gate. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
-  authed `GET/POST /api/shares` + `DELETE /api/shares/[id]`, public
+  authed `GET/POST /api/shares` + `PATCH/DELETE /api/shares/[id]` (PATCH
+  sets or, with `null`, removes the password and drops that link's image
+  proofs), public
   `GET/POST /api/share/[id]` (+ `/assets/<n>`: the n-th image the note
   references, from `shareImages` in shares.ts - never a vault path) and the `/s/[id]`
   viewer (ShareModal.svelte manages links from the note bar).

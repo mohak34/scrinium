@@ -8,6 +8,7 @@
 	import AccountPage from './AccountPage.svelte';
 	import DevicesPage from './DevicesPage.svelte';
 	import AgentsPage from './AgentsPage.svelte';
+	import SharesPage from './SharesPage.svelte';
 	import AboutPage from './AboutPage.svelte';
 
 	// One dialog for preferences, account and vault housekeeping, mounted in
@@ -32,6 +33,7 @@
 		{
 			label: 'Vault',
 			pages: [
+				{ key: 'shares', title: 'Shared links', icon: 'link' },
 				{ key: 'about', title: 'About', icon: 'info' }
 			]
 		}
@@ -98,7 +100,8 @@
 					{:else if current.key === 'attachments'}<AttachmentsPage />
 					{:else if current.key === 'account'}<AccountPage />
 					{:else if current.key === 'devices'}<DevicesPage />
-				{:else if current.key === 'agents'}<AgentsPage />
+					{:else if current.key === 'agents'}<AgentsPage />
+					{:else if current.key === 'shares'}<SharesPage />
 					{:else}<AboutPage />
 					{/if}
 				</div>

@@ -25,7 +25,9 @@
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 	import AppActions from '$lib/components/AppActions.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { usePageCommands } from '$lib/stores/palette';
+	import { keyNav } from '$lib/keyNav';
 
 	let newTitle = $state('');
 	let newDue = $state('');
@@ -45,8 +47,34 @@
 		{ key: 'completed', label: 'Completed', icon: 'check_circle' }
 	];
 
+	let addInput = $state<HTMLInputElement>();
+	let searchInput = $state<HTMLInputElement>();
+
 	onMount(() => {
 		void loadTasks();
+		return usePageCommands([
+			{ label: 'Add a task here', hint: 'Focus the add box', run: () => addInput?.focus() },
+			{
+				label: 'Search tasks',
+				hint: 'Filter this list by text',
+				run: async () => {
+					// Already open: the attach won't rerun, so focus it here.
+					searching = true;
+					await tick();
+					searchInput?.focus();
+				}
+			},
+			...filters.map((f) => ({
+				label: `Show ${f.label.toLowerCase()}`,
+				hint: 'Task list filter',
+				run: () => (filter = f.key)
+			})),
+			...AREAS.map((a) => ({
+				label: `Toggle area ${a.label}`,
+				hint: 'Task list filter',
+				run: () => (area = area === a.key ? null : a.key)
+			}))
+		]);
 	});
 
 
@@ -168,7 +196,7 @@
 	}
 </script>
 
-<div class="page">
+<div class="page" {@attach keyNav}>
 	<aside class="side" aria-label="Task filters">
 		<div class="side-head"><AppSwitcher current="tasks" /></div>
 		<nav class="filters">
@@ -215,6 +243,7 @@
 					placeholder="Search tasks"
 					bind:value={query}
 					aria-label="Search tasks"
+					bind:this={searchInput}
 					onkeydown={(e) => {
 						if (e.key === 'Escape') {
 							query = '';
@@ -234,6 +263,7 @@
 			<span class="material-symbols-outlined">add</span>
 			<input
 				class="title-in"
+				bind:this={addInput}
 				placeholder="Add a task, press Enter"
 				bind:value={newTitle}
 				aria-label="New task title"
@@ -278,6 +308,8 @@
 								role="button"
 								tabindex="0"
 								aria-label="Open {t.title} details"
+								data-task={t.id}
+								data-nav="list"
 								onkeydown={(e) => {
 									if (e.key === 'Enter' && (e.target as HTMLElement).classList.contains('tr'))
 										openTask(t.id);
