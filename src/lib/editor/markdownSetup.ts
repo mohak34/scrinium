@@ -289,7 +289,16 @@ export const baseTheme = EditorView.theme(
 		// Padding, not margin, same height-map reason as .cm-math-block.
 		// white-space resets the editor's break-spaces, which would turn the
 		// renderer's newlines between rows into text that splits the table.
-		'.cm-table-block': { padding: '0.5rem 0', cursor: 'text', whiteSpace: 'normal' },
+		// The wrap resets undo the editor's overflow-wrap: anywhere, which lets
+		// columns shrink below their longest word and split it mid-word; cells
+		// now wrap at spaces and a wide table scrolls (theme.css).
+		'.cm-table-block': {
+			padding: '0.5rem 0',
+			cursor: 'text',
+			whiteSpace: 'normal',
+			wordBreak: 'normal',
+			overflowWrap: 'normal'
+		},
 		'.cm-table-pending': {
 			whiteSpace: 'pre',
 			fontFamily: 'var(--font-mono)',
