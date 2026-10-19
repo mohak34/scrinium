@@ -260,7 +260,8 @@ State channels you will touch:
   and shares goes here as well as in the editor.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
-  in the root layout; polls `POST /api/tasks/due` every 30 s).
+  in the root layout except on login and share pages; polls
+  `POST /api/tasks/due` every 30 s while the tab is visible).
   `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
   drag-and-drop. Tree rows move into folders (a file row means its folder,
   the Files header the root), notes dropped on Pinned get pinned, pins

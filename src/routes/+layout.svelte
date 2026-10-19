@@ -60,8 +60,8 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 </svelte:head>
 
 {@render children()}
-<ReminderToasts />
 {#if !page.url.pathname.startsWith('/login') && !page.url.pathname.startsWith('/s/')}
+	<ReminderToasts />
 	<SettingsDialog />
 	<BinsView />
 {/if}
