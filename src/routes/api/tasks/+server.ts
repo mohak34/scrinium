@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types';
 import { listTasks, listTasksForNote, insertTask, getTask, getProject } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
-import { parseStamp } from '$lib/server/taskInput';
+import { parseStamp, parseWaitingSince } from '$lib/server/taskInput';
 
 // Auth is already enforced in src/hooks.server.ts for everything under /api.
 
@@ -53,6 +53,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		priority,
 		area: isArea(body?.area) ? body.area : null,
 		waiting_on: cleanText(body?.waiting_on, 120),
+		waiting_since: parseWaitingSince(body?.waiting_since),
 		parent_id,
 		// A subtask always carries its parent's project.
 		project: parent_id ? parentProject : (body?.project ?? null),
