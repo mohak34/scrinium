@@ -307,7 +307,6 @@ class CalloutHeaderWidget extends WidgetType {
 	}
 }
 
-
 class ImageWidget extends WidgetType {
 	constructor(
 		readonly url: string,

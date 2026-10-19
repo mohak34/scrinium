@@ -27,7 +27,7 @@
 			</div>
 		{/each}
 		<div class="foot">
-			Vim keys (/, ?, [, ]) only act outside text inputs, so they never clash with browser
+			Vim keys (Space, ?, /, [, ], j k h l) only act outside text inputs, so they never clash with browser
 			shortcuts. Toggle them in Settings, Keyboard.
 		</div>
 	</div>

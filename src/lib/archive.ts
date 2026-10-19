@@ -34,3 +34,10 @@ export interface ReviewNote {
 	// Words in the body, title heading and properties left out.
 	words: number;
 }
+
+// A vault file no note links to, from /api/archive/unused.
+export interface UnusedFile {
+	path: string;
+	size: number;
+	modifiedAt: number;
+}

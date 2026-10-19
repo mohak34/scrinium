@@ -1,102 +1,90 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { get } from 'svelte/store';
-	import {
-		searchNotes,
-		activePath,
-		downloadNote,
-		togglePin,
-		closeTab,
-		archivePath,
-		type SearchResult
-	} from '$lib/stores/vault';
-	import { createRequest, focusSearchRequest, renameRequest } from '$lib/stores/actions';
-	import { openSettings } from '$lib/stores/settingsDialog';
+	import { searchNotes, flushSave, openTab, type SearchResult } from '$lib/stores/vault';
+	import { startCreate } from '$lib/stores/actions';
+	import { openSettings, type SettingsPage } from '$lib/stores/settingsDialog';
 	import { openBins } from '$lib/stores/bins';
+	import { settings } from '$lib/stores/settings';
+	import { pageCommands, shortcutHelpOpen, type PaletteCommand } from '$lib/stores/palette';
+	import {
+		tasks,
+		projects,
+		loadTasks,
+		tasksLoading,
+		loadProjects,
+		createTask,
+		openTask,
+		type Task
+	} from '$lib/stores/tasks';
+	import { projectName, statusMeta } from '$lib/taskModel';
+	import { APPS } from '$lib/apps';
 	import { signOut } from '$lib/auth-client';
 
+	// Mounted once in the root layout, so it works on every app page. Notes
+	// and tasks are searchable from anywhere; picking one switches app.
 	interface Props {
-		onSelect: (path: string) => void;
 		onClose: () => void;
-		onToggleSidebar: () => void;
-		onToggleRightSidebar: () => void;
-		onCommand: (cmd: string) => void;
-		onStepTab: (dir: 1 | -1) => void;
-		onShowShortcuts: () => void;
 	}
-	let {
-		onSelect,
-		onClose,
-		onToggleSidebar,
-		onToggleRightSidebar,
-		onCommand,
-		onStepTab,
-		onShowShortcuts
-	}: Props = $props();
+	let { onClose }: Props = $props();
 
-	// Run fn on the open note, if there is one.
-	const withNote = (fn: (path: string) => void) => () => {
-		const p = get(activePath);
-		if (p) fn(p);
-	};
+	const onTasksPage = () => page.url.pathname.startsWith('/tasks');
 
-	const mod =
-		typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
-
-	interface Command {
-		label: string;
-		hint: string;
-		run?: () => void;
+	async function go(href: string) {
+		if (page.url.pathname === href && !page.url.search) return;
+		await flushSave();
+		await goto(href);
 	}
 
-	const commands: Command[] = [
+	async function openNote(path: string) {
+		await flushSave();
+		openTab(path);
+		if (page.url.pathname !== '/') await goto('/');
+	}
+
+	function showTask(id: string) {
+		openTask(id);
+		if (!onTasksPage()) void go('/tasks');
+	}
+
+	async function addTask(title: string) {
+		const row = await createTask({ title, status: 'inbox' });
+		if (row && onTasksPage()) openTask(row.id);
+	}
+
+	const SETTINGS: [SettingsPage, string, string][] = [
+		['editor', 'Editor', 'Font size, line numbers, wrap'],
+		['keyboard', 'Keyboard', 'Vim motions and every shortcut'],
+		['attachments', 'Attachments', 'Where pasted files land'],
+		['account', 'Account', 'Google Calendar connection'],
+		['devices', 'Devices', 'Phone tokens'],
+		['agents', 'Agents', 'MCP URL and agent tokens'],
+		['about', 'About', 'Version and links']
+	];
+
+	// Global commands: everything that works without a particular page open.
+	const globalCommands = $derived<PaletteCommand[]>([
 		{
 			label: 'New note',
 			hint: 'Create a note at the vault root',
-			run: () => createRequest.set({ parent: null, kind: 'note' })
+			run: () => void startCreate('note')
 		},
 		{
 			label: 'New folder',
 			hint: 'Create a folder at the vault root',
-			run: () => createRequest.set({ parent: null, kind: 'folder' })
+			run: () => void startCreate('folder')
 		},
-		{
-			label: 'Open search',
-			hint: 'Jump to the sidebar search box',
-			run: () => focusSearchRequest.update((n) => n + 1)
-		},
-		{
-			label: 'Toggle sidebar',
-			hint: 'Collapse or expand the sidebar',
-			run: () => onToggleSidebar()
-		},
-		{
-			label: 'Toggle right sidebar',
-			hint: 'Show or hide the backlinks panel',
-			run: () => onToggleRightSidebar()
-		},
-		{
-			label: 'Pin / unpin note',
-			hint: 'Keep the open note at the top of the sidebar',
-			run: withNote(togglePin)
-		},
-		{
-			label: 'Rename note',
-			hint: 'Rename the open note in the file tree',
-			run: withNote((path) => renameRequest.set({ path }))
-		},
-		{ label: 'Close tab', hint: 'Close the open note', run: withNote(closeTab) },
-		{ label: 'Next tab', hint: 'Cycle open tabs', run: () => onStepTab(1) },
-		{ label: 'Previous tab', hint: 'Cycle open tabs', run: () => onStepTab(-1) },
-		{ label: 'Keyboard shortcuts', hint: 'Show every shortcut', run: () => onShowShortcuts() },
-		{ label: 'Go to Tasks', hint: 'Ctrl+Shift+2', run: () => goto('/tasks') },
-		{ label: 'Go to Board', hint: 'Ctrl+Shift+3', run: () => goto('/tasks/kanban') },
-		{ label: 'Go to Calendar', hint: 'Ctrl+Shift+4', run: () => goto('/tasks/calendar') },
-		{
-			label: 'Archive note',
-			hint: 'Put the open note away, out of the tree and search',
-			run: withNote((path) => void archivePath(path))
-		},
+		...APPS.map((a, i) => ({
+			label: `Go to ${a.label}`,
+			hint: `Ctrl+Shift+${i + 1}`,
+			run: () => void go(a.href)
+		})),
+		...$projects.map((p) => ({
+			label: `Open project ${projectName(p.path)}`,
+			hint: p.path,
+			run: () => void go(`/tasks/kanban?project=${encodeURIComponent(p.path)}`)
+		})),
 		{ label: 'Open archive', hint: 'Browse, search and unarchive notes', run: () => openBins('archive') },
 		{ label: 'Open trash', hint: 'View and restore deleted notes', run: () => openBins('trash') },
 		{
@@ -105,90 +93,33 @@
 			run: () => openBins('review')
 		},
 		{
-			label: 'Open settings',
-			hint: 'Editor, keyboard, account',
-			run: () => openSettings()
+			label: 'Review unused files',
+			hint: 'Attachments no note links to, to trash',
+			run: () => openBins('unused')
 		},
-		{ label: 'Sign out', hint: 'End this session', run: () => signOut() },
+		...SETTINGS.map(([key, name, hint]) => ({
+			label: `Settings: ${name}`,
+			hint,
+			run: () => openSettings(key)
+		})),
+		{ label: 'Keyboard shortcuts', hint: '?', run: () => shortcutHelpOpen.set(true) },
 		{
-			label: 'Bold',
-			hint: `${mod}B`,
-			run: () => onCommand('bold')
+			label: $settings.editor.vimMotions ? 'Turn vim motions off' : 'Turn vim motions on',
+			hint: 'Editor and single-key shortcuts',
+			run: () =>
+				settings.update((s) => ({
+					...s,
+					editor: { ...s.editor, vimMotions: !s.editor.vimMotions }
+				}))
 		},
-		{
-			label: 'Italic',
-			hint: `${mod}I`,
-			run: () => onCommand('italic')
-		},
-		{
-			label: 'Strikethrough',
-			hint: `${mod}Shift+X`,
-			run: () => onCommand('strike')
-		},
-		{
-			label: 'Inline code',
-			hint: `${mod}\``,
-			run: () => onCommand('code')
-		},
-		{ label: 'Heading 1', hint: `${mod}1`, run: () => onCommand('h1') },
-		{ label: 'Heading 2', hint: `${mod}2`, run: () => onCommand('h2') },
-		{ label: 'Heading 3', hint: `${mod}3`, run: () => onCommand('h3') },
-		{ label: 'Heading 4', hint: `${mod}4`, run: () => onCommand('h4') },
-		{ label: 'Heading 5', hint: `${mod}5`, run: () => onCommand('h5') },
-		{ label: 'Heading 6', hint: `${mod}6`, run: () => onCommand('h6') },
-		{
-			label: 'Toggle bullet list',
-			hint: `${mod}Shift+B`,
-			run: () => onCommand('bullet')
-		},
-		{
-			label: 'Toggle task checkbox',
-			hint: `${mod}L`,
-			run: () => onCommand('task')
-		},
-		{
-			label: 'Remove task checkbox',
-			hint: `${mod}Shift+L`,
-			run: () => onCommand('removeTask')
-		},
-		{ label: 'Find in note', hint: `${mod}F`, run: () => onCommand('find') },
-		{ label: 'Find & replace', hint: 'Replace the next match', run: () => onCommand('replace') },
-		{
-			label: 'Download note as Markdown',
-			hint: 'Save the open note as a .md file',
-			run: () => {
-				const p = get(activePath);
-				if (p) void downloadNote(p).catch(() => {});
-			}
-		},
-		{
-			label: 'Print note to PDF',
-			hint: 'Open the print view',
-			run: () => {
-				const p = get(activePath);
-				if (p) goto(`/print?note=${encodeURIComponent(p)}`);
-			}
-		},
-		{
-			label: 'Math inline',
-			hint: `${mod}M`,
-			run: () => onCommand('mathInline')
-		},
-		{
-			label: 'Math block',
-			hint: `${mod}Shift+E`,
-			run: () => onCommand('mathBlock')
-		},
-		{
-			label: 'Insert callout',
-			hint: 'Obsidian-style [!note] box',
-			run: () => onCommand('callout')
-		},
-		{ label: 'Full preview', hint: 'Esc', run: () => onCommand('preview') },
-		{ label: 'Open command palette', hint: `${mod}K` }
-	];
+		{ label: 'Sign out', hint: 'End this session', run: () => signOut() }
+	]);
 
-	type PaletteItem = { kind: 'command'; item: Command } | { kind: 'note'; item: SearchResult };
+	type PaletteItem =
+		| { kind: 'command'; item: PaletteCommand }
+		| { kind: 'note'; item: SearchResult }
+		| { kind: 'task'; item: Task }
+		| { kind: 'add'; title: string };
 
 	let query = $state('');
 	let results = $state<SearchResult[]>([]);
@@ -201,8 +132,12 @@
 	// Recents turn Cmd+K into a launcher: the server returns recently edited
 	// notes for a blank query, so the palette opens on your notes first.
 	let recents = $state<SearchResult[]>([]);
+	// Tasks and projects only load on the task pages; fetch fresh ones here
+	// so they are searchable from Notes too.
 	$effect(() => {
 		void searchNotes('').then((r) => (recents = r));
+		void loadTasks();
+		void loadProjects();
 	});
 
 	// Hand focus back on close (the editor, usually), unless the command
@@ -262,26 +197,66 @@
 		};
 	});
 
-	const filteredCommands = $derived(() => {
-		const q = query.trim().toLowerCase();
-		return commands.filter(
-			(c) => c.label.toLowerCase().includes(q) || c.hint.toLowerCase().includes(q)
-		);
-	});
+	// The page's own commands first: they are what you most likely want there.
+	const commands = $derived([...$pageCommands, ...globalCommands]);
 
 	const queryEmpty = $derived(query.trim().length === 0);
 
-	const items = $derived<PaletteItem[]>(
-		queryEmpty
-			? [
-					...recents.map((r): PaletteItem => ({ kind: 'note', item: r })),
-					...commands.map((c): PaletteItem => ({ kind: 'command', item: c }))
-				]
-			: [
-					...filteredCommands().map((c): PaletteItem => ({ kind: 'command', item: c })),
-					...results.map((r): PaletteItem => ({ kind: 'note', item: r }))
-				]
-	);
+	const matches = (text: string, q: string) => text.toLowerCase().includes(q);
+
+	// Tasks match by title, open ones first. Capped so notes still show.
+	const taskHits = $derived.by(() => {
+		const q = query.trim().toLowerCase();
+		if (q.length < 2) return [];
+		return $tasks
+			.filter((t) => matches(t.title, q))
+			.sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done'))
+			.slice(0, 8);
+	});
+
+	const items = $derived.by<PaletteItem[]>(() => {
+		const q = query.trim().toLowerCase();
+		if (queryEmpty)
+			return [
+				...recents.map((r): PaletteItem => ({ kind: 'note', item: r })),
+				...commands.map((c): PaletteItem => ({ kind: 'command', item: c }))
+			];
+		return [
+			...commands
+				.filter((c) => matches(c.label, q) || matches(c.hint, q))
+				.map((c): PaletteItem => ({ kind: 'command', item: c })),
+			...results.map((r): PaletteItem => ({ kind: 'note', item: r })),
+			...taskHits.map((t): PaletteItem => ({ kind: 'task', item: t })),
+			// Held back until notes and tasks answer, so a quick Enter never adds
+			// a task when a note or an existing task was meant.
+			...(pending || $tasksLoading ? [] : [{ kind: 'add', title: query.trim() } as const])
+		];
+	});
+
+	function itemKey(it: PaletteItem): string {
+		if (it.kind === 'note') return 'n:' + it.item.path;
+		if (it.kind === 'task') return 't:' + it.item.id;
+		if (it.kind === 'add') return 'add';
+		// Two projects can share a folder name; the hint is the full path.
+		return 'c:' + it.item.label + '|' + it.item.hint;
+	}
+
+	function itemLabel(it: PaletteItem): string {
+		if (it.kind === 'note') return it.item.title || it.item.path;
+		if (it.kind === 'task') return it.item.title;
+		if (it.kind === 'add') return `Add task "${it.title}"`;
+		return it.item.label;
+	}
+
+	function itemHint(it: PaletteItem): string {
+		if (it.kind === 'note') return it.item.path;
+		if (it.kind === 'task') {
+			const status = statusMeta(it.item.status).label;
+			return it.item.project ? `${status} · ${projectName(it.item.project)}` : status;
+		}
+		if (it.kind === 'add') return 'New task in Inbox';
+		return it.item.hint;
+	}
 
 	$effect(() => {
 		if (selected >= items.length) selected = 0;
@@ -293,35 +268,45 @@
 		el?.scrollIntoView({ block: 'nearest' });
 	});
 
-	function run(item: PaletteItem) {
-		if (item.kind === 'command') item.item.run?.();
-		else onSelect(item.item.path);
+	function run(it: PaletteItem) {
+		if (it.kind === 'command') it.item.run();
+		else if (it.kind === 'note') void openNote(it.item.path);
+		else if (it.kind === 'task') showTask(it.item.id);
+		else void addTask(it.title);
 		onClose();
 	}
 
+	// Keys the palette handles stop here, so Esc never also closes the task
+	// drawer or leaves preview underneath. Esc is caught on the dialog, so it
+	// works from a tabbed-to result too.
 	function onKeyDown(e: KeyboardEvent) {
+		if (['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) e.stopPropagation();
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
-			selected = Math.min(items.length - 1, selected + 1);
+			selected = Math.max(0, Math.min(items.length - 1, selected + 1));
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			selected = Math.max(0, selected - 1);
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
 			if (items.length) run(items[selected]);
-		} else if (e.key === 'Escape') {
-			e.preventDefault();
-			onClose();
 		}
+	}
+
+	function onDialogKey(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
+		e.preventDefault();
+		e.stopPropagation();
+		onClose();
 	}
 </script>
 
 <div class="overlay" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onClose()}>
-	<div class="palette" role="dialog" aria-label="Command palette">
+	<div class="palette" role="dialog" aria-label="Command palette" tabindex="-1" onkeydown={onDialogKey}>
 		<input
 			bind:this={inputEl}
 			class="palette-input"
-			placeholder="Search notes or run a command…"
+			placeholder="Search notes and tasks, or run a command…"
 			bind:value={query}
 			onkeydown={onKeyDown}
 		/>
@@ -333,7 +318,7 @@
 					<div class="item muted">No results</div>
 				{/if}
 			{:else}
-				{#each items as it, i (it.kind === 'note' ? it.item.path : it.item.label)}
+				{#each items as it, i (itemKey(it))}
 					<button
 						class="item"
 						class:selected={i === selected}
@@ -343,10 +328,8 @@
 							run(it);
 						}}
 					>
-						<span class="label">
-							{it.kind === 'note' ? it.item.title || it.item.path : it.item.label}
-						</span>
-						<span class="hint">{it.kind === 'note' ? it.item.path : it.item.hint}</span>
+						<span class="label">{itemLabel(it)}</span>
+						<span class="hint">{itemHint(it)}</span>
 					</button>
 				{/each}
 			{/if}
