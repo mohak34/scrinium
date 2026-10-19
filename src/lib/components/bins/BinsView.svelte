@@ -7,14 +7,16 @@
 	import ArchiveTab from './ArchiveTab.svelte';
 	import TrashTab from './TrashTab.svelte';
 	import ReviewTab from './ReviewTab.svelte';
+	import UnusedTab from './UnusedTab.svelte';
 
-	// Full-page Archive / Trash / Review view, mounted in the root layout so
+	// Full-page Archive / Trash / Review / Unused files view, mounted in the root layout so
 	// Notes, Tasks and Board all open the same thing. Each tab is a list on
 	// the left and a read-only preview on the right.
 	const TABS: { key: BinTab; title: string; icon: string }[] = [
 		{ key: 'archive', title: 'Archive', icon: 'inventory_2' },
 		{ key: 'trash', title: 'Trash', icon: 'delete' },
-		{ key: 'review', title: 'Review', icon: 'manage_search' }
+		{ key: 'review', title: 'Review', icon: 'manage_search' },
+		{ key: 'unused', title: 'Unused files', icon: 'hide_image' }
 	];
 
 	let root = $state<HTMLDivElement>();
@@ -74,8 +76,10 @@
 			<ArchiveTab focus={$binView.focus} onOpened={opened} />
 		{:else if $binView.tab === 'trash'}
 			<TrashTab onOpened={opened} />
-		{:else}
+		{:else if $binView.tab === 'review'}
 			<ReviewTab onOpened={opened} />
+		{:else}
+			<UnusedTab />
 		{/if}
 	</div>
 {/if}

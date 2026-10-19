@@ -9,6 +9,7 @@ export type SettingsPage =
 	| 'account'
 	| 'devices'
 	| 'agents'
+	| 'shares'
 	| 'about';
 
 export const settingsPage = writable<SettingsPage | null>(null);
