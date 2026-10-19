@@ -100,11 +100,13 @@ export interface SearchResult {
 }
 
 // Full-text search. The archive is left out unless scope asks for it.
+// An aborted signal rejects the promise.
 export async function searchNotes(
 	q: string,
-	scope: 'vault' | 'archive' | 'all' = 'vault'
+	scope: 'vault' | 'archive' | 'all' = 'vault',
+	signal?: AbortSignal
 ): Promise<SearchResult[]> {
-	const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&scope=${scope}`);
+	const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&scope=${scope}`, { signal });
 	if (!res.ok) return [];
 	return res.json();
 }

@@ -260,7 +260,8 @@ State channels you will touch:
   and shares goes here as well as in the editor.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
-  in the root layout; polls `POST /api/tasks/due` every 30 s).
+  in the root layout except on login and share pages; polls
+  `POST /api/tasks/due` every 30 s while the tab is visible).
   CommandPalette is mounted in the root layout too, so Ctrl+K works on
   every app page (`stores/palette.ts`). It searches notes and tasks, adds
   an Inbox task from the query, and holds the global commands; a page adds

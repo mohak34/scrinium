@@ -187,11 +187,11 @@
 		window.addEventListener('keydown', claim, true);
 
 		// Best-effort: save any pending edits if the tab is closed mid-debounce.
-		window.addEventListener('pagehide', () => {
-			void flushSave(true);
-		});
+		const hide = () => void flushSave(true);
+		window.addEventListener('pagehide', hide);
 		return () => {
 			window.removeEventListener('keydown', key);
+			window.removeEventListener('pagehide', hide);
 			document.removeEventListener('visibilitychange', again);
 			window.removeEventListener('focus', again);
 			window.removeEventListener('keydown', claim, true);

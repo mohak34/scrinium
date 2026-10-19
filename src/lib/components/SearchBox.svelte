@@ -40,11 +40,11 @@
 
 	$effect(() => {
 		const q = query.trim();
-		// No debounce: this is a local SQLite query, so fire immediately on every
-		// keystroke. The guard below discards out-of-order responses. The
-		// "Searching…" row only appears if a request is genuinely slow (>250ms).
-		// A leading `#` means tag search: exact tag census instead of FTS, so
-		// plain-text occurrences never false-positive.
+		// Waits for a 150 ms pause in typing, and each keystroke aborts the
+		// request before it, so only the latest query reaches the server and
+		// lands. The "Searching…" row only appears if a request is genuinely
+		// slow (>250ms). A leading `#` means tag search: exact tag census
+		// instead of FTS, so plain-text occurrences never false-positive.
 		results = [];
 		pending = true;
 		loading = false;
@@ -52,24 +52,32 @@
 			pending = false;
 			return;
 		}
+		const ctl = new AbortController();
 		const slowTimer = setTimeout(() => {
 			loading = true;
 		}, 250);
-		const req =
-			q.startsWith('#') && q.length > 1
-				? fetch(`/api/tagged?tag=${encodeURIComponent(q.slice(1))}`).then((res) =>
-						res.ok ? (res.json() as Promise<SearchResult[]>) : []
+		const wait = setTimeout(() => {
+			const req = q.startsWith('#')
+				? fetch(`/api/tagged?tag=${encodeURIComponent(q.slice(1))}`, { signal: ctl.signal }).then(
+						(res) => (res.ok ? (res.json() as Promise<SearchResult[]>) : [])
 					)
-				: searchNotes(q);
-		void req.then((res) => {
-			if (query.trim() === q) {
-				results = res;
-				pending = false;
-				loading = false;
-				clearTimeout(slowTimer);
-			}
-		});
-		return () => clearTimeout(slowTimer);
+				: searchNotes(q, 'vault', ctl.signal);
+			req.then(
+				(res) => {
+					if (ctl.signal.aborted) return;
+					results = res;
+					pending = false;
+					loading = false;
+					clearTimeout(slowTimer);
+				},
+				() => {}
+			);
+		}, 150);
+		return () => {
+			ctl.abort();
+			clearTimeout(wait);
+			clearTimeout(slowTimer);
+		};
 	});
 
 	function pick(path: string) {

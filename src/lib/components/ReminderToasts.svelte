@@ -39,13 +39,23 @@
 		openTask(t.id);
 	}
 
+	// Polls every 30 s while the tab is visible. A hidden tab stops polling;
+	// coming back polls at once, so a reminder that came due meanwhile shows
+	// on return.
 	$effect(() => {
-		void poll();
-		timer = setInterval(() => void poll(), 30000);
+		const start = () => {
+			clearInterval(timer);
+			if (document.hidden) return;
+			void poll();
+			timer = setInterval(() => void poll(), 30000);
+		};
 		const onFocus = () => void poll();
+		start();
+		document.addEventListener('visibilitychange', start);
 		window.addEventListener('focus', onFocus);
 		return () => {
 			clearInterval(timer);
+			document.removeEventListener('visibilitychange', start);
 			window.removeEventListener('focus', onFocus);
 		};
 	});

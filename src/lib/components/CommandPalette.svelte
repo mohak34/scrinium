@@ -162,9 +162,10 @@
 	});
 
 	$effect(() => {
-		// No debounce: the search is a local SQLite query, so fire immediately on
-		// every keystroke. The guard below discards out-of-order responses. A
-		// "Searching…" row only appears if a request is genuinely slow (>250ms).
+		// Waits for a 150 ms pause in typing, and each keystroke aborts the
+		// request before it, so only the latest query reaches the server and
+		// lands. A "Searching…" row only appears if a request is genuinely
+		// slow (>250ms).
 		const q = query.trim();
 		results = [];
 		pending = true;
@@ -173,18 +174,27 @@
 			pending = false;
 			return;
 		}
+		const ctl = new AbortController();
 		const slowTimer = setTimeout(() => {
 			loading = true;
 		}, 250);
-		void searchNotes(q).then((res) => {
-			if (query.trim() === q) {
-				results = res;
-				pending = false;
-				loading = false;
-				clearTimeout(slowTimer);
-			}
-		});
-		return () => clearTimeout(slowTimer);
+		const wait = setTimeout(() => {
+			searchNotes(q, 'vault', ctl.signal).then(
+				(res) => {
+					if (ctl.signal.aborted) return;
+					results = res;
+					pending = false;
+					loading = false;
+					clearTimeout(slowTimer);
+				},
+				() => {}
+			);
+		}, 150);
+		return () => {
+			ctl.abort();
+			clearTimeout(wait);
+			clearTimeout(slowTimer);
+		};
 	});
 
 	// The page's own commands first: they are what you most likely want there.

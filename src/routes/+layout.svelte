@@ -166,8 +166,8 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 </svelte:head>
 
 {@render children()}
-<ReminderToasts />
 {#if appChrome()}
+	<ReminderToasts />
 	<SettingsDialog />
 	<BinsView />
 	{#if $paletteOpen}
