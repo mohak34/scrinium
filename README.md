@@ -8,6 +8,8 @@ Every note is a `.md` file under `VAULT_DIR`. You can edit, back up, or move not
 
 The editor is CodeMirror 6. It hides markdown syntax and shows it again on the line the cursor is on.
 
+PDFs in the vault open beside the editor: click one in the file tree, or Ctrl+click a link to it in a note. Highlights, drawings and text notes are saved into the PDF file itself as standard annotations, so any other PDF reader shows them.
+
 Notes you are done with can be archived from the note menu, the file tree, or the palette. Archived notes leave the tree and normal search but stay on disk under `.archive/` and are searchable from the Archive view (the box icon beside the trash). Emptying the trash never touches the archive. The Review tab lists stale notes (untouched for a while, nothing links to them, no task, share link or pin) to archive or trash in bulk. The Unused files tab lists attachments whose name no note mentions, to trash in bulk. Moving or renaming a note, folder or file rewrites the relative links that pointed through it, so images keep loading. Archiving a note removes its share links.
 
 **Settings > Shared links** lists every public share link, grouped by note. From there you can copy a link, add, change or remove its password, revoke it, or open the note. New links are still made from a note's Share button.

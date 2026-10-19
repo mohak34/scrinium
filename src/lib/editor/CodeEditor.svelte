@@ -32,6 +32,7 @@ import { perDoc } from './docRanges';
 	import { mathBlockField } from './mathBlock';
 	import { tableBlockField } from './tableBlock';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
+	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
@@ -529,7 +530,10 @@ import { perDoc } from './docRanges';
 								const href = url && resolveAssetUrl(url, view.state.field(noteDirField));
 								if (href) {
 									e.preventDefault();
-									window.open(href, '_blank', 'noopener,noreferrer');
+									// Vault PDFs open in the pane beside the editor.
+									const asset = href.startsWith('/api/assets/') ? decodeURIComponent(href.slice(12)) : '';
+									if (asset && isPdfPath(asset)) pdfPath.set(asset);
+									else window.open(href, '_blank', 'noopener,noreferrer');
 									return true;
 								}
 							}

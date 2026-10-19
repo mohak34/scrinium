@@ -240,7 +240,10 @@ State channels you will touch:
   streamed to disk by `writeAssetStream` in vault.ts; never buffer one in
   memory, the VPS has 1 GB. SvelteKit drops bodies without a
   `Content-Type`, so uploaders always send one. The 100 MB cap must stay
-  under `BODY_SIZE_LIMIT` in `deploy/scrinium.service`.
+  under `BODY_SIZE_LIMIT` in `deploy/scrinium.service` (`MAX_UPLOAD_BYTES`
+  in assets.ts). `PUT /api/assets/<path>` overwrites an existing non-note
+  file the same streamed way (`replaceAssetStream`, atomic rename under
+  the vault lock); the PDF pane saves annotations through it.
   `src/lib/attachments.ts` (`isImagePath`, `attachmentMarkdown`,
   `resolveAssetUrl`) is shared by the editor, MCP and share pages.
   mobileAuth.ts (Google ID-token verification + API-token issue/verify),
@@ -256,6 +259,15 @@ State channels you will touch:
   settings.ts (editor prefs persisted to localStorage), tasks.ts (tasks
   and projects: lists, open drawer, API calls), editor.ts / vim.ts (caret
   and vim mode for the StatusBar), settingsDialog.ts.
+- PDFs: `components/PdfPane.svelte` shows a vault PDF beside the editor
+  (`stores/pdf.ts` holds its path; the file tree and Ctrl+click on a PDF
+  link set it). The root page loads it, and `src/lib/pdf/pdfjs.ts` loads
+  pdf.js, only when a PDF opens. pdf.js's fonts, CMaps and wasm decoders
+  are bundled through `import.meta.glob` and handed over by file name.
+  Highlights, ink and text notes are written into the PDF as standard
+  annotations (`saveDocument`) and PUT back over the file, debounced and
+  again on close; there is no sidecar store. The asset route caches for
+  an hour, so the pane always fetches with `no-store`.
 - `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
   renderer (markdown-it plus the editor's math, code, callout, wikilink
   and tag parsing). Used by `/print` (NoteBar's Print / PDF) and the
