@@ -273,8 +273,8 @@ State channels you will touch:
   attributes under the pointer; the lifted row and its "Move to X" label
   live in Sidebar.svelte.
   `bins/BinsView.svelte` is the full-page Archive / Trash / Review view,
-  mounted in the root layout and opened through `openBins(tab, focus?)`
-  (`stores/bins.ts`) from the sidebar footer, the palette, task links and
+  mounted (and its code loaded) by the root layout only while open,
+  through `openBins(tab, focus?)` (`stores/bins.ts`) from the sidebar footer, the palette, task links and
   wikilinks to archived notes. Each tab is a list plus a read-only
   `NotePreview` (renderNoteToHtml). Review lists stale notes (old, nothing
   links to them, no task, share or pin) from `/api/archive/review` for
@@ -282,7 +282,7 @@ State channels you will touch:
   `src/lib/archive.ts` holds the archive types and path mapping shared by
   the routes, MCP and the view.
   `settings/SettingsDialog.svelte` is the one settings surface:
-  a modal mounted in the root layout, opened through
+  a modal the root layout mounts (and loads) only while open, through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
   and the palette. Pages: Editor, Keyboard (vim toggle + the shortcut list
   from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,

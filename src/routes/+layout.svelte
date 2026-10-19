@@ -7,12 +7,12 @@
 	import '@material-symbols/font-400/outlined.css';
 	import '$lib/design/theme.css';
 	import ReminderToasts from '$lib/components/ReminderToasts.svelte';
-	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
-	import BinsView from '$lib/components/bins/BinsView.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { APPS } from '$lib/apps';
 	import { flushSave } from '$lib/stores/vault';
+	import { settingsPage } from '$lib/stores/settingsDialog';
+	import { binView } from '$lib/stores/bins';
 
 	let { children } = $props();
 
@@ -62,6 +62,15 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 {@render children()}
 {#if !page.url.pathname.startsWith('/login') && !page.url.pathname.startsWith('/s/')}
 	<ReminderToasts />
-	<SettingsDialog />
-	<BinsView />
+	<!-- Settings and Archive/Trash load their code on first open. -->
+	{#if $settingsPage !== null}
+		{#await import('$lib/components/settings/SettingsDialog.svelte') then { default: SettingsDialog }}
+			<SettingsDialog />
+		{/await}
+	{/if}
+	{#if $binView !== null}
+		{#await import('$lib/components/bins/BinsView.svelte') then { default: BinsView }}
+			<BinsView />
+		{/await}
+	{/if}
 {/if}
