@@ -22,7 +22,7 @@
  */
 
 import { syntaxTree } from '@codemirror/language';
-import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
+import { RangeSetBuilder, StateEffect, StateField, type Line } from '@codemirror/state';
 import {
 	Decoration,
 	EditorView,
@@ -36,7 +36,7 @@ import 'katex/dist/katex.min.css';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
 import { findTableRanges } from './tableRanges';
 import { CALLOUT_ICONS, calloutLines, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
-import { fmEnd as docFmEnd, perDoc, touchesSpan, withinSpan, type Span } from './docRanges';
+import { fmEnd as docFmEnd, inSpan, perDoc, touchesSpan, withinSpan, type Span } from './docRanges';
 import {
 	exactWikilink,
 	findWikilinksInText,
@@ -444,6 +444,38 @@ const blockSpans = perDoc((state): readonly Span[] =>
 	[...findMathBlockRanges(state), ...findTableRanges(state)].sort((a, b) => a.from - b.from)
 );
 
+// Tags come from a line-based whole-text scan (fences and frontmatter
+// need the lines above), so it runs once per document, not per rebuild.
+const docTags = perDoc((state) => findTagsInText(state.doc.toString()));
+
+// Visible ranges widened to whole lines and merged. Every scan below only
+// looks inside them, so a keystroke costs the viewport, not the note.
+function lineWindows(view: EditorView): Span[] {
+	const out: Span[] = [];
+	for (const r of view.visibleRanges) {
+		const from = view.state.doc.lineAt(r.from).from;
+		const to = view.state.doc.lineAt(r.to).to;
+		const last = out[out.length - 1];
+		if (last && from <= last.to + 1) last.to = Math.max(last.to, to);
+		else out.push({ from, to });
+	}
+	return out;
+}
+
+// Each line meeting [from, to] that lies in a window, in doc order.
+function eachWindowLine(view: EditorView, windows: Span[], from: number, to: number, f: (line: Line) => void) {
+	for (const w of windows) {
+		let pos = Math.max(from, w.from);
+		const end = Math.min(to, w.to);
+		while (pos <= end) {
+			const line = view.state.doc.lineAt(pos);
+			f(line);
+			if (line.to >= end) break;
+			pos = line.to + 1;
+		}
+	}
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
 	const pending: PendingDecoration[] = [];
 	const tree = syntaxTree(view.state);
@@ -456,24 +488,28 @@ function buildDecorations(view: EditorView): DecorationSet {
 	const headers = callouts.map((c) => ({ from: c.headerFrom, to: c.headerTo }));
 	const inCalloutHeader = (from: number, to: number): boolean => withinSpan(headers, from, to);
 
+	const windows = lineWindows(view);
 	// Wikilinks via text scan (the `[[]]` shape has no dedicated Lezer
 	// node). Ranges are computed up front so the tree walk can skip the
 	// inner `[x]` Link decorations where the widget replaces the whole
-	// `[[...]]` - same overlap rule as callout headers.
-	const docText = view.state.doc.toString();
+	// `[[...]]` - same overlap rule as callout headers. A link never spans
+	// lines, so scanning each window finds exactly the visible ones.
 	const blockRanges = blockSpans(view.state);
 	// Frontmatter is raw YAML, never pretty markdown: nothing inside the
 	// block is styled, hidden or swapped (its closing `---` parses as a
 	// setext HeaderMark, YAML `-` lists as bullets, `#` comments as ATX).
 	const fmEnd = docFmEnd(view.state);
 	const inFm = (from: number): boolean => fmEnd > 0 && from < fmEnd;
-	const wikilinks: Wikilink[] = findWikilinksInText(docText).filter((w) => {
-		if (inFm(w.from)) return false;
-		if (touchesSpan(blockRanges, w.from, w.to)) return false;
-		if (isInsideCode(view, w.from) || isInsideCode(view, Math.max(w.from, w.to - 1)))
-			return false;
-		return true;
-	});
+	const wikilinks: Wikilink[] = [];
+	for (const win of windows) {
+		for (const found of findWikilinksInText(view.state.doc.sliceString(win.from, win.to))) {
+			const w = { ...found, from: found.from + win.from, to: found.to + win.from };
+			if (inFm(w.from)) continue;
+			if (touchesSpan(blockRanges, w.from, w.to)) continue;
+			if (isInsideCode(view, w.from) || isInsideCode(view, Math.max(w.from, w.to - 1))) continue;
+			wikilinks.push(w);
+		}
+	}
 	const inWikilink = (from: number, to: number): boolean => withinSpan(wikilinks, from, to);
 
 	for (const { from, to } of view.visibleRanges) {
@@ -531,18 +567,13 @@ function buildDecorations(view: EditorView): DecorationSet {
 								to: textNode.to,
 								deco: Decoration.mark({ class: 'cm-codeblock-content' })
 							});
-							let pos = textNode.from;
-							const end = textNode.to;
-							while (pos <= end) {
-								const line = view.state.doc.lineAt(pos);
+							eachWindowLine(view, windows, textNode.from, textNode.to, (line) => {
 								pending.push({
 									from: line.from,
 									to: line.from,
 									deco: Decoration.line({ class: 'cm-codeblock-line' })
 								});
-								if (line.to >= end) break;
-								pos = line.to + 1;
-							}
+							});
 						}
 					}
 				}
@@ -552,18 +583,13 @@ function buildDecorations(view: EditorView): DecorationSet {
 						to: node.to,
 						deco: Decoration.mark({ class: 'cm-codeblock-content' })
 					});
-					let pos = node.from;
-					const end = node.to;
-					while (pos <= end) {
-						const line = view.state.doc.lineAt(pos);
+					eachWindowLine(view, windows, node.from, node.to, (line) => {
 						pending.push({
 							from: line.from,
 							to: line.from,
 							deco: Decoration.line({ class: 'cm-codeblock-line' })
 						});
-						if (line.to >= end) break;
-						pos = line.to + 1;
-					}
+					});
 				}
 
 				if (HIDEABLE_MARKS.has(node.name) && !inFm(node.from)) {
@@ -635,8 +661,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 					if (quoteLines) {
 						const firstLine = quoteLines[0];
 						const lastLine = quoteLines[quoteLines.length - 1];
-						for (const n of quoteLines) {
-							const line = view.state.doc.line(n);
+						const doc = view.state.doc;
+						eachWindowLine(view, windows, doc.line(firstLine).from, doc.line(lastLine).from, (line) => {
+							const n = line.number;
 							pending.push({
 								from: line.from,
 								to: line.from,
@@ -644,7 +671,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 									class: `cm-quote${n === firstLine ? ' cm-quote-first' : ''}${n === lastLine ? ' cm-quote-last' : ''}`
 								})
 							});
-						}
+						});
 					}
 				}
 				if (node.name === 'QuoteMark') {
@@ -698,9 +725,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 	for (const c of callouts) {
 		// A `>` line inside YAML is data, never a callout box.
 		if (inFm(c.headerFrom)) continue;
-		for (let n = c.firstLine; n <= c.lastLine; n++) {
-			if (n < 1 || n > view.state.doc.lines) continue;
-			const line = view.state.doc.line(n);
+		const doc = view.state.doc;
+		eachWindowLine(view, windows, doc.line(c.firstLine).from, doc.line(c.lastLine).from, (line) => {
+			const n = line.number;
 			const isFirst = n === c.firstLine;
 			const isLast = n === c.lastLine;
 			pending.push({
@@ -737,7 +764,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 					deco: Decoration.mark({ class: 'cm-callout-title' })
 				});
 			}
-		}
+		});
 	}
 
 	// Wikilinks: pretty pill off-line, raw text on-line. Same contract as
@@ -761,7 +788,8 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// Tags: plain style marks, never hidden or swapped, so there is no
 	// caret-crossing hazard and no active-line gating. Code, math blocks
 	// and wikilinks are excluded like every other decoration.
-	for (const t of findTagsInText(docText)) {
+	for (const t of docTags(view.state)) {
+		if (!inSpan(windows, t.from)) continue;
 		if (touchesSpan(blockRanges, t.from, t.to)) continue;
 		if (isInsideCode(view, t.from) || isInsideCode(view, Math.max(t.from, t.to - 1)))
 			continue;
@@ -774,34 +802,35 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// multi-line replaces must not go through this ViewPlugin. Skip anything
 	// inside code or inside a block-math range - an inline replace overlapping
 	// a block replace corrupts the RangeSetBuilder.
-	const inlineRegex = inlineMathRegex();
-	let m: RegExpExecArray | null;
-	while ((m = inlineRegex.exec(docText)) !== null) {
-		const start = m.index;
-		const end = start + m[0].length;
-		const content = m[1];
-		// Frontmatter values are YAML, never math.
-		if (inFm(start)) {
-			inlineRegex.lastIndex = start + 1;
-			continue;
-		}
-		if (touchesSpan(blockRanges, start, end)) {
-			inlineRegex.lastIndex = start + 1;
-			continue;
-		}
-		if (isInsideCode(view, start) || isInsideCode(view, Math.max(start, end - 1))) {
-			inlineRegex.lastIndex = start + 1;
-			continue;
-		}
-		const active = isLineActive(view, start, Math.max(start, end - 1));
-		if (active) {
-			pending.push({ from: start, to: end, deco: Decoration.mark({ class: 'cm-math-source' }) });
-		} else {
-			pending.push({
-				from: start,
-				to: end,
-				deco: Decoration.replace({ widget: new InlineMathWidget(content) })
-			});
+	// The regex never crosses a line, so each window scans on its own.
+	for (const win of windows) {
+		const text = view.state.doc.sliceString(win.from, win.to);
+		const inlineRegex = inlineMathRegex();
+		let m: RegExpExecArray | null;
+		while ((m = inlineRegex.exec(text)) !== null) {
+			const start = win.from + m.index;
+			const end = start + m[0].length;
+			const content = m[1];
+			// Frontmatter values are YAML, never math.
+			if (
+				inFm(start) ||
+				touchesSpan(blockRanges, start, end) ||
+				isInsideCode(view, start) ||
+				isInsideCode(view, Math.max(start, end - 1))
+			) {
+				inlineRegex.lastIndex = m.index + 1;
+				continue;
+			}
+			const active = isLineActive(view, start, Math.max(start, end - 1));
+			if (active) {
+				pending.push({ from: start, to: end, deco: Decoration.mark({ class: 'cm-math-source' }) });
+			} else {
+				pending.push({
+					from: start,
+					to: end,
+					deco: Decoration.replace({ widget: new InlineMathWidget(content) })
+				});
+			}
 		}
 	}
 
