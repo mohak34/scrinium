@@ -69,21 +69,14 @@ export async function readNote(relPath: string): Promise<string> {
 	}
 }
 
-/**
- * Streams an upload into `dir` under `name` without holding it in memory:
- * chunks go to a hidden temp file and abort past `maxBytes`. The finished
- * file is hard-linked into place under the vault lock (the slow stream
- * stays outside it), so a clash never overwrites; it retries
- * as `name-1.ext`, `name-2.ext`, ... Returns the vault-relative path.
- */
-export async function writeAssetStream(
-	dir: string,
-	name: string,
+// Streams a request body into a hidden temp file in `fullDir` without
+// holding it in memory, aborting past `maxBytes`. The caller moves the temp
+// file into place and removes it afterwards.
+async function streamToTemp(
+	fullDir: string,
 	body: ReadableStream<Uint8Array>,
 	maxBytes: number
 ): Promise<string> {
-	const fullDir = safeResolve(dir);
-	await fs.mkdir(fullDir, { recursive: true });
 	const tmp = path.join(fullDir, `.upload.${randomUUID()}.tmp`);
 	let size = 0;
 	try {
@@ -99,8 +92,31 @@ export async function writeAssetStream(
 			createWriteStream(tmp, { flags: 'wx' })
 		);
 		if (size === 0) throw error(400, 'Empty file');
-		const ext = path.extname(name);
-		const stem = name.slice(0, name.length - ext.length);
+		return tmp;
+	} catch (e) {
+		await fs.rm(tmp, { force: true });
+		throw e;
+	}
+}
+
+/**
+ * Streams an upload into `dir` under `name`. The finished file is
+ * hard-linked into place under the vault lock (the slow stream stays
+ * outside it), so a clash never overwrites; it retries as `name-1.ext`,
+ * `name-2.ext`, ... Returns the vault-relative path.
+ */
+export async function writeAssetStream(
+	dir: string,
+	name: string,
+	body: ReadableStream<Uint8Array>,
+	maxBytes: number
+): Promise<string> {
+	const fullDir = safeResolve(dir);
+	await fs.mkdir(fullDir, { recursive: true });
+	const tmp = await streamToTemp(fullDir, body, maxBytes);
+	const ext = path.extname(name);
+	const stem = name.slice(0, name.length - ext.length);
+	try {
 		return await withVaultLock(async () => {
 			for (let n = 0; ; n++) {
 				const candidate = n ? `${stem}-${n}${ext}` : name;
@@ -117,7 +133,29 @@ export async function writeAssetStream(
 	}
 }
 
-// Opens a vault file for streaming out; 404 for missing files and folders.
+// Replaces an existing non-note file with a streamed body, e.g. a PDF saved
+// with new annotations. The rename is atomic, so a failed upload leaves the
+// old file intact.
+export async function replaceAssetStream(
+	relPath: string,
+	body: ReadableStream<Uint8Array>,
+	maxBytes: number
+): Promise<void> {
+	const fullPath = safeResolve(relPath);
+	if (isHiddenPath(relPath) || /\.md$/i.test(fullPath)) throw error(403, 'Not writable here');
+	const isFile = async () => (await fs.stat(fullPath).catch(() => null))?.isFile() ?? false;
+	if (!(await isFile())) throw error(404, 'Not found');
+	const tmp = await streamToTemp(path.dirname(fullPath), body, maxBytes);
+	try {
+		await withVaultLock(async () => {
+			if (!(await isFile())) throw error(404, 'Not found');
+			await fs.rename(tmp, fullPath);
+		});
+	} finally {
+		await fs.rm(tmp, { force: true });
+	}
+}
+
 export async function openAsset(relPath: string): Promise<{ stream: ReadStream; size: number }> {
 	const fullPath = safeResolve(relPath);
 	try {

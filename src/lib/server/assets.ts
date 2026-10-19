@@ -1,6 +1,10 @@
 import { Readable } from 'node:stream';
 import { openAsset } from './vault';
 
+// Largest upload or replacement. Must stay under BODY_SIZE_LIMIT in
+// deploy/scrinium.service.
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
 // Types a browser may show in the page. Everything else (html, svg, js,
 // archives, ...) goes out as an opaque download: a vault file served inline
 // from our origin would run with the user's session.

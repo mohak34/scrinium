@@ -1,10 +1,9 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { writeAssetStream, safeResolve } from '$lib/server/vault';
+import { MAX_UPLOAD_BYTES } from '$lib/server/assets';
 
 // Any file type is accepted; /api/assets decides what is safe to show inline.
-// Must stay under BODY_SIZE_LIMIT in deploy/scrinium.service.
-const MAX_BYTES = 100 * 1024 * 1024;
 
 // Client picks the folder (per its attachment settings); we only trust it
 // after re-validation here. A folder must be a relative subpath of safe
@@ -45,12 +44,12 @@ function validateName(raw: string | null): string {
 // so callers must send one (any value).
 export const POST: RequestHandler = async ({ request, url }) => {
 	if (!request.body) throw error(400, 'No file provided (send it as the body, with a Content-Type header)');
-	if (Number(request.headers.get('content-length')) > MAX_BYTES) {
-		throw error(413, `File too large (max ${MAX_BYTES / 1024 / 1024} MB)`);
+	if (Number(request.headers.get('content-length')) > MAX_UPLOAD_BYTES) {
+		throw error(413, `File too large (max ${MAX_UPLOAD_BYTES / 1024 / 1024} MB)`);
 	}
 	const folder = validateFolder(url.searchParams.get('folder'));
 	const name = validateName(url.searchParams.get('name'));
-	const path = await writeAssetStream(folder, name, request.body, MAX_BYTES);
+	const path = await writeAssetStream(folder, name, request.body, MAX_UPLOAD_BYTES);
 	return json({ path });
 };
 
