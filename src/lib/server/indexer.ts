@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { env } from '$env/dynamic/private';
-import { indexNote } from './db';
+import { indexNote, indexedMtime } from './db';
 import { effectiveTitle } from '$lib/editor/frontmatter';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
@@ -12,8 +12,10 @@ let done = false;
 // One-time scan of the vault so notes that were never saved through the app
 // (or were indexed before this feature existed) still show up in search.
 // Runs lazily on the first search request; afterwards individual writes keep
-// the FTS index up to date. The archive is scanned too, under its
-// ".archive/..." paths, so archive search works; plain search filters it out.
+// the FTS index up to date. A file whose mtime matches the one it was
+// indexed at is skipped unread, so a restart doesn't reindex the vault. The
+// archive is scanned too, under its ".archive/..." paths, so archive search
+// works; plain search filters it out.
 export async function ensureIndex() {
 	if (done) return;
 	done = true;
@@ -36,13 +38,15 @@ async function walkAndIndex(dir: string, rel: string) {
 			await walkAndIndex(full, childRel);
 		} else if (dirent.name.endsWith('.md')) {
 			try {
+				const { mtimeMs } = await fs.stat(full);
+				if (indexedMtime(childRel) === mtimeMs) continue;
 				const body = await fs.readFile(full, 'utf-8');
 				// Moved (trashed, archived, renamed) during the read: its
 				// bookkeeping already ran, so a row now would be stale. The
 				// check and insert are synchronous, so nothing moves between.
 				if (!existsSync(full)) continue;
 				const title = effectiveTitle(body, childRel);
-				indexNote(childRel, title, body);
+				indexNote(childRel, title, body, mtimeMs);
 			} catch {
 				// Skip unreadable files - they'll surface again on a later scan.
 			}

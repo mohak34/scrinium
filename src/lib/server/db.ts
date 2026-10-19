@@ -37,14 +37,17 @@ db.exec(`
 `);
 
 // note_fts can't index its path column, so finding a note's row by path
-// would scan the whole index. note_docs maps each path to its FTS rowid.
+// would scan the whole index. note_docs maps each path to its FTS rowid,
+// plus the file mtime the startup scan indexed (null when an app write
+// indexed it, so the next scan reads that file once more).
 // An index from before this table has no map: drop it and let the startup
 // scan rebuild it from the vault.
 const ftsMapped = db.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'note_docs'`).get();
 db.exec(`
 	CREATE TABLE IF NOT EXISTS note_docs (
 		id INTEGER PRIMARY KEY,
-		path TEXT NOT NULL UNIQUE
+		path TEXT NOT NULL UNIQUE,
+		mtime REAL
 	);
 `);
 if (!ftsMapped) db.exec(`DELETE FROM note_fts`);
@@ -82,21 +85,28 @@ const dropDocs = (where: string, args: string[]) => {
 	db.prepare(`DELETE FROM note_docs WHERE ${where}`).run(...args);
 };
 
-export const indexNote = db.transaction((relPath: string, title: string, body: string) => {
-	const { id } = db
-		.prepare(
-			`INSERT INTO note_docs (path) VALUES (?)
-			 ON CONFLICT(path) DO UPDATE SET path = excluded.path RETURNING id`
-		)
-		.get(relPath) as { id: number };
-	db.prepare(`DELETE FROM note_fts WHERE rowid = ?`).run(id);
-	db.prepare(`INSERT INTO note_fts (rowid, path, title, body) VALUES (?, ?, ?, ?)`).run(
-		id,
-		relPath,
-		title,
-		body
-	);
-});
+export const indexNote = db.transaction(
+	(relPath: string, title: string, body: string, mtime: number | null = null) => {
+		const { id } = db
+			.prepare(
+				`INSERT INTO note_docs (path, mtime) VALUES (?, ?)
+				 ON CONFLICT(path) DO UPDATE SET mtime = excluded.mtime RETURNING id`
+			)
+			.get(relPath, mtime) as { id: number };
+		db.prepare(`DELETE FROM note_fts WHERE rowid = ?`).run(id);
+		db.prepare(`INSERT INTO note_fts (rowid, path, title, body) VALUES (?, ?, ?, ?)`).run(
+			id,
+			relPath,
+			title,
+			body
+		);
+	}
+);
+
+// The mtime the startup scan last indexed this note at, if any.
+export const indexedMtime = (relPath: string) =>
+	(db.prepare(`SELECT mtime FROM note_docs WHERE path = ?`).get(relPath) as { mtime: number | null } | undefined)
+		?.mtime ?? null;
 
 export const deleteNoteIndexByPrefix = db.transaction((relPath: string) => {
 	dropDocs(under('path'), underArgs(relPath));
