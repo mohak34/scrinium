@@ -109,6 +109,13 @@
 		}
 		loadTree();
 		void loadArchive();
+		// Saves never change the tree, so it refreshes when the tab comes
+		// back instead: notes an agent or another device added show up then.
+		const again = () => {
+			if (document.visibilityState === 'visible') void loadTree();
+		};
+		document.addEventListener('visibilitychange', again);
+		window.addEventListener('focus', again);
 
 		// The sidebar owns the inline rename input, so open it for a rename
 		// asked from the note bar or palette; it picks the request up on mount.
@@ -204,6 +211,8 @@
 		});
 		return () => {
 			window.removeEventListener('keydown', key);
+			document.removeEventListener('visibilitychange', again);
+			window.removeEventListener('focus', again);
 			unsubRename();
 		};
 	});

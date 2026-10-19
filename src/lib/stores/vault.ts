@@ -199,7 +199,6 @@ async function writePending(keepalive = false): Promise<boolean> {
 	}
 	retryMs = 0;
 	if (pending.size === 0) saveStatus.set('saved');
-	void loadTree();
 	return true;
 }
 
