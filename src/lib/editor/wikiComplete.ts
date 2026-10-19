@@ -8,8 +8,7 @@
 
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import type { EditorView } from '@codemirror/view';
-import { wikiCtxField } from './livePreview';
-import { resolveWikilink } from './wikilinks';
+import { wikiCtxField, wikiCtxResolvers } from './livePreview';
 
 const TRIGGER = /\[\[([^\][#|\n]*)$/;
 
@@ -21,7 +20,8 @@ export function wikiCompletionSource(context: CompletionContext): CompletionResu
 	if (!trigger) return null;
 	const ctx = state.field(wikiCtxField, false);
 	const notes = ctx?.notes ?? [];
-	if (!notes.length) return null;
+	if (!ctx || !notes.length) return null;
+	const links = wikiCtxResolvers(ctx).notes;
 	const typed = trigger[1].toLowerCase();
 	const from = pos - trigger[1].length;
 
@@ -37,7 +37,7 @@ export function wikiCompletionSource(context: CompletionContext): CompletionResu
 				const stem = (p.split('/').pop() ?? p).replace(/\.md$/i, '');
 				// When another note shares the name, the bare name would
 				// resolve to that one: link by path instead.
-				const target = resolveWikilink(stem, notes) === p ? stem : p.replace(/\.md$/i, '');
+				const target = links.resolve(stem) === p ? stem : p.replace(/\.md$/i, '');
 				return {
 					label: stem,
 					detail: p.includes('/') ? p : undefined,

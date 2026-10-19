@@ -26,7 +26,7 @@ import {
 } from './livePreview';
 import { findTableRanges } from './tableRanges';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
-import { parseFrontmatter } from './frontmatter';
+import { fmEnd, perDoc } from './docRanges';
 import { findWikilinksInText } from './wikilinks';
 
 type Render = typeof import('$lib/print/renderNote').renderNoteToHtml;
@@ -250,14 +250,14 @@ const REF_CONTAINERS = new Set(['Document', 'Blockquote', 'BulletList', 'Ordered
 // dropped), appended to each table's render so reference links in cells
 // resolve like they do in the full note. Frontmatter and display math are
 // not markdown to the renderer, so definitions there don't count.
-function linkReferences(state: EditorState): string {
-	const fmEnd = parseFrontmatter(state.doc.toString())?.bodyStart ?? 0;
+const linkReferences = perDoc((state: EditorState): string => {
+	const fm = fmEnd(state);
 	const math = findMathBlockRanges(state);
 	const refs: string[] = [];
 	syntaxTree(state).iterate({
 		enter: (n) => {
 			if (n.name === 'LinkReference') {
-				if (n.from >= fmEnd && !math.some((r) => n.from < r.to && r.from < n.to)) {
+				if (n.from >= fm && !math.some((r) => n.from < r.to && r.from < n.to)) {
 					refs.push(state.doc.sliceString(n.from, n.to).replace(/^[ \t]*(?:>[ \t]?)*/gm, ''));
 				}
 				return false;
@@ -266,7 +266,7 @@ function linkReferences(state: EditorState): string {
 		}
 	});
 	return refs.join('\n');
-}
+});
 
 function buildTableDecorations(state: EditorState): DecorationSet {
 	const tables = findTableRanges(state);

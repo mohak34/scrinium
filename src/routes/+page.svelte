@@ -37,6 +37,16 @@
 
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
+	// What the side panels and status bar show. Each re-parses the whole
+	// note, so they follow typing after a pause; loads and rewrites show at
+	// once.
+	let panelContent = $state('');
+	let panelTimer: ReturnType<typeof setTimeout> | undefined;
+	function showInPanels(content: string, wait = 0) {
+		clearTimeout(panelTimer);
+		if (wait) panelTimer = setTimeout(() => (panelContent = content), wait);
+		else panelContent = content;
+	}
 	let lastLoadedPath = $state<string | null>('');
 
 	onMount(() =>
@@ -44,6 +54,7 @@
 			show(path, content) {
 				if (get(activePath) !== path) return false;
 				currentContent = content;
+				showInPanels(content);
 				editorRef?.setDoc(content, true);
 				return true;
 			},
@@ -51,6 +62,7 @@
 			write(content) {
 				editorRef?.setDoc(content);
 				onChange(content);
+				showInPanels(content);
 			}
 		})
 	);
@@ -70,6 +82,7 @@
 		if (!path) {
 			hideNote();
 			currentContent = '';
+			showInPanels('');
 			return;
 		}
 		void showNote(path);
@@ -99,6 +112,13 @@
 		}
 		loadTree();
 		void loadArchive();
+		// Saves never change the tree, so it refreshes when the tab comes
+		// back instead: notes an agent or another device added show up then.
+		const again = () => {
+			if (document.visibilityState === 'visible') void loadTree();
+		};
+		document.addEventListener('visibilitychange', again);
+		window.addEventListener('focus', again);
 
 		// The sidebar owns the inline rename input, so open it for a rename
 		// asked from the note bar or palette; it picks the request up on mount.
@@ -172,6 +192,8 @@
 		});
 		return () => {
 			window.removeEventListener('keydown', key);
+			document.removeEventListener('visibilitychange', again);
+			window.removeEventListener('focus', again);
 			window.removeEventListener('keydown', claim, true);
 			unsubRename();
 			unsubCreate();
@@ -322,6 +344,7 @@
 
 	function onChange(newContent: string) {
 		currentContent = newContent;
+		showInPanels(newContent, 300);
 		const path = shownNote();
 		if (path) {
 			scheduleSave(path, newContent);
@@ -403,7 +426,7 @@
 			{/if}
 		</div>
 		{#if $activePath}
-			<StatusBar content={currentContent} />
+			<StatusBar content={panelContent} />
 		{/if}
 	</div>
 	{#if $activePath && !rightCollapsed}
@@ -415,11 +438,11 @@
 				</button>
 			</div>
 			<div class="rscroll">
-				<Outline content={currentContent} onJump={(line) => editorRef?.gotoLine(line)} />
+				<Outline content={panelContent} onJump={(line) => editorRef?.gotoLine(line)} />
 				<Backlinks onSelect={openNote} />
 				<NoteTasks />
-				<Tags content={currentContent} />
-				<FileInfo content={currentContent} />
+				<Tags content={panelContent} />
+				<FileInfo content={panelContent} />
 			</div>
 		</aside>
 	{/if}

@@ -16,6 +16,18 @@ export interface FoldRange {
 	to: number;
 }
 
+/**
+ * One document prepared for fold lookups: lines, their start offsets and
+ * the fence/frontmatter guard. The gutter asks about every visible line,
+ * so callers build this once per document and pass it to each lookup.
+ */
+export interface FoldDoc {
+	lines: string[];
+	starts: number[];
+	/** Offset sits in frontmatter or fenced code. */
+	inside: (at: number) => boolean;
+}
+
 /** Offsets of fenced-code spans (inclusive), line-based like tags.ts. */
 function fenceRanges(lines: string[]): Array<{ from: number; to: number }> {
 	const ranges: Array<{ from: number; to: number }> = [];
@@ -46,14 +58,8 @@ function frontmatterEnd(lines: string[]): number {
 	return off;
 }
 
-export function headingFoldRange(docText: string, lineNo: number): FoldRange | null {
+export function foldDoc(docText: string): FoldDoc {
 	const lines = docText.split('\n');
-	if (lineNo < 1 || lineNo > lines.length) return null;
-	const head = HEADING_RE.exec(lines[lineNo - 1]);
-	if (!head) return null;
-	const level = head[1].length;
-
-	// Line start offsets, so ranges stay line-granular for the gutter.
 	const starts: number[] = [];
 	let off = 0;
 	for (const line of lines) {
@@ -62,8 +68,32 @@ export function headingFoldRange(docText: string, lineNo: number): FoldRange | n
 	}
 	const fences = fenceRanges(lines);
 	const fmEnd = frontmatterEnd(lines);
-	const inside = (at: number): boolean =>
-		(at < fmEnd && fmEnd > 0) || fences.some((r) => at >= r.from && at < r.to);
+	// Fences come sorted and disjoint: binary-search the first one ending
+	// past `at`.
+	const inside = (at: number): boolean => {
+		if (at < fmEnd && fmEnd > 0) return true;
+		let lo = 0;
+		let hi = fences.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if (fences[mid].to > at) hi = mid;
+			else lo = mid + 1;
+		}
+		return lo < fences.length && fences[lo].from <= at;
+	};
+	return { lines, starts, inside };
+}
+
+/** Cheap pre-check on one line: only headings and list items can fold. */
+export function mayFold(lineText: string): boolean {
+	return HEADING_RE.test(lineText) || LIST_RE.test(lineText);
+}
+
+export function headingFoldRange({ lines, starts, inside }: FoldDoc, lineNo: number): FoldRange | null {
+	if (lineNo < 1 || lineNo > lines.length) return null;
+	const head = HEADING_RE.exec(lines[lineNo - 1]);
+	if (!head) return null;
+	const level = head[1].length;
 	if (inside(starts[lineNo - 1])) return null;
 
 	let endLine = lines.length;
@@ -87,23 +117,11 @@ export function headingFoldRange(docText: string, lineNo: number): FoldRange | n
  * ordered items alike). Blank lines inside count only when deeper content
  * follows; trailing blanks trim like headings.
  */
-export function listFoldRange(docText: string, lineNo: number): FoldRange | null {
-	const lines = docText.split('\n');
+export function listFoldRange({ lines, starts, inside }: FoldDoc, lineNo: number): FoldRange | null {
 	if (lineNo < 1 || lineNo > lines.length) return null;
 	const head = LIST_RE.exec(lines[lineNo - 1]);
 	if (!head) return null;
 	const base = head[1].length;
-
-	const starts: number[] = [];
-	let off = 0;
-	for (const line of lines) {
-		starts.push(off);
-		off += line.length + 1;
-	}
-	const fences = fenceRanges(lines);
-	const fmEnd = frontmatterEnd(lines);
-	const inside = (at: number): boolean =>
-		(at < fmEnd && fmEnd > 0) || fences.some((r) => at >= r.from && at < r.to);
 	if (inside(starts[lineNo - 1])) return null;
 
 	let endLine = lineNo;

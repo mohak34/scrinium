@@ -21,7 +21,7 @@
 
 import { syntaxTree } from '@codemirror/language';
 import type { EditorState } from '@codemirror/state';
-import { parseFrontmatter } from './frontmatter';
+import { codeRanges, fmEnd, inSpan, inSpanClosed, perDoc, spanInside, touchesSpan } from './docRanges';
 
 /**
  * Inline `$...$` on one line, pandoc's rule: no space just inside either
@@ -38,46 +38,34 @@ export interface MathBlockRange {
 	source: string;
 }
 
-function overlaps(aFrom: number, aTo: number, bFrom: number, bTo: number): boolean {
-	return aFrom <= bTo && bFrom <= aTo;
-}
-
-// Own-line `$$` fence starts outside code, plus every code range (fenced,
-// indented and inline): `$$` written inside code is literal text.
-function scanDoc(state: EditorState): { fences: number[]; fenced: Array<[number, number]> } {
-	const fenced: Array<[number, number]> = [];
-	syntaxTree(state).iterate({
-		enter: (node) => {
-			if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'InlineCode') {
-				fenced.push([node.from, node.to]);
-				return false;
-			}
-		}
-	});
+// Own-line `$$` fence starts outside code and frontmatter: `$$` written
+// inside code is literal text.
+function ownLineFences(state: EditorState, docText: string): number[] {
+	const code = codeRanges(state);
+	const fm = fmEnd(state);
 	const fences: number[] = [];
-	const docText = state.doc.toString();
-	const fmEnd = parseFrontmatter(docText)?.bodyStart ?? 0;
 	const fenceRe = /^[ \t]*\$\$[ \t]*\r?$/gm;
-	let fm: RegExpExecArray | null;
-	while ((fm = fenceRe.exec(docText)) !== null) {
-		const at = fm.index + fm[0].indexOf('$$');
-		if (fmEnd > 0 && at < fmEnd) continue;
-		if (fenced.some(([f, t]) => at >= f && at < t)) continue;
+	let m: RegExpExecArray | null;
+	while ((m = fenceRe.exec(docText)) !== null) {
+		const at = m.index + m[0].indexOf('$$');
+		if (at < fm || inSpan(code, at)) continue;
 		fences.push(at);
 	}
-	return { fences, fenced };
+	return fences;
 }
 
-export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
+/** Display-math blocks in doc order, cached per document. */
+export const findMathBlockRanges = perDoc((state): readonly MathBlockRange[] => {
 	const ranges: MathBlockRange[] = [];
 	const docText = state.doc.toString();
-	const fmEnd = parseFrontmatter(docText)?.bodyStart ?? 0;
+	const fm = fmEnd(state);
+	const code = codeRanges(state);
 
 	// 1. ```math fenced blocks via the syntax tree.
 	syntaxTree(state).iterate({
 		enter: (node) => {
 			if (node.name !== 'FencedCode') return;
-			if (fmEnd > 0 && node.from < fmEnd) return false;
+			if (node.from < fm) return false;
 			const info = node.node.getChild('CodeInfo');
 			if (!info || state.doc.sliceString(info.from, info.to).trim() !== 'math') return false;
 			const textNode = node.node.getChild('CodeText');
@@ -88,7 +76,7 @@ export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
 		}
 	});
 
-	const { fences, fenced } = scanDoc(state);
+	const fences = ownLineFences(state, docText);
 
 	// 2. Pair own-line fences in order. A blank pair does not consume its
 	// second fence, so placeholders re-pair forward instead of gluing.
@@ -99,7 +87,7 @@ export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
 		const content = docText.slice(a + 2, b);
 		// A pair never spans code: a stray `$$` above a code block must not
 		// swallow it.
-		if (!content.trim() || content.length > 2000 || fenced.some(([f, t]) => f > a && t < b)) {
+		if (!content.trim() || content.length > 2000 || spanInside(code, a, b)) {
 			i += 1;
 			continue;
 		}
@@ -108,7 +96,13 @@ export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
 	}
 
 	// 3. Single-line `$$x$$` anywhere (fence lines can't qualify: exactly
-	// `$$` alone never holds a same-line pair).
+	// `$$` alone never holds a same-line pair). Blocks from 1 and 2 never
+	// overlap, so sorted they take a binary search; a match starts at or
+	// after the previous one ends, so among its own kind only the last can
+	// touch it.
+	ranges.sort((a, b) => a.from - b.from);
+	const blocks = ranges.slice();
+	let last: MathBlockRange | null = null;
 	const singleRe = /\$\$([^\n]*?)\$\$/g;
 	let m: RegExpExecArray | null;
 	while ((m = singleRe.exec(docText)) !== null) {
@@ -116,22 +110,23 @@ export function findMathBlockRanges(state: EditorState): MathBlockRange[] {
 		const end = start + m[0].length;
 		const content = m[1];
 		if (!content.trim() || content.length > 2000) continue;
-		if (fmEnd > 0 && start < fmEnd) continue;
-		if (fenced.some(([f, t]) => overlaps(f, t, start, end))) continue;
-		if (ranges.some((r) => overlaps(r.from, r.to, start, end))) continue;
-		ranges.push({ from: start, to: end, source: content.trim() });
+		if (start < fm) continue;
+		if (touchesSpan(code, start, end) || touchesSpan(blocks, start, end)) continue;
+		if (last && start <= last.to) continue;
+		last = { from: start, to: end, source: content.trim() };
+		ranges.push(last);
 	}
 
 	ranges.sort((a, b) => a.from - b.from);
 	return ranges;
-}
+});
 
 // True when completions or snippet triggers may fire at pos: inside a
 // display-math block (closed or still being typed), or on a line with an
 // unclosed inline `$` - but never inside code.
 export function inMathRegion(state: EditorState, pos: number): boolean {
 	const blocks = findMathBlockRanges(state);
-	if (blocks.some((r) => pos >= r.from && pos <= r.to)) return true;
+	if (inSpanClosed(blocks, pos)) return true;
 	const inner = syntaxTree(state).resolveInner(Math.min(pos, state.doc.length), 0);
 	let cur: typeof inner | null = inner;
 	while (cur) {
@@ -156,17 +151,15 @@ export function inMathRegion(state: EditorState, pos: number): boolean {
 	// Closed blocks and fenced code don't count toward the parity. Any `$$`
 	// occurrence counts here (own-line or mid-line) - pairing lives in
 	// findMathBlockRanges, parity only answers "is one still open".
-	const { fenced } = scanDoc(state);
+	const code = codeRanges(state);
 	const textBefore = state.doc.sliceString(0, pos);
-	const fmEnd = parseFrontmatter(state.doc.toString())?.bodyStart ?? 0;
+	const fm = fmEnd(state);
 	const occur = /\$\$/g;
 	let count = 0;
-	let fm: RegExpExecArray | null;
-	while ((fm = occur.exec(textBefore)) !== null) {
-		const at = fm.index;
-		if (fmEnd > 0 && at < fmEnd) continue;
-		if (blocks.some((r) => at >= r.from && at < r.to)) continue;
-		if (fenced.some(([f, t]) => at >= f && at < t)) continue;
+	let m: RegExpExecArray | null;
+	while ((m = occur.exec(textBefore)) !== null) {
+		const at = m.index;
+		if (at < fm || inSpan(blocks, at) || inSpan(code, at)) continue;
 		count++;
 	}
 	return count % 2 === 1;

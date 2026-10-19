@@ -13,7 +13,7 @@
 
 import { syntaxTree } from '@codemirror/language';
 import type { EditorState } from '@codemirror/state';
-import { parseFrontmatter } from './frontmatter';
+import { fmEnd, perDoc, touchesSpan } from './docRanges';
 import { findMathBlockRanges } from './mathRanges';
 
 export interface TableRange {
@@ -22,8 +22,9 @@ export interface TableRange {
 	source: string;
 }
 
-export function findTableRanges(state: EditorState): TableRange[] {
-	const fmEnd = parseFrontmatter(state.doc.toString())?.bodyStart ?? 0;
+/** Top-level tables in doc order, cached per document. */
+export const findTableRanges = perDoc((state: EditorState): readonly TableRange[] => {
+	const fm = fmEnd(state);
 	const math = findMathBlockRanges(state);
 	const out: TableRange[] = [];
 	syntaxTree(state).iterate({
@@ -32,7 +33,7 @@ export function findTableRanges(state: EditorState): TableRange[] {
 			if (node.node.parent?.name === 'Document') {
 				const from = state.doc.lineAt(node.from).from;
 				const to = state.doc.lineAt(node.to).to;
-				if (from >= fmEnd && !math.some((r) => from <= r.to && r.from <= to)) {
+				if (from >= fm && !touchesSpan(math, from, to)) {
 					out.push({ from, to, source: state.doc.sliceString(from, to) });
 				}
 			}
@@ -40,4 +41,4 @@ export function findTableRanges(state: EditorState): TableRange[] {
 		}
 	});
 	return out;
-}
+});

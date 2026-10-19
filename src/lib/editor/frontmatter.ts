@@ -34,14 +34,18 @@ function isCloseFence(line: string): boolean {
 	return /^(---|\.\.\.)\s*$/.test(line);
 }
 
-/** Leading `---` block parsed as a mapping, else null. */
+/** Leading `---` block parsed as a mapping, else null. Walks line by line
+ * and stops at the closing fence, so a long note without one costs one
+ * line check. */
 export function parseFrontmatter(text: string): Frontmatter | null {
-	const lines = text.split('\n');
-	if (!isOpenFence(lines[0] ?? '')) return null;
-	let off = lines[0].length + 1;
-	for (let i = 1; i < lines.length; i++) {
-		if (isCloseFence(lines[i])) {
-			const raw = text.slice(0, off + lines[i].length + 1);
+	let end = text.indexOf('\n');
+	if (!isOpenFence(end < 0 ? text : text.slice(0, end))) return null;
+	while (end >= 0) {
+		const start = end + 1;
+		end = text.indexOf('\n', start);
+		const line = end < 0 ? text.slice(start) : text.slice(start, end);
+		if (isCloseFence(line)) {
+			const raw = text.slice(0, start + line.length + 1);
 			let data: unknown;
 			try {
 				data = parseDocument(raw.replace(/^---\s*\n/, '').replace(/\n(---|\.\.\.)\s*\n?$/, '')).toJS();
@@ -51,7 +55,6 @@ export function parseFrontmatter(text: string): Frontmatter | null {
 			if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
 			return { data: data as Record<string, unknown>, bodyStart: raw.length, raw };
 		}
-		off += lines[i].length + 1;
 	}
 	return null;
 }
@@ -63,15 +66,16 @@ export function stripFrontmatter(text: string): string {
 
 /** First `# ` heading at or after `from`, with its line index. */
 function firstHeading(text: string, from: number): { line: number; title: string } | null {
-	const lines = text.split('\n');
-	let off = 0;
-	for (let i = 0; i < lines.length; i++) {
-		const len = lines[i].length + 1;
-		if (off + lines[i].length >= from) {
-			const m = lines[i].match(/^#\s+(.+?)\s*$/);
+	let start = 0;
+	for (let i = 0; start <= text.length; i++) {
+		const nl = text.indexOf('\n', start);
+		const end = nl < 0 ? text.length : nl;
+		if (end >= from) {
+			const m = text.slice(start, end).match(/^#\s+(.+?)\s*$/);
 			if (m && m[1].trim()) return { line: i, title: m[1].trim() };
 		}
-		off += len;
+		if (nl < 0) break;
+		start = nl + 1;
 	}
 	return null;
 }
