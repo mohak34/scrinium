@@ -29,6 +29,7 @@ import { perDoc } from './docRanges';
 	import { notePathsFromTree } from './wikilinks';
 	import { attachmentMarkdown, resolveAssetUrl } from '$lib/attachments';
 	import { tree, archiveEntries } from '$lib/stores/vault';
+	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
 	import { tableBlockField } from './tableBlock';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
@@ -307,10 +308,9 @@ import { perDoc } from './docRanges';
 	});
 
 	async function uploadFile(file: File): Promise<string | null> {
-		// Resolve where this attachment should land from the user's settings and
-		// the current note's folder; the server re-validates the path.
-		const noteDir = notePath ? notePath.split('/').slice(0, -1).join('/') || null : null;
-		const folder = attachmentDirFor(noteDir, get(settings).attachments);
+		// The server re-validates the folder.
+		const projectSet = new Set(get(projects).map((p) => p.path));
+		const folder = attachmentDirFor(notePath ?? null, get(settings).attachments, projectSet);
 		const query = new URLSearchParams({ name: file.name });
 		if (folder) query.set('folder', folder);
 		try {
