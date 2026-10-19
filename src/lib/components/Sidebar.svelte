@@ -41,7 +41,8 @@
 	}
 	let { onSelect, onOpenAsset, onToggleCollapse }: Props = $props();
 
-	// pinRow: opened from the Pinned list, which only offers Unpin.
+	// pinRow: opened from the Pinned list. Pinned notes are not in the tree,
+	// so there is no inline rename input for them; rename by the title.
 	let menu = $state<{
 		x: number;
 		y: number;
@@ -257,9 +258,6 @@
 	const menuItems = $derived.by(() => {
 		if (!menu) return [];
 		const entry = menu.entry;
-		if (entry && menu.pinRow) {
-			return [{ label: 'Unpin', action: () => togglePin(entry.path) }];
-		}
 		if (!entry) {
 			return [
 				{ label: 'New note', action: () => (createTarget = { parent: null, kind: 'note' }) },
@@ -268,7 +266,7 @@
 		}
 		if (entry.type === 'file') {
 			const items: { label: string; danger?: boolean; action: () => void }[] = [
-				{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) },
+				...(menu.pinRow ? [] : [{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) }]),
 				{ label: 'Archive', action: () => void archivePath(entry.path) },
 				{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
 			];
@@ -276,7 +274,7 @@
 			// overlay instead, so only .md entries get a download row.
 			if (entry.path.endsWith('.md')) {
 				items.splice(
-					1,
+					menu.pinRow ? 0 : 1,
 					0,
 					{ label: pinLabel(entry.path), action: () => togglePin(entry.path) },
 					{

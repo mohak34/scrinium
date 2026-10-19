@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { VaultEntry } from '$lib/stores/vault';
-	import { activePath, pinnedPaths, sortPinnedFirst } from '$lib/stores/vault';
+	import { activePath, pinnedPaths } from '$lib/stores/vault';
 	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
 	import { drag } from './sidebarDrag';
 	import FileTree from './FileTree.svelte';
@@ -98,7 +98,8 @@
 		renameCommitted = true;
 		onCancelRename();
 	}
-	const display = $derived(sortPinnedFirst(entries));
+	// Pinned notes live in the Pinned list only, so each note shows once.
+	const display = $derived(entries.filter((e) => !$pinnedPaths.includes(e.path)));
 
 	// Notes under a folder, shown as a quiet count on the folder row.
 	function noteCount(e: VaultEntry): number {
@@ -185,7 +186,6 @@
 				<button
 					class="file"
 					class:active={$activePath === entry.path}
-					class:pinned={$pinnedPaths.includes(entry.path)}
 					class:dragging={dragged === entry.path}
 					data-tree-entry
 					data-path={entry.path}
@@ -199,9 +199,6 @@
 					onpointerdown={(e) => onDragStart(e, entry)}
 				>
 					<span class="file-label">{entry.name.replace(/\.md$/, '')}</span>
-					{#if $pinnedPaths.includes(entry.path)}
-						<span class="material-symbols-outlined pin-mark" title="Pinned">keep</span>
-					{/if}
 				</button>
 			{:else}
 				{@const viewable = /\.(png|jpe?g|gif|webp)$/i.test(entry.name)}
@@ -336,17 +333,9 @@
 		font-size: var(--fs-xs);
 		color: var(--text-3);
 	}
-	.pin-mark {
-		margin-left: auto;
-		font-size: 14px;
-		color: var(--text-3);
-	}
 	.file.active {
 		background: var(--accent-dim);
 		color: var(--text);
-	}
-	.file.active .pin-mark {
-		color: var(--accent);
 	}
 	.file-label {
 		overflow: hidden;
