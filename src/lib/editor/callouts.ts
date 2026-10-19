@@ -11,6 +11,7 @@
 
 import { syntaxTree } from '@codemirror/language';
 import type { EditorState } from '@codemirror/state';
+import { perDoc, touchesSpan, type Span } from './docRanges';
 
 export type CalloutKind =
 	| 'note'
@@ -161,15 +162,12 @@ export function quoteBoxLines(
 	state: EditorState,
 	from: number,
 	to: number,
-	callouts: FoundCallout[],
 	fmEnd: number
 ): number[] | null {
 	const firstLine = state.doc.lineAt(from).number;
 	const lastLine = state.doc.lineAt(Math.max(from, to - 1)).number;
 	if (fmEnd > 0 && from < fmEnd) return null;
-	for (let n = firstLine; n <= lastLine; n++) {
-		if (callouts.some((c) => n >= c.firstLine && n <= c.lastLine)) return null;
-	}
+	if (touchesSpan(calloutLines(state), firstLine, lastLine)) return null;
 	const out: number[] = [];
 	for (let n = firstLine; n <= lastLine; n++) {
 		if (n >= 1 && n <= state.doc.lines) out.push(n);
@@ -178,10 +176,11 @@ export function quoteBoxLines(
 }
 
 /**
- * Find callout blocks via Blockquote nodes. Line-based inside the node so
- * the Lezer `Link` parse of `[!note]` never matters.
+ * Find callout blocks via Blockquote nodes, in doc order and cached per
+ * document. Line-based inside the node so the Lezer `Link` parse of
+ * `[!note]` never matters.
  */
-export function findCallouts(state: EditorState): FoundCallout[] {
+export const findCallouts = perDoc((state: EditorState): readonly FoundCallout[] => {
 	const out: FoundCallout[] = [];
 	syntaxTree(state).iterate({
 		enter: (node) => {
@@ -224,4 +223,9 @@ export function findCallouts(state: EditorState): FoundCallout[] {
 		}
 	});
 	return out;
-}
+});
+
+/** Each callout's doc line numbers as a span, for binary-search checks. */
+export const calloutLines = perDoc((state): readonly Span[] =>
+	findCallouts(state).map((c) => ({ from: c.firstLine, to: c.lastLine }))
+);

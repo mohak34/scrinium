@@ -58,6 +58,10 @@ export function findTagsInText(text: string): Tag[] {
 	const fences = fenceRanges(text);
 	const links = findWikilinksInText(text);
 	const out: Tag[] = [];
+	// Matches arrive in order and both range lists are sorted, so one cursor
+	// per list walks forward instead of rescanning for every tag.
+	let fi = 0;
+	let li = 0;
 	TAG_RE.lastIndex = 0;
 	let m: RegExpExecArray | null;
 	while ((m = TAG_RE.exec(text)) !== null) {
@@ -68,8 +72,10 @@ export function findTagsInText(text: string): Tag[] {
 		if (!name || /\/$/.test(name)) continue;
 		const to = from + 1 + name.length;
 		if (from < skipFm) continue;
-		if (fences.some((r) => from >= r.from && from < r.to)) continue;
-		if (links.some((w) => from >= w.from && from < w.to)) continue;
+		while (fi < fences.length && fences[fi].to <= from) fi++;
+		if (fi < fences.length && fences[fi].from <= from) continue;
+		while (li < links.length && links[li].to <= from) li++;
+		if (li < links.length && links[li].from <= from) continue;
 		out.push({ from, to, name });
 	}
 	return out;

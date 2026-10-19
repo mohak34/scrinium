@@ -35,8 +35,8 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
 import { findTableRanges } from './tableRanges';
-import { parseFrontmatter } from './frontmatter';
-import { CALLOUT_ICONS, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
+import { CALLOUT_ICONS, calloutLines, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
+import { fmEnd as docFmEnd, perDoc, touchesSpan, withinSpan, type Span } from './docRanges';
 import {
 	exactWikilink,
 	findWikilinksInText,
@@ -437,6 +437,13 @@ function isInsideCode(view: EditorView, pos: number): boolean {
 	return false;
 }
 
+// Display math and top-level tables are block StateFields: no inline
+// decoration may land inside them (tables stay raw while edited). Tables
+// skip math they touch, so the merged list never overlaps.
+const blockSpans = perDoc((state): readonly Span[] =>
+	[...findMathBlockRanges(state), ...findTableRanges(state)].sort((a, b) => a.from - b.from)
+);
+
 function buildDecorations(view: EditorView): DecorationSet {
 	const pending: PendingDecoration[] = [];
 	const tree = syntaxTree(view.state);
@@ -446,31 +453,28 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// widget replaces the whole marker (overlapping replaces corrupt the
 	// RangeSetBuilder).
 	const callouts = findCallouts(view.state);
-	const inCalloutHeader = (from: number, to: number): boolean =>
-		callouts.some((c) => from >= c.headerFrom && to <= c.headerTo);
+	const headers = callouts.map((c) => ({ from: c.headerFrom, to: c.headerTo }));
+	const inCalloutHeader = (from: number, to: number): boolean => withinSpan(headers, from, to);
 
 	// Wikilinks via text scan (the `[[]]` shape has no dedicated Lezer
 	// node). Ranges are computed up front so the tree walk can skip the
 	// inner `[x]` Link decorations where the widget replaces the whole
 	// `[[...]]` - same overlap rule as callout headers.
 	const docText = view.state.doc.toString();
-	// Display math and top-level tables are block StateFields: no inline
-	// decoration may land inside them (tables stay raw while edited).
-	const blockRanges = [...findMathBlockRanges(view.state), ...findTableRanges(view.state)];
+	const blockRanges = blockSpans(view.state);
 	// Frontmatter is raw YAML, never pretty markdown: nothing inside the
 	// block is styled, hidden or swapped (its closing `---` parses as a
 	// setext HeaderMark, YAML `-` lists as bullets, `#` comments as ATX).
-	const fmEnd = parseFrontmatter(docText)?.bodyStart ?? 0;
+	const fmEnd = docFmEnd(view.state);
 	const inFm = (from: number): boolean => fmEnd > 0 && from < fmEnd;
 	const wikilinks: Wikilink[] = findWikilinksInText(docText).filter((w) => {
 		if (inFm(w.from)) return false;
-		if (blockRanges.some((r) => w.from <= r.to && r.from <= w.to)) return false;
+		if (touchesSpan(blockRanges, w.from, w.to)) return false;
 		if (isInsideCode(view, w.from) || isInsideCode(view, Math.max(w.from, w.to - 1)))
 			return false;
 		return true;
 	});
-	const inWikilink = (from: number, to: number): boolean =>
-		wikilinks.some((w) => from >= w.from && to <= w.to);
+	const inWikilink = (from: number, to: number): boolean => withinSpan(wikilinks, from, to);
 
 	for (const { from, to } of view.visibleRanges) {
 		tree.iterate({
@@ -478,7 +482,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 			to,
 			enter: (node) => {
 				// tableBlock.ts owns top-level tables, rendered or raw.
-				if (node.name === 'Table' && blockRanges.some((r) => node.from >= r.from && node.to <= r.to))
+				if (node.name === 'Table' && withinSpan(blockRanges, node.from, node.to))
 					return false;
 				const active = isLineActive(view, node.from, node.to);
 
@@ -627,7 +631,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				// hide off-line. A Blockquote owned by a callout is skipped
 				// (the callout paints those lines), as is frontmatter.
 				if (node.name === 'Blockquote') {
-					const quoteLines = quoteBoxLines(view.state, node.from, node.to, callouts, fmEnd);
+					const quoteLines = quoteBoxLines(view.state, node.from, node.to, fmEnd);
 					if (quoteLines) {
 						const firstLine = quoteLines[0];
 						const lastLine = quoteLines[quoteLines.length - 1];
@@ -646,7 +650,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				if (node.name === 'QuoteMark') {
 					const markLine = view.state.doc.lineAt(node.from).number;
 					const owned =
-						inFm(node.from) || callouts.some((c) => markLine >= c.firstLine && markLine <= c.lastLine);
+						inFm(node.from) || touchesSpan(calloutLines(view.state), markLine, markLine);
 					if (!owned && !active) {
 						pending.push({ from: node.from, to: node.to, deco: Decoration.replace({}) });
 					}
@@ -758,7 +762,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// caret-crossing hazard and no active-line gating. Code, math blocks
 	// and wikilinks are excluded like every other decoration.
 	for (const t of findTagsInText(docText)) {
-		if (blockRanges.some((r) => t.from <= r.to && r.from <= t.to)) continue;
+		if (touchesSpan(blockRanges, t.from, t.to)) continue;
 		if (isInsideCode(view, t.from) || isInsideCode(view, Math.max(t.from, t.to - 1)))
 			continue;
 		if (inWikilink(t.from, t.to)) continue;
@@ -781,7 +785,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 			inlineRegex.lastIndex = start + 1;
 			continue;
 		}
-		if (blockRanges.some((r) => start <= r.to && r.from <= end)) {
+		if (touchesSpan(blockRanges, start, end)) {
 			inlineRegex.lastIndex = start + 1;
 			continue;
 		}

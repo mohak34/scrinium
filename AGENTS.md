@@ -207,6 +207,11 @@ State channels you will touch:
   monospace; a click on a cell puts the caret in that cell's source;
   ranges from tableRanges.ts so `livePreview.ts` never decorates inside
   a table),
+  docRanges.ts (`perDoc`: a whole-doc scan cached per document and
+  syntax tree, so math, table, callout and frontmatter ranges are found
+  once per edit however many plugins ask; plus binary-search lookups
+  over sorted, non-overlapping ranges - never `.some()` over a range list
+  inside a per-match loop),
   yankFlash.ts (mini.nvim-style yank flash: line deco from the vim
   "<N> lines yanked" status notice via the facade dialog signal, read off
   live selection state so a stale range can never paint),
