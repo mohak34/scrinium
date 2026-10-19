@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import { cursorPos } from '$lib/stores/editor';
-	import { Compartment, Prec } from '@codemirror/state';
+	import { Compartment, Prec, type Text as DocText } from '@codemirror/state';
 	import {
 		EditorView,
 		keymap,
@@ -11,8 +11,9 @@
 		highlightActiveLineGutter
 	} from '@codemirror/view';
 import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
-import { headingFoldRange, listFoldRange } from './folding';
+import { foldDoc, headingFoldRange, listFoldRange, mayFold, type FoldDoc } from './folding';
 import { findCallouts } from './callouts';
+import { perDoc } from './docRanges';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { vim, getCM } from '@replit/codemirror-vim';
 	import { settings, attachmentDirFor } from '$lib/stores/settings';
@@ -69,6 +70,9 @@ import { findCallouts } from './callouts';
 	// One view serves every note, so undo history is swapped out on a note
 	// switch: Ctrl+Z must never pull the previous note's text into this one.
 	const historyCompartment = new Compartment();
+	// Fold lookups, built once per document (see the foldService below).
+	const foldDocs = new WeakMap<DocText, FoldDoc>();
+	const calloutStarts = perDoc((state) => new Map(findCallouts(state).map((c) => [c.firstLine, c])));
 
 	function themeForFontSize(size: number) {
 		return EditorView.theme({
@@ -401,17 +405,21 @@ import { findCallouts } from './callouts';
 				// Heading folding: gutter chevrons plus keyboard, ranges from
 				// folding.ts (ATX only, fences and frontmatter excluded).
 				foldGutter({ openText: '▾', closedText: '▸' }),
+				// The gutter asks once per visible line, so ordinary lines bail
+				// on their own text and the whole-doc prep is built once per doc.
 				foldService.of((state, lineStart) => {
-					const doc = state.doc.toString();
-					const lineNo = state.doc.lineAt(lineStart).number;
-					const fold = headingFoldRange(doc, lineNo) ?? listFoldRange(doc, lineNo);
-					if (fold) return fold;
+					const line = state.doc.lineAt(lineStart);
+					if (mayFold(line.text)) {
+						let prep = foldDocs.get(state.doc);
+						if (!prep) foldDocs.set(state.doc, (prep = foldDoc(state.doc.toString())));
+						const fold = headingFoldRange(prep, line.number) ?? listFoldRange(prep, line.number);
+						if (fold) return fold;
+					}
 					// Callout bodies fold from a `-`/`+` header; single-line
 					// callouts have nothing to fold.
-					for (const c of findCallouts(state)) {
-						if (c.firstLine === lineNo && c.fold !== '' && c.lastLine > c.firstLine) {
-							return { from: state.doc.line(c.firstLine).to, to: state.doc.line(c.lastLine).to };
-						}
+					const c = calloutStarts(state).get(line.number);
+					if (c && c.fold !== '' && c.lastLine > c.firstLine) {
+						return { from: line.to, to: state.doc.line(c.lastLine).to };
 					}
 					return null;
 				}),
