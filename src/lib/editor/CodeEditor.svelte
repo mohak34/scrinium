@@ -30,7 +30,7 @@ import { perDoc } from './docRanges';
 	import { attachmentMarkdown, resolveAssetUrl } from '$lib/attachments';
 	import { tree, archiveEntries } from '$lib/stores/vault';
 	import { mathBlockField } from './mathBlock';
-	import { tableBlockField } from './tableBlock';
+	import { syncCell, tableBlockField, tableCommands, tableVim } from './tableBlock';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
 	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
@@ -115,7 +115,8 @@ import { perDoc } from './docRanges';
 		replace: replaceNext,
 		mathInline: wrapMathInline,
 		mathBlock: insertMathBlock,
-		callout: insertCallout
+		callout: insertCallout,
+		...tableCommands
 	};
 
 	// Wrap the selection in `$...$` for inline math, or drop `$|$ with the
@@ -257,6 +258,8 @@ import { perDoc } from './docRanges';
 			const st = view ? cmOf(view)?.state.vim : null;
 			vimMode.set(st?.visualLine ? 'visual-line' : st?.visualBlock ? 'visual-block' : 'visual');
 		} else vimMode.set('normal');
+		// `i` / `a` on a table cell opens it, Esc in a cell closes it.
+		if (view) syncCell(view);
 	}
 
 	// Re-read the live mode: signals only fire on transitions, so a note
@@ -475,6 +478,18 @@ import { perDoc } from './docRanges';
 				livePreview,
 				mathBlockField,
 				tableBlockField,
+				tableVim.of({
+					mode: (v) =>
+						!cmOf(v) || !get(settings).editor.vimMotions
+							? 'off'
+							: inVimNormal(v)
+								? 'normal'
+								: 'insert',
+					exitInsert: (v) => {
+						const cm = cmOf(v);
+						if (cm?.state.vim?.insertMode) vimLib?.Vim.handleKey(cm, '<Esc>', 'user');
+					}
+				}),
 				yankFlashField,
 				yankFlashTheme,
 				baseTheme,

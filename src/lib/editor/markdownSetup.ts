@@ -317,6 +317,20 @@ export const baseTheme = EditorView.theme(
 			borderRadius: '4px',
 			fontSize: '0.8em'
 		},
+		// The cell editor is a CodeMirror view nested in the widget, so the
+		// main editor's descendant rules (content padding, line padding)
+		// reach it and are undone here. The edited cell gets an accent
+		// underline, the vim normal-mode cell a tint.
+		'.cm-table-block .cm-editor': { background: 'transparent', fontSize: 'inherit' },
+		'.cm-table-block .cm-editor.cm-focused': { outline: 'none' },
+		'.cm-table-block .cm-scroller': { fontFamily: 'inherit', lineHeight: 'inherit', overflow: 'visible' },
+		'.cm-table-block .cm-content': { padding: '0', minHeight: '1lh' },
+		'.cm-table-block .cm-line': { padding: '0' },
+		'.cm-table-block :is(td, th):has(.cm-editor)': { boxShadow: 'inset 0 -2px 0 var(--accent)' },
+		'.cm-table-block .cm-table-cursor': {
+			background: 'color-mix(in srgb, var(--accent-fill) 40%, transparent)'
+		},
+		'&.cm-in-table :is(.cm-cursorLayer, .cm-vimCursorLayer)': { display: 'none' },
 		// Raw table lines while editing: monospace so the pipes line up.
 		'.cm-table-source': { fontFamily: 'var(--font-mono)', fontSize: '0.85em' },
 		// Plain quotes: a quiet rule and dimmer text. Line decorations, so no
