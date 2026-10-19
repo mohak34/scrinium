@@ -26,11 +26,12 @@
 		type TaskUpdate as TaskPatch,
 		projects,
 		loadProjects,
-		createProject,
 		setProjectArea,
-		removeProject
+		removeProject,
+		newProjectOpen
 	} from '$lib/stores/tasks';
 	import { areaMeta, DOING_LIMIT, onMainBoard, projectName } from '$lib/taskModel';
+	import { boardHref, projectLabel, type ProjectView } from '$lib/projects';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 
@@ -38,7 +39,8 @@
 	// into one row per area. Drag a card to change its status (and its area,
 	// in the area view). Done only shows the last week unless expanded.
 	// ?project=<folder> narrows the board to one project, whose Inbox is its
-	// backlog; the main board leaves that backlog out (onMainBoard).
+	// backlog; an empty ?project= is Quotidian (tasks in no project). With no
+	// ?project= it shows everything but the project backlogs (onMainBoard).
 	type View = 'columns' | 'areas';
 	const VIEW_KEY = 'scrinium:boardView';
 	let view = $state<View>('columns');
@@ -58,6 +60,7 @@
 
 	const project = $derived(page.url.searchParams.get('project'));
 	const proj = $derived($projects.find((p) => p.path === project) ?? null);
+	const boardView = $derived<ProjectView>(project === null ? 'all' : { project: project || null });
 
 	// A project that isn't in the list gets a fresh load before giving up:
 	// one that no longer exists (removed or renamed, maybe in another tab)
@@ -78,8 +81,8 @@
 			{ label: 'Board: status columns', hint: 'One column per status', run: () => setView('columns') },
 			{ label: 'Board: area lanes', hint: 'Columns split by area', run: () => setView('areas') },
 			{ label: 'Board: toggle older done tasks', hint: 'Done shows the last week by default', run: () => (showAllDone = !showAllDone) },
-			{ label: 'Main board', hint: 'Leave the project board', run: () => openProject(null) },
-			{ label: 'New project', hint: 'Board backed by a vault folder', run: () => void newProject() }
+			{ label: 'Board: all tasks', hint: 'Every project on one board', run: () => openBoard('all') },
+			{ label: 'Board: Quotidian', hint: 'Tasks in no project', run: () => openBoard({ project: null }) }
 		]);
 	});
 
@@ -90,34 +93,19 @@
 
 	const pool = $derived(
 		topLevel($tasks).filter(
-			(t) => (project ? t.project === project : onMainBoard(t)) && (area == null || t.area === area)
+			(t) =>
+				(project === null ? onMainBoard(t) : t.project === (project || null)) &&
+				(area == null || t.area === area)
 		)
 	);
 
-	// Option label: the folder name, or the whole path when two share a name.
-	function projectLabel(path: string): string {
-		const name = projectName(path);
-		return $projects.filter((p) => projectName(p.path) === name).length > 1 ? path : name;
-	}
-
-	// Select values: "p:<path>" opens a project, NEW_PROJECT makes one.
-	const NEW_PROJECT = 'new';
-
-	function openProject(path: string | null) {
-		void goto(path ? `/tasks/kanban?project=${encodeURIComponent(path)}` : '/tasks/kanban');
-	}
-
-	async function newProject() {
-		const path = prompt('Project folder (created if missing)', 'Projects/');
-		if (!path?.trim()) return;
-		const row = await createProject(path);
-		if (typeof row === 'string') alert(row);
-		else openProject(row.path);
+	function openBoard(v: ProjectView) {
+		void goto(boardHref(v));
 	}
 
 	async function dropProject(path: string) {
-		if (!confirm(`Remove project "${projectName(path)}"? Its folder and notes stay, its tasks move to the main board.`)) return;
-		if (await removeProject(path)) openProject(null);
+		if (!confirm(`Remove project "${path}"? Its folder and notes stay, its tasks move to Quotidian.`)) return;
+		if (await removeProject(path)) openBoard('all');
 	}
 
 	function cellRows(status: TaskStatus, laneArea?: TaskArea | null): Task[] {
@@ -155,7 +143,7 @@
 	function subLabel(key: TaskStatus): string {
 		if (key === 'todo') return `Committed for ${weekRange()}`;
 		if (key === 'done') return showAllDone ? 'All time' : 'Last 7 days';
-		if (key === 'inbox' && project) return 'Backlog, only on this board';
+		if (key === 'inbox' && proj) return 'Backlog, only on this board';
 		return STATUSES.find((s) => s.key === key)!.hint;
 	}
 
@@ -174,7 +162,7 @@
 			title,
 			status,
 			area: laneArea === undefined ? (area ?? proj?.area ?? null) : laneArea,
-			project: project ?? null
+			project: project || null
 		});
 		if (!row && !draft) draft = title;
 	}
@@ -434,41 +422,6 @@
 <div class="page" {@attach keyNav}>
 	<header class="page-h">
 		<AppSwitcher current="board" size="lg" />
-		<select
-			class="pick"
-			aria-label="Project"
-			value={project ? `p:${project}` : ''}
-			onchange={(e) => {
-				const el = e.target as HTMLSelectElement;
-				if (el.value === NEW_PROJECT) {
-					el.value = project ? `p:${project}` : '';
-					void newProject();
-				} else openProject(el.value ? el.value.slice(2) : null);
-			}}
-		>
-			<option value="">All tasks</option>
-			{#each $projects as p (p.path)}
-				<option value="p:{p.path}">{projectLabel(p.path)}</option>
-			{/each}
-			<option value={NEW_PROJECT}>New project...</option>
-		</select>
-		{#if proj}
-			<select
-				class="pick"
-				aria-label="Default area for new tasks"
-				title="Default area for new tasks"
-				value={proj.area ?? ''}
-				onchange={(e) => void setProjectArea(proj.path, ((e.target as HTMLSelectElement).value || null) as TaskArea | null)}
-			>
-				<option value="">No default area</option>
-				{#each AREAS as a (a.key)}
-					<option value={a.key}>Default area: {a.label}</option>
-				{/each}
-			</select>
-			<button class="icon" title="Remove project" onclick={() => void dropProject(proj.path)}>
-				<span class="material-symbols-outlined">folder_off</span>
-			</button>
-		{/if}
 		<span class="cnt">{openCount} open</span>
 		<span class="vsep"></span>
 		<div class="areas" role="group" aria-label="Filter by area">
@@ -498,6 +451,36 @@
 			<span class="material-symbols-outlined">add</span>New task
 		</button>
 	</header>
+	<nav class="tabs" aria-label="Project">
+		<button class:on={boardView === 'all'} onclick={() => openBoard('all')}>All</button>
+		{#each [null, ...$projects.map((p) => p.path)] as key (key ?? '')}
+			<button
+				class:on={boardView !== 'all' && boardView.project === key}
+				onclick={() => openBoard({ project: key })}>{projectLabel(key)}</button
+			>
+		{/each}
+		<button class="icon" title="New project" onclick={() => newProjectOpen.set(true)}>
+			<span class="material-symbols-outlined">add</span>
+		</button>
+		<span class="sp"></span>
+		{#if proj}
+			<select
+				class="pick"
+				aria-label="Default area for new tasks"
+				title="Default area for new tasks"
+				value={proj.area ?? ''}
+				onchange={(e) => void setProjectArea(proj.path, ((e.target as HTMLSelectElement).value || null) as TaskArea | null)}
+			>
+				<option value="">No default area</option>
+				{#each AREAS as a (a.key)}
+					<option value={a.key}>Default area: {a.label}</option>
+				{/each}
+			</select>
+			<button class="icon" title="Remove project" onclick={() => void dropProject(proj.path)}>
+				<span class="material-symbols-outlined">folder_off</span>
+			</button>
+		{/if}
+	</nav>
 
 	{#if view === 'columns'}
 		<div class="board">
@@ -604,6 +587,35 @@
 		padding: 0 16px 0 24px;
 		border-bottom: 1px solid var(--line);
 		flex-shrink: 0;
+	}
+	.tabs {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		height: 40px;
+		padding: 0 16px 0 18px;
+		border-bottom: 1px solid var(--line);
+		flex-shrink: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	.tabs > button:not(.icon) {
+		height: 40px;
+		padding: 0 10px;
+		border: none;
+		border-bottom: 2px solid transparent;
+		background: none;
+		color: var(--text-3);
+		font: var(--fs) var(--font-ui);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.tabs > button:not(.icon):hover {
+		color: var(--text);
+	}
+	.tabs > button.on {
+		color: var(--text);
+		border-bottom-color: var(--accent);
 	}
 	.pick {
 		height: 28px;
