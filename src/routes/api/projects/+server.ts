@@ -9,14 +9,15 @@ import { isArea } from '$lib/taskModel';
 // cleaned; an existing one is addressed by its stored path exactly, which a
 // folder rename may have set to anything the vault accepts.
 
-// "Projects/scrinium" from whatever the user typed. Hidden segments are
-// refused so a project can't live in the trash or archive.
+// A new project is one folder at the vault root ("Jobs"), so the sidebar
+// can give it its own section. Hidden names are refused so a project can't
+// live in the trash or archive.
 function cleanPath(v: unknown): string {
 	if (typeof v !== 'string') throw error(400, 'Bad path');
 	const parts = v.split('/').map((p) => p.trim()).filter(Boolean);
-	if (parts.length === 0 || parts.some((p) => p.startsWith('.'))) throw error(400, 'Bad path');
-	const path = parts.join('/');
-	if (path.length > 200) throw error(400, 'Bad path');
+	if (parts.length !== 1) throw error(400, 'A project is a folder at the vault root');
+	const path = parts[0];
+	if (path.startsWith('.') || path.length > 200) throw error(400, 'Bad path');
 	return path;
 }
 

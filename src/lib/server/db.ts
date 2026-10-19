@@ -231,7 +231,8 @@ const SCOPE_SQL: Record<SearchScope, string> = {
 	all: ''
 };
 
-export function searchNotes(q: string, scope: SearchScope = 'vault'): SearchResult[] {
+// `folder` keeps only notes inside that folder (a project's search).
+export function searchNotes(q: string, scope: SearchScope = 'vault', folder?: string): SearchResult[] {
 	// Quote each whitespace-separated token so arbitrary user input can't break
 	// the FTS5 MATCH syntax. A trailing * turns a term into a prefix query, so
 	// partial words ("lis") still match whole tokens ("list"). Run both an exact
@@ -249,8 +250,9 @@ export function searchNotes(q: string, scope: SearchScope = 'vault'): SearchResu
 
 	type Row = { path: string; title: string; rank: number; snip: string | null };
 	const sel = `SELECT path, title, rank, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
-		 FROM note_fts WHERE note_fts MATCH ? ${SCOPE_SQL[scope]} ORDER BY rank LIMIT 30`;
-	const args = scope === 'all' ? [] : underArgs('.archive');
+		 FROM note_fts WHERE note_fts MATCH ? ${SCOPE_SQL[scope]} ${folder ? `AND ${under('path')}` : ''}
+		 ORDER BY rank LIMIT 30`;
+	const args = [...(scope === 'all' ? [] : underArgs('.archive')), ...(folder ? underArgs(folder) : [])];
 	const rows = db.prepare(sel).all(exact, ...args) as Row[];
 	const extra = db.prepare(sel).all(prefixed, ...args) as Row[];
 

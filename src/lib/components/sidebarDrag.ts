@@ -2,27 +2,33 @@ import { get, writable } from 'svelte/store';
 import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 
 // Pointer-driven drag for the notes sidebar. Tree rows move into folders,
-// notes dropped on Pinned get pinned, pins reorder, move into a folder when
-// dropped on one (staying pinned), and unpin when dropped anywhere else.
+// notes dropped on Pinned get pinned globally and on their project's pins
+// in that project, pins reorder, move into a folder when dropped on one
+// (staying pinned), and unpin when dropped anywhere else.
 // Built on pointer events instead of HTML5 drag-and-drop so the lifted row,
 // the target highlight and Esc-to-cancel are drawn by us, and hovering a
 // file or a folder's children still counts as that folder.
 //
 // Targets are found in the DOM under the pointer:
-//   [data-drop-pins]  the Pinned section; [data-pin=path] its rows
+//   [data-drop-pins]  a pin list: global, or one project's when it carries
+//                     data-project; [data-pin=path] its rows
 //   [data-tree-entry] a tree row (data-path, data-type)
-//   [data-drop-root]  the vault root (Files header, empty tree space)
+//   [data-drop-dir]   a project section, moving into its folder ("" is the
+//                     vault root, Quotidian)
 //   [data-drag-scroll] the container that autoscrolls near its edges
 
 export interface DragSource {
 	path: string;
 	kind: 'file' | 'directory';
 	fromPins: boolean;
+	// The project the path belongs to, "" for Quotidian: a note only pins
+	// onto its own project's list.
+	project: string;
 }
 
 export type DropTarget =
 	| { kind: 'move'; dir: string | null }
-	| { kind: 'pin'; before: string | null }
+	| { kind: 'pin'; before: string | null; global: boolean }
 	| { kind: 'unpin' };
 
 export interface DragState {
@@ -53,7 +59,7 @@ export function canMove(source: DragSource, dir: string | null): boolean {
 
 // Insert position from the pointer's height against the pin rows; null when
 // the drop would leave the order unchanged.
-function pinTarget(source: DragSource, pins: HTMLElement, y: number): DropTarget | null {
+function pinTarget(source: DragSource, pins: HTMLElement, y: number, global: boolean): DropTarget | null {
 	const rows = Array.from(pins.querySelectorAll<HTMLElement>('[data-pin]'));
 	let at = rows.findIndex((r) => {
 		const b = r.getBoundingClientRect();
@@ -63,26 +69,30 @@ function pinTarget(source: DragSource, pins: HTMLElement, y: number): DropTarget
 	const paths = rows.map((r) => r.dataset.pin ?? '');
 	const from = paths.indexOf(source.path);
 	if (from !== -1 && (at === from || at === from + 1)) return null;
-	return { kind: 'pin', before: paths[at] ?? null };
+	return { kind: 'pin', before: paths[at] ?? null, global };
 }
 
 // The folder a tree row stands for: a folder row itself, a file row its
-// parent, the Files header or empty tree space the root (null). Undefined
-// when the pointer is not over the tree.
+// parent, a section's header or empty space its folder (the root, null, for
+// Quotidian). Undefined when the pointer is not over a section.
 function treeDir(el: Element | null): string | null | undefined {
 	const entry = el?.closest<HTMLElement>('[data-tree-entry]');
 	if (entry?.dataset.path) {
 		return entry.dataset.type === 'directory' ? entry.dataset.path : parentDirOf(entry.dataset.path);
 	}
-	return el?.closest('[data-drop-root]') ? null : undefined;
+	const section = el?.closest<HTMLElement>('[data-drop-dir]');
+	return section ? section.dataset.dropDir || null : undefined;
 }
 
 function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	const el = document.elementFromPoint(x, y);
 	const pins = el?.closest<HTMLElement>('[data-drop-pins]');
 	if (pins) {
-		const pinnable = source.fromPins || (source.kind === 'file' && source.path.endsWith('.md'));
-		return pinnable ? pinTarget(source, pins, y) : null;
+		const project = pins.dataset.project;
+		const pinnable =
+			(source.fromPins || (source.kind === 'file' && source.path.endsWith('.md'))) &&
+			(project === undefined || project === source.project);
+		return pinnable ? pinTarget(source, pins, y, project === undefined) : null;
 	}
 	const dir = treeDir(el);
 	if (dir !== undefined && canMove(source, dir)) return { kind: 'move', dir };

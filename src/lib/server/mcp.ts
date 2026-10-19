@@ -36,7 +36,7 @@ const NotePath = z
 
 const INSTRUCTIONS = `Scrinium is a personal notes and tasks app. Notes are markdown files in a vault, addressed by vault-relative path ending in .md. The first "# " heading of a note is its title and should match the filename. Use [[Note name]] to link notes and #tag for tags.
 
-Tasks are separate from notes. Status: ${STATUSES.map((s) => `${s.key} (${s.hint})`).join(', ')}. Areas: ${AREAS.map((a) => a.key).join(', ')}. Priorities: ${PRIORITIES.map((p) => p.key).join(', ')}. A task with parent_id is a subtask. Tasks can link to notes. A project is a vault folder registered with create_project; a task's project is that folder path, and its notes live in the folder. A project task in inbox is project backlog and stays off the main board and agenda.
+Tasks are separate from notes. Status: ${STATUSES.map((s) => `${s.key} (${s.hint})`).join(', ')}. Areas: ${AREAS.map((a) => a.key).join(', ')}. Priorities: ${PRIORITIES.map((p) => p.key).join(', ')}. A task with parent_id is a subtask. Tasks can link to notes. A project is a folder at the vault root registered with create_project; a task's project is that folder name, and its notes live in the folder. Tasks with no project and notes outside project folders belong to Quotidian, the default. A project task in inbox is project backlog and stays off the main board and agenda.
 
 Dates are ISO 8601 with a UTC offset. An all-day due date is midnight in the user's local time, e.g. 2026-10-07T00:00:00-04:00. Timestamps in results are UTC.
 
@@ -581,7 +581,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		{
 			description: 'Register a vault folder as a project, creating the folder when missing. Put project notes in that folder.',
 			inputSchema: {
-				path: z.string().min(1).describe('Folder path, e.g. "Projects/scrinium"'),
+				path: z.string().min(1).describe('Folder name at the vault root, e.g. "Jobs"'),
 				area: Area.nullable().optional().describe('Default area for its tasks')
 			}
 		},

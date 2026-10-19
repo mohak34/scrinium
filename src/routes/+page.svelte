@@ -248,7 +248,7 @@
 			{ label: 'Toggle sidebar', hint: `${mod}/`, leader: 's', run: toggleCollapse },
 			{ label: 'Toggle right panel', hint: 'Outline, backlinks, tasks, tags', leader: 'r', run: toggleRightCollapse },
 			{ label: 'Focus editor', hint: 'Space e', leader: 'e', run: withNote(() => editorRef?.focus()) },
-			{ label: 'Pin / unpin note', hint: 'Keep the open note at the top of the sidebar', leader: 'P', run: withNote(togglePin) },
+			{ label: 'Pin / unpin note', hint: 'Keep the open note at the top of its project', leader: 'P', run: withNote(togglePin) },
 			{ label: 'Rename note', hint: 'Rename the open note in the file tree', run: withNote((path) => renameRequest.set({ path })) },
 			{ label: 'Share note', hint: 'Public link, optional password', run: withNote(() => (shareOpen = true)) },
 			{
