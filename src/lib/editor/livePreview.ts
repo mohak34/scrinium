@@ -31,8 +31,8 @@ import {
 	type DecorationSet,
 	type ViewUpdate
 } from '@codemirror/view';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
+import { fillMath } from './mathRender';
+import { resolveAssetUrl } from '$lib/attachments';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
 import { findTableRanges } from './tableRanges';
 import { CALLOUT_ICONS, calloutLines, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
@@ -307,40 +307,6 @@ class CalloutHeaderWidget extends WidgetType {
 	}
 }
 
-// Turn a markdown image reference into a browser-loadable URL. Absolute
-// (http(s)/data) URLs pass through; anything else is resolved against the
-// folder of the note being edited and served through the auth-gated asset API.
-// Turn a markdown image reference into a browser-loadable URL. Shared with
-// the print renderer (renderNote.ts) so pasted images resolve identically.
-// A destination may be written in angle brackets and percent-encoded
-// (`<my img.png>`, `my%20img.png`); both reach the same file.
-export function resolveAssetUrl(url: string, noteDir: string | null): string | null {
-	let clean = url.trim();
-	if (clean.startsWith('<') && clean.endsWith('>')) clean = clean.slice(1, -1).trim();
-	if (!clean) return null;
-	if (/^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith('/')) return clean;
-	// The note's folder is a real path; only the destination is decoded.
-	const parts = noteDir ? noteDir.split('/') : [];
-	for (const seg of clean.split('/')) {
-		if (!seg || seg === '.') continue;
-		if (seg === '..') {
-			parts.pop();
-			continue;
-		}
-		parts.push(decodeSegment(seg));
-	}
-	if (!parts.length) return null;
-	return '/api/assets/' + parts.map(encodeURIComponent).join('/');
-}
-
-function decodeSegment(seg: string): string {
-	try {
-		return decodeURIComponent(seg);
-	} catch {
-		return seg;
-	}
-}
-
 class ImageWidget extends WidgetType {
 	constructor(
 		readonly url: string,
@@ -368,20 +334,6 @@ class ImageWidget extends WidgetType {
 
 // Inline `$...$` only (single line). Block math lives in mathBlock.ts as a
 // StateField so multi-line replaces do not corrupt the ViewPlugin layout.
-const katexCache = new Map<string, string>();
-function renderInlineMath(content: string): string {
-	const key = content;
-	const hit = katexCache.get(key);
-	if (hit !== undefined) return hit;
-	try {
-		const html = katex.renderToString(content, { throwOnError: false, displayMode: false });
-		katexCache.set(key, html);
-		return html;
-	} catch {
-		return `$${content}$`;
-	}
-}
-
 class InlineMathWidget extends WidgetType {
 	constructor(readonly content: string) {
 		super();
@@ -389,10 +341,10 @@ class InlineMathWidget extends WidgetType {
 	eq(other: InlineMathWidget) {
 		return other.content === this.content;
 	}
-	toDOM() {
+	toDOM(view: EditorView) {
 		const span = document.createElement('span');
 		span.className = 'cm-math-inline';
-		span.innerHTML = renderInlineMath(this.content);
+		fillMath(span, view, this.content, false);
 		return span;
 	}
 	ignoreEvent() {

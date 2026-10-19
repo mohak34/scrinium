@@ -4,11 +4,9 @@
 	import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css';
 	import '@fontsource-variable/space-grotesk';
 	import '@fontsource-variable/jetbrains-mono';
-	import '@material-symbols/font-400';
+	import '@material-symbols/font-400/outlined.css';
 	import '$lib/design/theme.css';
 	import ReminderToasts from '$lib/components/ReminderToasts.svelte';
-	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
-	import BinsView from '$lib/components/bins/BinsView.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
 	import { get } from 'svelte/store';
@@ -25,6 +23,8 @@
 	import { page } from '$app/state';
 	import { APPS } from '$lib/apps';
 	import { flushSave } from '$lib/stores/vault';
+	import { settingsPage } from '$lib/stores/settingsDialog';
+	import { binView } from '$lib/stores/bins';
 
 	let { children } = $props();
 
@@ -168,8 +168,17 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 {@render children()}
 {#if appChrome()}
 	<ReminderToasts />
-	<SettingsDialog />
-	<BinsView />
+	<!-- Settings and Archive/Trash load their code on first open. -->
+	{#if $settingsPage !== null}
+		{#await import('$lib/components/settings/SettingsDialog.svelte') then { default: SettingsDialog }}
+			<SettingsDialog />
+		{/await}
+	{/if}
+	{#if $binView !== null}
+		{#await import('$lib/components/bins/BinsView.svelte') then { default: BinsView }}
+			<BinsView />
+		{/await}
+	{/if}
 	{#if $paletteOpen}
 		<CommandPalette onClose={() => paletteOpen.set(false)} />
 	{/if}

@@ -16,22 +16,9 @@
 import { StateField } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import type { EditorState } from '@codemirror/state';
-import katex from 'katex';
+import { fillMath } from './mathRender';
 import { previewModeEffect, isPreviewMode } from './livePreview';
 import { findMathBlockRanges } from './mathRanges';
-
-const blockCache = new Map<string, string>();
-function renderBlockMath(content: string): string {
-	const hit = blockCache.get(content);
-	if (hit !== undefined) return hit;
-	try {
-		const html = katex.renderToString(content, { throwOnError: false, displayMode: true });
-		blockCache.set(content, html);
-		return html;
-	} catch {
-		return `$$${content}$$`;
-	}
-}
 
 class BlockMathWidget extends WidgetType {
 	constructor(readonly content: string) {
@@ -46,10 +33,10 @@ class BlockMathWidget extends WidgetType {
 	get estimatedHeight(): number {
 		return 40 + this.content.split('\n').length * 26;
 	}
-	toDOM() {
+	toDOM(view: EditorView) {
 		const div = document.createElement('div');
 		div.className = 'cm-math-block';
-		div.innerHTML = renderBlockMath(this.content);
+		fillMath(div, view, this.content, true);
 		return div;
 	}
 	ignoreEvent() {

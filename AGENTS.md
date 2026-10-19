@@ -188,7 +188,8 @@ State channels you will touch:
   CodeMirror `Compartment`s; Tab indents via `indentWithTab`; math blocks
   reveal source when the cursor is on an adjacent line so arrows never
   have to cross hidden lines; vim motions via `@replit/codemirror-vim` in
-  a `Compartment` gated by `settings.editor.vimMotions` - insert-mode
+  a `Compartment` gated by `settings.editor.vimMotions`, its code
+  imported the first time the toggle is on (`cmOf` is null until then) - insert-mode
   helpers bail out in normal mode via `inVimNormal`, editor Esc drops to
   normal mode, normal-mode Esc enters preview, and app-level Esc exits
   preview via `exitPreview` so keyboard flow never strands on the mouse;
@@ -199,6 +200,8 @@ State channels you will touch:
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),
+  mathRender.ts (KaTeX for the math widgets, imported with its CSS on
+  the first widget drawn; a widget shows its source until then),
   mathComplete.ts (`\command` completion source, math regions only),
   mathSnippets.ts (Tab word/subscript and Space fraction triggers),
   tableBlock.ts (top-level GFM tables as a StateField like mathBlock:
@@ -238,8 +241,8 @@ State channels you will touch:
   memory, the VPS has 1 GB. SvelteKit drops bodies without a
   `Content-Type`, so uploaders always send one. The 100 MB cap must stay
   under `BODY_SIZE_LIMIT` in `deploy/scrinium.service`.
-  `src/lib/attachments.ts` (`isImagePath`, `attachmentMarkdown`) is shared
-  by the editor, MCP and share pages.
+  `src/lib/attachments.ts` (`isImagePath`, `attachmentMarkdown`,
+  `resolveAssetUrl`) is shared by the editor, MCP and share pages.
   mobileAuth.ts (Google ID-token verification + API-token issue/verify),
   mcp.ts (MCP tools for agents; each tool calls the REST routes through
   SvelteKit's in-process `fetch`, so validation and index/link bookkeeping
@@ -257,7 +260,10 @@ State channels you will touch:
   renderer (markdown-it plus the editor's math, code, callout, wikilink
   and tag parsing). Used by `/print` (NoteBar's Print / PDF) and the
   `/s/[id]` share viewer; a markdown feature that should show up in PDFs
-  and shares goes here as well as in the editor.
+  and shares goes here as well as in the editor. It builds its own GFM
+  parser from `@lezer/markdown` and must never import `livePreview.ts`,
+  `markdownSetup.ts` or `@codemirror/lang-markdown`: any of them ships the
+  whole editor to share pages.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
   in the root layout except on login and share pages; polls
@@ -280,8 +286,8 @@ State channels you will touch:
   attributes under the pointer; the lifted row and its "Move to X" label
   live in Sidebar.svelte.
   `bins/BinsView.svelte` is the full-page Archive / Trash / Review view,
-  mounted in the root layout and opened through `openBins(tab, focus?)`
-  (`stores/bins.ts`) from the sidebar footer, the palette, task links and
+  mounted (and its code loaded) by the root layout only while open,
+  through `openBins(tab, focus?)` (`stores/bins.ts`) from the sidebar footer, the palette, task links and
   wikilinks to archived notes. Each tab is a list plus a read-only
   `NotePreview` (renderNoteToHtml). Review lists stale notes (old, nothing
   links to them, no task, share or pin) from `/api/archive/review` for
@@ -302,7 +308,7 @@ State channels you will touch:
   unsaved text, so autosave never writes the old links back. Moves that
   skip `renamePath` leave broken images.
   `settings/SettingsDialog.svelte` is the one settings surface:
-  a modal mounted in the root layout, opened through
+  a modal the root layout mounts (and loads) only while open, through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
   and the palette. Pages: Editor, Keyboard (vim toggle + the shortcut list
   from `src/lib/shortcuts.ts`, shared with the `?` overlay), Attachments,
@@ -411,8 +417,9 @@ State channels you will touch:
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
 - Fonts ship as packages (`@fontsource-variable/atkinson-hyperlegible-next`,
-  `space-grotesk`, `jetbrains-mono`) plus `@material-symbols/font-400`, whose
-  outlined font carries the FILL axis used by the `.fill` icon class.
+  `space-grotesk`, `jetbrains-mono`) plus `@material-symbols/font-400`, of which
+  only `outlined.css` is imported; that font carries the FILL axis used by
+  the `.fill` icon class.
 - The vault and `data/` live OUTSIDE `app/` on the box and are never touched
   by deploys.
 

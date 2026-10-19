@@ -2,7 +2,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { db, under, underArgs } from './db';
 import { vaultRel } from './vault';
 import { renderNoteToHtml } from '$lib/print/renderNote';
-import { resolveAssetUrl } from '$lib/editor/livePreview';
+import { resolveAssetUrl } from '$lib/attachments';
 
 // Public read-only share links. A share points at a live vault path - opening
 // the link always renders the note's CURRENT content, not a snapshot. Files
