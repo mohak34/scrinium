@@ -101,10 +101,12 @@
 	// Pinned notes live in the Pinned list only, so each note shows once.
 	const display = $derived(entries.filter((e) => !$pinnedPaths.includes(e.path)));
 
-	// Notes under a folder, shown as a quiet count on the folder row.
+	// Notes under a folder, shown as a quiet count on the folder row. Pinned
+	// notes are left out, matching what the folder shows when expanded.
 	function noteCount(e: VaultEntry): number {
 		let n = 0;
-		for (const c of e.children ?? []) n += c.type === 'directory' ? noteCount(c) : c.name.endsWith('.md') ? 1 : 0;
+		for (const c of e.children ?? [])
+			n += c.type === 'directory' ? noteCount(c) : c.name.endsWith('.md') && !$pinnedPaths.includes(c.path) ? 1 : 0;
 		return n;
 	}
 </script>
