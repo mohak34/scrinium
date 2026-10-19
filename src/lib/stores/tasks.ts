@@ -219,6 +219,9 @@ export interface Project {
 
 export const projects = writable<Project[]>([]);
 
+// The New project dialog, mounted by the root layout while true.
+export const newProjectOpen = writable(false);
+
 // Only the newest load lands; an older one resolves with the newest one's
 // result, so every caller sees the list the store ends up with (null if
 // that load failed). Every project change here starts a fresh load once it
@@ -267,7 +270,7 @@ export async function setProjectArea(path: string, area: TaskArea | null): Promi
 	return true;
 }
 
-/** Unregisters the project; the folder stays and its tasks join the main board. */
+/** Unregisters the project; the folder stays and its tasks join Quotidian. */
 export async function removeProject(path: string): Promise<boolean> {
 	const res = await taskWrite(() =>
 		fetch(`/api/projects?path=${encodeURIComponent(path)}`, {

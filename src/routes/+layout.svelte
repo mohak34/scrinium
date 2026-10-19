@@ -25,6 +25,7 @@
 	import { flushSave } from '$lib/stores/vault';
 	import { settingsPage } from '$lib/stores/settingsDialog';
 	import { binView } from '$lib/stores/bins';
+	import { newProjectOpen } from '$lib/stores/tasks';
 
 	let { children } = $props();
 
@@ -168,7 +169,7 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 {@render children()}
 {#if appChrome()}
 	<ReminderToasts />
-	<!-- Settings and Archive/Trash load their code on first open. -->
+	<!-- Settings, Archive/Trash and New project load their code on first open. -->
 	{#if $settingsPage !== null}
 		{#await import('$lib/components/settings/SettingsDialog.svelte') then { default: SettingsDialog }}
 			<SettingsDialog />
@@ -177,6 +178,11 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 	{#if $binView !== null}
 		{#await import('$lib/components/bins/BinsView.svelte') then { default: BinsView }}
 			<BinsView />
+		{/await}
+	{/if}
+	{#if $newProjectOpen}
+		{#await import('$lib/components/NewProjectDialog.svelte') then { default: NewProjectDialog }}
+			<NewProjectDialog />
 		{/await}
 	{/if}
 	{#if $paletteOpen}

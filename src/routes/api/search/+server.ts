@@ -7,6 +7,7 @@ const SCOPES: SearchScope[] = ['vault', 'archive', 'all'];
 
 // ?scope=archive searches only archived notes, ?scope=all both; archived
 // hits carry their ".archive/..." path. Plain search leaves the archive out.
+// ?folder= keeps hits inside one folder.
 export const GET: RequestHandler = async ({ url }) => {
 	await ensureIndex();
 	const q = (url.searchParams.get('q') ?? '').trim();
@@ -15,5 +16,5 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json(scope === 'archive' ? [] : listRecentNotes(15));
 	}
 	if (q.length < 2) return json([]);
-	return json(searchNotes(q, scope));
+	return json(searchNotes(q, scope, url.searchParams.get('folder') || undefined));
 };

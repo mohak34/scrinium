@@ -17,37 +17,57 @@ export const activePath = writable<string | null>(null);
 export const saveStatus = writable<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
 // Pinned notes, kept client-side (a display preference, not vault state).
-// Pinned entries sort first in the tree at every level.
+// A pin shows at the top of its project's sidebar section; a global pin
+// (also in globalPins) shows in the Pinned list above every project.
 const PIN_STORAGE = 'scrinium:pinned';
+const GLOBAL_PIN_STORAGE = 'scrinium:pinnedGlobal';
 // Guarded on window so SSR never touches Node's experimental localStorage.
-function loadPinned(): string[] {
-	if (typeof window === 'undefined') return [];
+function loadPaths(key: string): string[] | null {
+	if (typeof window === 'undefined') return null;
 	try {
-		const raw = localStorage.getItem(PIN_STORAGE);
-		if (!raw) return [];
-		const parsed = JSON.parse(raw);
-		return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : [];
+		const parsed = JSON.parse(localStorage.getItem(key) ?? 'null');
+		return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : null;
 	} catch {
-		return [];
+		return null;
 	}
 }
-export const pinnedPaths = writable<string[]>(loadPinned());
-pinnedPaths.subscribe((paths) => {
-	if (typeof window === 'undefined') return;
-	try {
-		localStorage.setItem(PIN_STORAGE, JSON.stringify(paths));
-	} catch {
-		// storage full/blocked - pinning still works for this session
-	}
-});
+function storedPaths(key: string, initial: string[]) {
+	const store = writable(initial);
+	store.subscribe((paths) => {
+		if (typeof window === 'undefined') return;
+		try {
+			localStorage.setItem(key, JSON.stringify(paths));
+		} catch {
+			// storage full/blocked - pinning still works for this session
+		}
+	});
+	return store;
+}
+const savedPins = loadPaths(PIN_STORAGE) ?? [];
+export const pinnedPaths = storedPaths(PIN_STORAGE, savedPins);
+// Pins made before projects all showed on top, so they start out global.
+export const globalPins = storedPaths(GLOBAL_PIN_STORAGE, loadPaths(GLOBAL_PIN_STORAGE) ?? savedPins);
 
 export function togglePin(path: string) {
-	pinnedPaths.update((paths) =>
-		paths.includes(path) ? paths.filter((p) => p !== path) : [...paths, path]
-	);
+	if (get(pinnedPaths).includes(path)) unpin(path);
+	else pinnedPaths.update((paths) => [...paths, path]);
 }
 
-// Drag onto the Pinned list: pin `path` (or move it if already pinned) to sit
+function unpin(path: string) {
+	pinnedPaths.update((paths) => paths.filter((p) => p !== path));
+	globalPins.update((paths) => paths.filter((p) => p !== path));
+}
+
+// Pins `path` (if it isn't yet) globally or in its project only.
+export function setPinGlobal(path: string, global: boolean) {
+	if (!get(pinnedPaths).includes(path)) pinnedPaths.update((paths) => [...paths, path]);
+	globalPins.update((paths) => {
+		const rest = paths.filter((p) => p !== path);
+		return global ? [...rest, path] : rest;
+	});
+}
+
+// Drag onto a pin list: pin `path` (or move it if already pinned) to sit
 // before `before`, or last when null.
 export function movePin(path: string, before: string | null) {
 	pinnedPaths.update((paths) => {
@@ -56,6 +76,13 @@ export function movePin(path: string, before: string | null) {
 		if (at === -1) return [...rest, path];
 		return [...rest.slice(0, at), path, ...rest.slice(at)];
 	});
+}
+
+// Rewrites or drops pins after a rename or delete of `path` (and below it).
+function updatePins(fn: (p: string) => string | null) {
+	const apply = (paths: string[]) => paths.map(fn).filter((p): p is string => p !== null);
+	pinnedPaths.update(apply);
+	globalPins.update(apply);
 }
 
 // Open tabs, oldest first. The active note is the last one opened (or the
@@ -87,14 +114,16 @@ export interface SearchResult {
 	snippet: string;
 }
 
-// Full-text search. The archive is left out unless scope asks for it.
-// An aborted signal rejects the promise.
+// Full-text search. The archive is left out unless scope asks for it, and
+// `folder` keeps only notes inside it. An aborted signal rejects the promise.
 export async function searchNotes(
 	q: string,
 	scope: 'vault' | 'archive' | 'all' = 'vault',
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	folder?: string
 ): Promise<SearchResult[]> {
-	const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&scope=${scope}`, { signal });
+	const where = folder ? `&folder=${encodeURIComponent(folder)}` : '';
+	const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&scope=${scope}${where}`, { signal });
 	if (!res.ok) return [];
 	return res.json();
 }
@@ -470,13 +499,11 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 				return t;
 			})
 		);
-		pinnedPaths.update((pinned) =>
-			pinned.map((p) => {
-				if (p === oldPath) return newPath;
-				if (p.startsWith(oldPath + '/')) return newPath + p.slice(oldPath.length);
-				return p;
-			})
-		);
+		updatePins((p) => {
+			if (p === oldPath) return newPath;
+			if (p.startsWith(oldPath + '/')) return newPath + p.slice(oldPath.length);
+			return p;
+		});
 		return true;
 	});
 	await loadTree();
@@ -500,7 +527,7 @@ function putAway(path: string, send: () => Promise<Response>): Promise<boolean> 
 			activePath.set(null);
 		}
 		openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
-		pinnedPaths.update((pinned) => pinned.filter((p) => p !== path && !p.startsWith(path + '/')));
+		updatePins((p) => (p === path || p.startsWith(path + '/') ? null : p));
 		return true;
 	}).then((ok) => !!ok);
 }

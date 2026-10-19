@@ -278,14 +278,23 @@ State channels you will touch:
   `leader: 'x'` on a page command makes it Space x. `src/lib/keyNav.ts`
   moves focus between task cards and rows (`data-nav` items) on Tasks and
   Board.
+  The notes sidebar is split by project (`src/lib/projects.ts`): a
+  switcher shows All projects or one, each project is a collapsible
+  section (Quotidian, everything outside a project folder, first) holding
+  its own pins and its file tree, and global pins sit above them. A
+  section folds under its folder path in `collapsedDirs` ("" for
+  Quotidian), so its pins fold with it. Pins live in `pinnedPaths`; the
+  global ones are also in `globalPins`, the rest show in their project's
+  section. In one project, search passes `?folder=` to `/api/search`.
   `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
   drag-and-drop. Tree rows move into folders (a file row means its folder,
-  the Files header the root), notes dropped on Pinned get pinned, pins
-  reorder, move into a folder they are dropped on (staying pinned), and
-  unpin when dropped anywhere else. Targets are found by `data-*`
-  attributes under the pointer; the lifted row and its "Move to X" label
-  live in Sidebar.svelte. A pinned note shows only in Pinned, not in the
-  tree; its Pinned row carries the file menu minus Rename.
+  a section header or its empty space the section's folder), notes dropped
+  on the global Pinned list pin everywhere and on their own project's pins
+  pin there, pins reorder, move into a folder they are dropped on (staying
+  pinned), and unpin when dropped anywhere else. Targets are found by
+  `data-*` attributes under the pointer; the lifted row and its "Move to
+  X" label live in Sidebar.svelte. A pinned note shows only in its pin
+  list, not in the tree; its pin row carries the file menu minus Rename.
   `bins/BinsView.svelte` is the full-page Archive / Trash / Review view,
   mounted (and its code loaded) by the root layout only while open,
   through `openBins(tab, focus?)` (`stores/bins.ts`) from the sidebar footer, the palette, task links and
@@ -357,15 +366,18 @@ State channels you will touch:
   `task_links`), not the vault. `waiting_since` is stamped by `updateTask`
   when a task enters Waiting. `GET /api/tasks?note=` lists tasks linked to a
   note; note renames move `task_links` with the file like shares.
-  Projects: a `projects` row registers a vault folder (`POST /api/projects`
-  creates it); `tasks.project` holds that folder path, and a note/folder
+  Projects: a `projects` row registers a folder at the vault root, never
+  a nested one (`POST /api/projects` creates it; `NewProjectDialog.svelte`
+  from the sidebar, the palette or the board's tabs); tasks with no
+  project are Quotidian. `tasks.project` holds that folder path, and a note/folder
   rename moves both via `renameProjects`. Rows outlive a trashed folder;
   a restore under a new name moves the ones whose folders came back.
   Subtasks always carry their parent's project: the task routes enforce
   it and `setSubtreeProject` cascades a change on the parent.
   `onMainBoard` in taskModel.ts keeps a project's Inbox (its backlog) off
-  the main board, the list and `get_agenda`; `?project=` on the board
-  shows one project. The calendar shows every dated task.
+  the All board, the list and `get_agenda`; the board's tabs set
+  `?project=<folder>` for one project and an empty `?project=` for
+  Quotidian (`boardHref`). The calendar shows every dated task.
   `/tasks` (list + filters), `/tasks/kanban` (columns or by-area lanes, both
   drag and drop), `/tasks/calendar` (month grid + day agenda, drop to
   schedule) share `TaskDrawer.svelte` docked by `tasks/+layout.svelte`.

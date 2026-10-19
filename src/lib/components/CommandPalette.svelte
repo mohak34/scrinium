@@ -16,9 +16,11 @@
 		loadProjects,
 		createTask,
 		openTask,
+		newProjectOpen,
 		type Task
 	} from '$lib/stores/tasks';
 	import { projectName, statusMeta } from '$lib/taskModel';
+	import { boardHref } from '$lib/projects';
 	import { APPS } from '$lib/apps';
 	import { signOut } from '$lib/auth-client';
 
@@ -80,10 +82,15 @@
 			hint: `Ctrl+Shift+${i + 1}`,
 			run: () => void go(a.href)
 		})),
+		{
+			label: 'New project',
+			hint: 'A folder at the vault root with its own board',
+			run: () => newProjectOpen.set(true)
+		},
 		...$projects.map((p) => ({
 			label: `Open project ${projectName(p.path)}`,
-			hint: p.path,
-			run: () => void go(`/tasks/kanban?project=${encodeURIComponent(p.path)}`)
+			hint: 'Its board',
+			run: () => void go(boardHref({ project: p.path }))
 		})),
 		{ label: 'Open archive', hint: 'Browse, search and unarchive notes', run: () => openBins('archive') },
 		{ label: 'Open trash', hint: 'View and restore deleted notes', run: () => openBins('trash') },

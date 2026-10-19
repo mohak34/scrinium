@@ -5,8 +5,10 @@
 
 	interface Props {
 		onSelect: (path: string) => void;
+		// Only notes inside this folder (the open project) are found.
+		folder?: string;
 	}
-	let { onSelect }: Props = $props();
+	let { onSelect, folder }: Props = $props();
 
 	let query = $state('');
 	let results = $state<SearchResult[]>([]);
@@ -40,6 +42,7 @@
 
 	$effect(() => {
 		const q = query.trim();
+		const within = folder;
 		// Waits for a 150 ms pause in typing, and each keystroke aborts the
 		// request before it, so only the latest query reaches the server and
 		// lands. The "Searching…" row only appears if a request is genuinely
@@ -58,10 +61,10 @@
 		}, 250);
 		const wait = setTimeout(() => {
 			const req = q.startsWith('#')
-				? fetch(`/api/tagged?tag=${encodeURIComponent(q.slice(1))}`, { signal: ctl.signal }).then(
-						(res) => (res.ok ? (res.json() as Promise<SearchResult[]>) : [])
-					)
-				: searchNotes(q, 'vault', ctl.signal);
+				? fetch(`/api/tagged?tag=${encodeURIComponent(q.slice(1))}`, { signal: ctl.signal })
+						.then((res) => (res.ok ? (res.json() as Promise<SearchResult[]>) : []))
+						.then((rows) => (within ? rows.filter((r) => r.path.startsWith(within + '/')) : rows))
+				: searchNotes(q, 'vault', ctl.signal, within);
 			req.then(
 				(res) => {
 					if (ctl.signal.aborted) return;
@@ -125,7 +128,7 @@
 		<input
 			bind:this={inputEl}
 			class="search-input"
-			placeholder="Search notes"
+			placeholder={folder ? `Search ${folder}` : 'Search notes'}
 			bind:value={query}
 			onfocus={() => (open = true)}
 			onblur={() => setTimeout(() => (open = false), 150)}
