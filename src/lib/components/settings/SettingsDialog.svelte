@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { settingsPage, type SettingsPage } from '$lib/stores/settingsDialog';
 	import { loadTrash, loadArchive, tree, loadTree } from '$lib/stores/vault';
 	import EditorPage from './EditorPage.svelte';
@@ -46,9 +46,13 @@
 
 	$effect(() => {
 		if (!isOpen) return;
-		void loadTrash();
-		void loadArchive();
-		if ($tree.length === 0) void loadTree();
+		// Untracked: a tree or bin reload must not rerun this effect, or an
+		// empty vault refetches in a loop.
+		untrack(() => {
+			void loadTrash();
+			void loadArchive();
+			if ($tree.length === 0) void loadTree();
+		});
 		const prev = document.activeElement as HTMLElement | null;
 		void tick().then(() => dlg?.focus());
 
