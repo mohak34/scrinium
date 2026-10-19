@@ -58,18 +58,6 @@ export function movePin(path: string, before: string | null) {
 	});
 }
 
-// Sort a level of the tree so pinned entries come first, preserving the
-// existing alphabetical/type order within each group.
-export function sortPinnedFirst(entries: VaultEntry[]): VaultEntry[] {
-	let pinned: VaultEntry[] = [];
-	let rest: VaultEntry[] = [];
-	for (const e of entries) {
-		if (get(pinnedPaths).includes(e.path)) pinned.push(e);
-		else rest.push(e);
-	}
-	return [...pinned, ...rest];
-}
-
 // Open tabs, oldest first. The active note is the last one opened (or the
 // neighbour chosen by closeTab) - activePath stays the single source of truth.
 export const openTabs = writable<string[]>([]);
