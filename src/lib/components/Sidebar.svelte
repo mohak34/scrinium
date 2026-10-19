@@ -583,6 +583,7 @@
 					>
 						<span class="material-symbols-outlined">{folded ? 'chevron_right' : 'expand_more'}</span>
 						<span class="pin-name">{projectLabel(s.key)}</span>
+						<span class="sp"></span>
 						<span class="acts">
 							<button
 								class="icon-btn sm"
@@ -825,16 +826,17 @@
 	.sec-h:hover {
 		color: var(--text);
 	}
+	/* The buttons replace the count on hover or keyboard focus. A mouse
+	   click leaves focus on the header, so plain :focus-within would keep
+	   them up next to the count. */
 	.sec-h .acts {
 		display: none;
-		margin-left: auto;
 		gap: 2px;
 	}
-	.sec-h:hover .acts,
-	.sec-h:focus-within .acts {
+	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .acts {
 		display: flex;
 	}
-	.sec-h:hover .open {
+	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .open {
 		display: none;
 	}
 	.icon-btn.sm {
@@ -842,7 +844,6 @@
 		height: 22px;
 	}
 	.open {
-		margin-left: auto;
 		color: var(--text-3);
 		font-size: var(--fs-xs);
 		font-variant-numeric: tabular-nums;
