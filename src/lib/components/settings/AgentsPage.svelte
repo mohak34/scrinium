@@ -22,7 +22,9 @@
 		update_task: 'Updated task',
 		delete_task: 'Deleted task',
 		link_task_to_note: 'Linked a task to',
-		unlink_task_from_note: 'Unlinked a task from'
+		unlink_task_from_note: 'Unlinked a task from',
+		create_project: 'Created project',
+		remove_project: 'Removed project'
 	};
 
 	let tokens = $state<Token[]>([]);
