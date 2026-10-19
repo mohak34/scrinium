@@ -128,13 +128,15 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 				'Full-text search over note titles and bodies. Returns up to 30 notes with a snippet. An empty query returns recently edited notes. Archived notes are left out unless include_archived is true.',
 			inputSchema: {
 				query: z.string(),
-				include_archived: z.boolean().optional().describe('Also search archived notes (default false)')
+				include_archived: z.boolean().optional().describe('Also search archived notes (default false)'),
+				folder: NotePath.optional().describe('Only notes inside this folder, e.g. a project folder')
 			},
 			annotations: readOnly
 		},
-		async ({ query, include_archived }) => {
+		async ({ query, include_archived, folder }) => {
 			const scope = include_archived ? '&scope=all' : '';
-			const rows = await getJson<{ path: string }[]>(`/api/search?q=${encodeURIComponent(query)}${scope}`);
+			const inFolder = folder ? `&folder=${encodeURIComponent(folder)}` : '';
+			const rows = await getJson<{ path: string }[]>(`/api/search?q=${encodeURIComponent(query)}${scope}${inFolder}`);
 			if (!include_archived) return result(rows);
 			// Archived hits carry their ".archive/<name>/..." path; name the item
 			// and where it came from so unarchive_note can bring it back.
@@ -438,7 +440,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 				area: Area.optional(),
 				note_path: NotePath.optional().describe('Only tasks linked to this note'),
 				parent_id: z.string().optional().describe('Only subtasks of this task'),
-				project: z.string().optional().describe('Only tasks in this project (folder path)'),
+				project: z.string().optional().describe('Only tasks in this project (folder path); "" for Quotidian, tasks with no project'),
 				include_done: z.boolean().optional().describe('Include done tasks (default false, ignored when status is set)')
 			},
 			annotations: readOnly
@@ -453,7 +455,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 					(status ? t.status === status : include_done || t.status !== 'done') &&
 					(!area || t.area === area) &&
 					(!parent_id || t.parent_id === parent_id) &&
-					(!project || t.project === project) &&
+					(project === undefined || t.project === (project || null)) &&
 					(!q || t.title.toLowerCase().includes(q) || t.detail.toLowerCase().includes(q))
 			);
 			return result(rows.map(taskOut));
@@ -589,6 +591,19 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			const row = (await (await send('POST', '/api/projects', { path, area })).json()) as ProjectRow;
 			onWrite('create_project', row.path);
 			return result(row);
+		}
+	);
+
+	server.registerTool(
+		'remove_project',
+		{
+			description: 'Stop treating a folder as a project. Its folder and notes stay; its tasks move to Quotidian.',
+			inputSchema: { path: z.string().min(1).describe('Project folder path from list_projects') }
+		},
+		async ({ path }) => {
+			await send('DELETE', `/api/projects?path=${encodeURIComponent(path)}`);
+			onWrite('remove_project', path);
+			return result(`Removed project ${path}`);
 		}
 	);
 

@@ -43,11 +43,11 @@ The MCP server is at `https://<your-host>/api/mcp`. Create a token in **Settings
 
 The server has these tools:
 
-- Notes: `list_notes`, `search_notes`, `read_note`, `create_note`, `update_note`, `edit_note`, `append_to_note`, `move_note`, `create_folder`, `delete_note`, `list_trash`, `restore_from_trash`, `archive_note`, `list_archive`, `unarchive_note`, `share_note` (`search_notes` takes `include_archived`)
+- Notes: `list_notes`, `search_notes`, `read_note`, `create_note`, `update_note`, `edit_note`, `append_to_note`, `move_note`, `create_folder`, `delete_note`, `list_trash`, `restore_from_trash`, `archive_note`, `list_archive`, `unarchive_note`, `share_note` (`search_notes` takes `include_archived` and `folder`)
 - Attachments: `upload_attachment`, `read_attachment`
 - Tags and links: `list_tags`, `find_notes_by_tag`, `get_backlinks`
 - Tasks: `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`, `link_task_to_note`, `unlink_task_from_note`, `get_agenda`
-- Projects: `list_projects`, `create_project`
+- Projects: `list_projects`, `create_project`, `remove_project` (`list_tasks` takes `project`, `""` for Quotidian)
 
 ## Deployment
 
