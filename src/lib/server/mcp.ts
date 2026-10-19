@@ -4,6 +4,7 @@ import { AREAS, PRIORITIES, STATUSES, onMainBoard } from '$lib/taskModel';
 import { attachmentMarkdown, isImagePath } from '$lib/attachments';
 import type { ProjectRow, TaskRow } from './db';
 import { fromArchivedPath, type ArchiveEntry } from '$lib/archive';
+import { projectOf } from '$lib/projects';
 
 type TrashRow = { trashName: string; originalPath: string; deletedAt: number };
 
@@ -388,13 +389,17 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			inputSchema: {
 				name: z.string().min(1).max(200).describe('File name with extension, e.g. "diagram.png"'),
 				data_base64: z.string().min(1).max(Math.ceil(MAX_INLINE_BYTES / 3) * 4).describe('File contents, base64'),
-				folder: NotePath.optional().describe('Vault folder to store it in. Default "attachments"'),
+				folder: NotePath.optional().describe('Vault folder to store it in. Default "attachments" inside the project of note_path, or at the vault root'),
 				note_path: NotePath.optional().describe('Note the link will go in, so the link is relative to it')
 			}
 		},
 		async ({ name, data_base64, folder, note_path }) => {
-			const query = new URLSearchParams({ name });
-			if (folder) query.set('folder', folder);
+			if (folder === undefined) {
+				const projects = note_path ? await getJson<ProjectRow[]>('/api/projects') : [];
+				const project = note_path && projectOf(note_path, new Set(projects.map((p) => p.path)));
+				folder = project ? `${project}/attachments` : 'attachments';
+			}
+			const query = new URLSearchParams({ name, folder });
 			const { path } = await getJson<{ path: string }>(`/api/attachments?${query}`, {
 				method: 'POST',
 				body: Buffer.from(data_base64, 'base64'),

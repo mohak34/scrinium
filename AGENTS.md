@@ -68,7 +68,9 @@ Scrinium is small, but there are a few footguns specific to it.
    widget) are gated with `!active` — only hidden when the cursor is off the
    line. Remove that guard and the caret can no longer travel across the raw
    mark (seen once, the task-checkbox bug, commit `dd206ec`). Every new
-   hideable element keeps the guard, or it is a regression.
+   hideable element keeps the guard, or it is a regression. Tables are
+   the one exception: they never show raw on cursor lines, the cell
+   editor gives each cell its raw source instead (tableBlock.ts).
 2. **Treating the SQLite table as authoritative.** It is a metadata cache.
    If it drifts, delete `data/scrinium.db` and restart (tables are recreated on boot) — the vault
    `.md` files are untouched. Never let a feature depend on the cache being
@@ -205,11 +207,20 @@ State channels you will touch:
   mathComplete.ts (`\command` completion source, math regions only),
   mathSnippets.ts (Tab word/subscript and Space fraction triggers),
   tableBlock.ts (top-level GFM tables as a StateField like mathBlock:
-  off the table and its neighbour lines the table is one block widget
-  rendered by the lazy-loaded renderNote.ts, on it the raw lines show in
-  monospace; a click on a cell puts the caret in that cell's source;
-  ranges from tableRanges.ts so `livePreview.ts` never decorates inside
-  a table),
+  the table is always one block widget rendered by the lazy-loaded
+  renderNote.ts, and editing is per cell. When the main selection sits
+  in a cell, `syncCell` mounts a small nested EditorView in that td for
+  the cell's raw source; its edits are written back to the main doc as
+  one transaction each (same userEvent, so undo groups like typing and
+  runs through the main history), and the widget skips repainting for
+  its own echo. Tab/Enter/arrows step cells via the main selection;
+  typed `|` is escaped. In vim normal mode the cell is only outlined
+  and j/k move by row (vim's own j/k jump over the widget); `i`/`a`
+  open it through `tableVim`, a facet CodeEditor provides. Row/column/
+  align/sort palette commands rewrite the whole table through
+  `readTable`/`writeTable` in tableRanges.ts; "Table: edit as markdown"
+  shows the raw lines until the cursor leaves. Ranges from
+  tableRanges.ts so `livePreview.ts` never decorates inside a table),
   docRanges.ts (`perDoc`: a whole-doc scan cached per document and
   syntax tree, so math, table, callout and frontmatter ranges are found
   once per edit however many plugins ask; plus binary-search lookups

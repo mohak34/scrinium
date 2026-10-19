@@ -29,8 +29,9 @@ import { perDoc } from './docRanges';
 	import { notePathsFromTree } from './wikilinks';
 	import { attachmentMarkdown, resolveAssetUrl } from '$lib/attachments';
 	import { tree, archiveEntries } from '$lib/stores/vault';
+	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
-	import { tableBlockField } from './tableBlock';
+	import { syncCell, tableBlockField, tableCommands, tableVim } from './tableBlock';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
 	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
@@ -116,7 +117,8 @@ import { perDoc } from './docRanges';
 		replace: replaceNext,
 		mathInline: wrapMathInline,
 		mathBlock: insertMathBlock,
-		callout: insertCallout
+		callout: insertCallout,
+		...tableCommands
 	};
 
 	// Wrap the selection in `$...$` for inline math, or drop `$|$ with the
@@ -258,6 +260,8 @@ import { perDoc } from './docRanges';
 			const st = view ? cmOf(view)?.state.vim : null;
 			vimMode.set(st?.visualLine ? 'visual-line' : st?.visualBlock ? 'visual-block' : 'visual');
 		} else vimMode.set('normal');
+		// `i` / `a` on a table cell opens it, Esc in a cell closes it.
+		if (view) syncCell(view);
 	}
 
 	// Re-read the live mode: signals only fire on transitions, so a note
@@ -308,10 +312,9 @@ import { perDoc } from './docRanges';
 	});
 
 	async function uploadFile(file: File): Promise<string | null> {
-		// Resolve where this attachment should land from the user's settings and
-		// the current note's folder; the server re-validates the path.
-		const noteDir = notePath ? notePath.split('/').slice(0, -1).join('/') || null : null;
-		const folder = attachmentDirFor(noteDir, get(settings).attachments);
+		// The server re-validates the folder.
+		const projectSet = new Set(get(projects).map((p) => p.path));
+		const folder = attachmentDirFor(notePath ?? null, get(settings).attachments, projectSet);
 		const query = new URLSearchParams({ name: file.name });
 		if (folder) query.set('folder', folder);
 		try {
@@ -476,6 +479,18 @@ import { perDoc } from './docRanges';
 				livePreview,
 				mathBlockField,
 				tableBlockField,
+				tableVim.of({
+					mode: (v) =>
+						!cmOf(v) || !get(settings).editor.vimMotions
+							? 'off'
+							: inVimNormal(v)
+								? 'normal'
+								: 'insert',
+					exitInsert: (v) => {
+						const cm = cmOf(v);
+						if (cm?.state.vim?.insertMode) vimLib?.Vim.handleKey(cm, '<Esc>', 'user');
+					}
+				}),
 				yankFlashField,
 				yankFlashTheme,
 				baseTheme,
