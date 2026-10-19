@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { projectOf } from '$lib/projects';
 
 export interface EditorSettings {
 	fontSize: number; // px
@@ -9,20 +10,16 @@ export interface EditorSettings {
 	vimMotions: boolean;
 }
 
-// Where pasted images land, Obsidian-style:
-// - 'vault':  attachments/ in the vault root (the historical default)
-// - 'note':   same folder as the note being edited
-// - 'subfolder': an "assets" subfolder next to the note
-// - 'root':   vault root itself
-// - 'custom': a fixed folder inside the vault root (attachmentFolder)
-export type AttachmentLocation = 'vault' | 'note' | 'subfolder' | 'root' | 'custom';
+// Pasted and dropped files land in `folder` under a base directory:
+// - 'project': the note's project folder, or the vault root for a Quotidian note
+// - 'vault':   the vault root
+// - 'note':    the note's own folder
+// An empty folder means the base itself.
+export type AttachmentBase = 'project' | 'vault' | 'note';
 
 export interface AttachmentSettings {
-	location: AttachmentLocation;
-	// Folder name used by the 'vault' and 'subfolder' locations.
-	// Default 'attachments'; users can override.
-	name: string;
-	folder: string; // only used when location === 'custom'
+	base: AttachmentBase;
+	folder: string;
 }
 
 export interface Settings {
@@ -38,36 +35,43 @@ export const DEFAULT_SETTINGS: Settings = {
 		vimMotions: true
 	},
 	attachments: {
-		location: 'vault',
-		name: 'attachments',
-		folder: ''
+		base: 'project',
+		folder: 'attachments'
 	}
 };
 
 const STORAGE_KEY = 'scrinium:settings';
 
-function loadAttachmentLocation(v: unknown): AttachmentLocation {
-	return v === 'note' || v === 'subfolder' || v === 'root' || v === 'custom'
-		? v
-		: 'vault';
+// A vault-relative folder ('' for none), or null if it breaks the rules the
+// server enforces.
+export function cleanFolder(v: string): string | null {
+	const segs = v.split('/').map((p) => p.trim()).filter(Boolean);
+	return segs.some((s) => s.startsWith('.') || /[\\:*?"<>|]/.test(s)) ? null : segs.join('/');
 }
 
-function loadCustomFolder(v: unknown): string {
-	if (typeof v !== 'string') return DEFAULT_SETTINGS.attachments.folder;
-	// Same rules the server enforces; keep the stored value sane.
-	const segs = v.split('/').filter(Boolean);
-	if (!segs.length || segs.some((s) => s.startsWith('.') || /[\\:*?"<>|]/.test(s))) return '';
-	return segs.join('/');
-}
-
-// Single-segment name for the attachments folder; falls back to the default.
-function loadFolderName(v: unknown): string {
-	if (typeof v !== 'string') return DEFAULT_SETTINGS.attachments.name;
-	const name = v.trim();
-	if (!name || name.startsWith('.') || /[\\/:*?"<>|]/.test(name)) {
-		return DEFAULT_SETTINGS.attachments.name;
+// Settings stored before `base` existed carry `location` and `name`; map them
+// onto base + folder.
+function loadAttachments(v: unknown): AttachmentSettings {
+	const d = DEFAULT_SETTINGS.attachments;
+	if (!v || typeof v !== 'object') return d;
+	const o = v as Record<string, unknown>;
+	const str = (x: unknown) => (typeof x === 'string' ? cleanFolder(x) : null);
+	if (o.base === 'project' || o.base === 'vault' || o.base === 'note') {
+		return { base: o.base, folder: str(o.folder) ?? d.folder };
 	}
-	return name;
+	const name = str(o.name) || d.folder;
+	switch (o.location) {
+		case 'root':
+			return { base: 'vault', folder: '' };
+		case 'custom':
+			return { base: 'vault', folder: str(o.folder) ?? '' };
+		case 'note':
+			return { base: 'note', folder: '' };
+		case 'subfolder':
+			return { base: 'note', folder: name };
+		default:
+			return { base: 'project', folder: name };
+	}
 }
 
 function loadSettings(): Settings {
@@ -98,37 +102,27 @@ function loadSettings(): Settings {
 						? parsed.editor.vimMotions
 						: DEFAULT_SETTINGS.editor.vimMotions
 			},
-			attachments: {
-				location: loadAttachmentLocation(parsed.attachments?.location),
-				name: loadFolderName(parsed.attachments?.name),
-				folder: loadCustomFolder(parsed.attachments?.folder)
-			}
+			attachments: loadAttachments(parsed.attachments)
 		};
 	} catch {
 		return DEFAULT_SETTINGS;
 	}
 }
 
-// Resolve where an attachment for a note in noteDir should go, as a vault-
-// relative directory ('' means vault root). Shared by the editor uploader.
+// The vault-relative folder ('' for the vault root) an attachment pasted
+// into notePath goes to.
 export function attachmentDirFor(
-	noteDir: string | null,
-	att: AttachmentSettings
+	notePath: string | null,
+	att: AttachmentSettings,
+	projects: ReadonlySet<string>
 ): string {
-	const name = att.name || DEFAULT_SETTINGS.attachments.name;
-	switch (att.location) {
-		case 'root':
-			return '';
-		case 'custom':
-			return att.folder;
-		case 'note':
-			return noteDir ?? '';
-		case 'subfolder':
-			return noteDir ? `${noteDir}/${name}` : name;
-		case 'vault':
-		default:
-			return name;
-	}
+	const base =
+		!notePath || att.base === 'vault'
+			? ''
+			: att.base === 'note'
+				? notePath.split('/').slice(0, -1).join('/')
+				: (projectOf(notePath, projects) ?? '');
+	return [base, att.folder].filter(Boolean).join('/');
 }
 
 function createSettingsStore() {

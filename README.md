@@ -6,7 +6,7 @@ Self-hosted notes app. Notes are markdown files in a folder on the server, edite
 
 Every note is a `.md` file under `VAULT_DIR`. You can edit, back up, or move notes without the app. SQLite holds everything else: the search index, tasks, share links, sign-ins, and API tokens.
 
-The editor is CodeMirror 6. It hides markdown syntax and shows it again on the line the cursor is on.
+The editor is CodeMirror 6. It hides markdown syntax and shows it again on the line the cursor is on. Pasted or dropped files go to an `attachments` folder inside the note's project, or at the vault root for notes outside a project; Settings > Attachments changes that.
 
 Notes you are done with can be archived from the note menu, the file tree, or the palette. Archived notes leave the tree and normal search but stay on disk under `.archive/` and are searchable from the Archive view (the box icon beside the trash). Emptying the trash never touches the archive. The Review tab lists stale notes (untouched for a while, nothing links to them, no task, share link or pin) to archive or trash in bulk. The Unused files tab lists attachments whose name no note mentions, to trash in bulk. Moving or renaming a note, folder or file rewrites the relative links that pointed through it, so images keep loading. Archiving a note removes its share links.
 

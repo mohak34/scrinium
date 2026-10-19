@@ -1,52 +1,59 @@
 <script lang="ts">
-	import { settings, attachmentDirFor, DEFAULT_SETTINGS, type AttachmentLocation } from '$lib/stores/settings';
+	import { settings, attachmentDirFor, cleanFolder, type AttachmentBase } from '$lib/stores/settings';
 
-	const LOCATIONS: { value: AttachmentLocation; label: string }[] = [
-		{ value: 'vault', label: 'Folder in vault root' },
-		{ value: 'note', label: 'Next to the note' },
-		{ value: 'subfolder', label: 'Subfolder next to the note' },
-		{ value: 'root', label: 'Vault root' },
-		{ value: 'custom', label: 'Custom path' }
+	const BASES: { value: AttachmentBase; label: string }[] = [
+		{ value: 'project', label: "The note's project" },
+		{ value: 'vault', label: 'Vault root' },
+		{ value: 'note', label: "The note's folder" }
 	];
 
 	const att = $derived($settings.attachments);
-	// A worked example so the setting reads as a path, not an abstraction.
-	const example = $derived(attachmentDirFor('Uni/DSA', att));
+	// Worked examples so the setting reads as a path, not an abstraction.
+	const EXAMPLE_PROJECTS = new Set(['Uni']);
+	const examples = $derived(
+		[
+			{ lbl: 'In project Uni', note: 'Uni/DSA/Lecture 14.md' },
+			{ lbl: 'Outside projects', note: 'Journal/Today.md' }
+		].map((ex) => {
+			const dir = attachmentDirFor(ex.note, att, EXAMPLE_PROJECTS);
+			return { ...ex, dir: dir ? `${dir}/` : 'vault root' };
+		})
+	);
 
 	function patch(p: Partial<typeof att>) {
 		settings.update((s) => ({ ...s, attachments: { ...s.attachments, ...p } }));
 	}
-	const setName = (v: string) => patch({ name: v.trim() || DEFAULT_SETTINGS.attachments.name });
-	const setFolder = (v: string) =>
-		patch({ folder: v.split('/').map((p) => p.trim()).filter(Boolean).join('/') });
+	function setFolder(input: HTMLInputElement) {
+		const folder = cleanFolder(input.value);
+		if (folder === null) input.value = att.folder;
+		else patch({ folder });
+	}
 </script>
 
 <div class="row">
-	<div class="txt"><span class="lbl">Pasted images go to</span><span class="hint">New pastes only. Existing files stay put</span></div>
-	<select class="input sel" value={att.location} onchange={(e) => patch({ location: e.currentTarget.value as AttachmentLocation })}>
-		{#each LOCATIONS as l (l.value)}
-			<option value={l.value}>{l.label}</option>
+	<div class="txt">
+		<span class="lbl">Save pasted files in</span>
+		<span class="hint">A note outside every project uses the vault root. New pastes only</span>
+	</div>
+	<select class="input sel" value={att.base} onchange={(e) => patch({ base: e.currentTarget.value as AttachmentBase })}>
+		{#each BASES as b (b.value)}
+			<option value={b.value}>{b.label}</option>
 		{/each}
 	</select>
 </div>
-{#if att.location === 'vault' || att.location === 'subfolder'}
-	<div class="row">
-		<div class="txt"><span class="lbl">Folder name</span><span class="hint">Default is "{DEFAULT_SETTINGS.attachments.name}"</span></div>
-		<input class="input" value={att.name} spellcheck="false" onchange={(e) => setName(e.currentTarget.value)} />
-	</div>
-{:else if att.location === 'custom'}
-	<div class="row">
-		<div class="txt"><span class="lbl">Path</span><span class="hint">Relative to the vault</span></div>
-		<input class="input" value={att.folder} placeholder="media/pasted" spellcheck="false" onchange={(e) => setFolder(e.currentTarget.value)} />
-	</div>
-{/if}
 <div class="row">
-	<div class="txt">
-		<span class="lbl">Example</span>
-		<span class="hint">Pasting into <span class="mono">Uni/DSA/Lecture 14.md</span> saves to</span>
-	</div>
-	<span class="mono path">{example ? `${example}/` : 'vault root'}</span>
+	<div class="txt"><span class="lbl">Folder</span><span class="hint">Inside that. Empty saves there directly</span></div>
+	<input class="input" value={att.folder} placeholder="attachments" spellcheck="false" onchange={(e) => setFolder(e.currentTarget)} />
 </div>
+{#each examples as ex (ex.note)}
+	<div class="row">
+		<div class="txt">
+			<span class="lbl">{ex.lbl}</span>
+			<span class="hint">Pasting into <span class="mono">{ex.note}</span> saves to</span>
+		</div>
+		<span class="mono path">{ex.dir}</span>
+	</div>
+{/each}
 
 <style>
 	select.input.sel {
