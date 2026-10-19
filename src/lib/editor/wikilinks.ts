@@ -70,31 +70,62 @@ function stem(p: string): string {
 	return base.replace(/\.md$/i, '');
 }
 
-// The note a link names by its full path (case-insensitive), no basename
-// fallback.
-export function exactWikilink(target: string, notePaths: string[]): string | null {
-	const t = target.trim();
-	if (!t) return null;
-	const withExt = /\.md$/i.test(t) ? t : `${t}.md`;
-	return notePaths.find((p) => p === withExt || p.toLowerCase() === withExt.toLowerCase()) ?? null;
+/**
+ * Lookups over one list of note paths, built once so resolving many links
+ * costs a map hit each instead of a scan of every path.
+ *
+ * `exact`: the note a link names by its full path (case-insensitive, the
+ * first such path in list order), no basename fallback.
+ * `resolve`: exact path first, then basename-stem match case-insensitively
+ * with the shortest path winning, ties alphabetical (Obsidian's rule).
+ * Both return null when unresolved.
+ */
+export interface WikiResolver {
+	exact(target: string): string | null;
+	resolve(target: string): string | null;
 }
 
-/**
- * Resolve a link target to a vault-relative `.md` path. Exact path first
- * (`target` or `target.md`), then basename-stem match case-insensitively
- * with shortest path winning (Obsidian's rule). Null when unresolved.
- */
-export function resolveWikilink(target: string, notePaths: string[]): string | null {
-	const exact = exactWikilink(target, notePaths);
-	if (exact) return exact;
+function withMdExt(target: string): string | null {
 	const t = target.trim();
 	if (!t) return null;
-	const withExt = /\.md$/i.test(t) ? t : `${t}.md`;
-	const want = stem(withExt).toLowerCase();
-	const cands = notePaths.filter((p) => stem(p).toLowerCase() === want);
-	if (!cands.length) return null;
-	cands.sort((a, b) => a.length - b.length || a.localeCompare(b));
-	return cands[0];
+	return /\.md$/i.test(t) ? t : `${t}.md`;
+}
+
+export function wikiResolver(notePaths: readonly string[]): WikiResolver {
+	const byPath = new Map<string, string>();
+	const byStem = new Map<string, string>();
+	for (const p of notePaths) {
+		const low = p.toLowerCase();
+		if (!byPath.has(low)) byPath.set(low, p);
+		const key = stem(p).toLowerCase();
+		const best = byStem.get(key);
+		if (best === undefined || p.length < best.length || (p.length === best.length && p.localeCompare(best) < 0)) {
+			byStem.set(key, p);
+		}
+	}
+	const exact = (target: string): string | null => {
+		const t = withMdExt(target);
+		return t === null ? null : (byPath.get(t.toLowerCase()) ?? null);
+	};
+	return {
+		exact,
+		resolve(target) {
+			const hit = exact(target);
+			if (hit) return hit;
+			const t = withMdExt(target);
+			return t === null ? null : (byStem.get(stem(t).toLowerCase()) ?? null);
+		}
+	};
+}
+
+/** One-off `exact` lookup; build a `wikiResolver` for many links. */
+export function exactWikilink(target: string, notePaths: string[]): string | null {
+	return wikiResolver(notePaths).exact(target);
+}
+
+/** One-off `resolve` lookup; build a `wikiResolver` for many links. */
+export function resolveWikilink(target: string, notePaths: string[]): string | null {
+	return wikiResolver(notePaths).resolve(target);
 }
 
 /** Flatten a file tree to vault-relative `.md` paths. */
@@ -153,14 +184,12 @@ export function findBacklinks(
 	target: string,
 	files: Array<{ path: string; content: string }>
 ): BacklinkMatch[] {
-	const notes = files.map((f) => f.path);
+	const links = wikiResolver(files.map((f) => f.path));
 	const out: BacklinkMatch[] = [];
 	for (const f of files) {
 		if (f.path === target) continue;
 		for (const line of f.content.split('\n')) {
-			const hit = findWikilinksInText(line).some(
-				(w) => resolveWikilink(w.target, notes) === target
-			);
+			const hit = findWikilinksInText(line).some((w) => links.resolve(w.target) === target);
 			if (hit) {
 				out.push({ path: f.path, excerpt: plainExcerpt(line) });
 				break;

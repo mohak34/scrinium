@@ -38,12 +38,12 @@ import { findTableRanges } from './tableRanges';
 import { CALLOUT_ICONS, calloutLines, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
 import { fmEnd as docFmEnd, inSpan, perDoc, touchesSpan, withinSpan, type Span } from './docRanges';
 import {
-	exactWikilink,
 	findWikilinksInText,
-	resolveWikilink,
+	wikiResolver,
 	wikilinkDisplay,
 	wikilinkFilename,
-	type Wikilink
+	type Wikilink,
+	type WikiResolver
 } from './wikilinks';
 import { findTagsInText } from './tags';
 import { createNote, flushSave, openTab } from '$lib/stores/vault';
@@ -81,6 +81,16 @@ export interface WikiCtx {
 	current: string | null;
 }
 export const wikiCtxEffect = StateEffect.define<WikiCtx>();
+
+// Lookups for a ctx's live and archived notes, built once per ctx (it is
+// replaced, never mutated, when the tree changes) and shared by every pill
+// and the `[[` completion.
+const ctxResolvers = new WeakMap<WikiCtx, { notes: WikiResolver; archived: WikiResolver }>();
+export function wikiCtxResolvers(ctx: WikiCtx): { notes: WikiResolver; archived: WikiResolver } {
+	let r = ctxResolvers.get(ctx);
+	if (!r) ctxResolvers.set(ctx, (r = { notes: wikiResolver(ctx.notes), archived: wikiResolver(ctx.archived) }));
+	return r;
+}
 export const wikiCtxField = StateField.define<WikiCtx>({
 	create: () => ({ notes: [], archived: [], current: null }),
 	update(value, tr) {
@@ -167,17 +177,13 @@ class CheckboxWidget extends WidgetType {
 // [[Project/Note]] reaches the archived Project/Note.md even when a live
 // Other/Note.md exists; on a tie the live note wins.
 function linkTarget(target: string, ctx: WikiCtx | undefined): { path: string; archived: boolean } | null {
-	const notes = ctx?.notes ?? [];
-	const archived = ctx?.archived ?? [];
-	for (const [find, list, isArchived] of [
-		[exactWikilink, notes, false],
-		[exactWikilink, archived, true],
-		[resolveWikilink, notes, false],
-		[resolveWikilink, archived, true]
-	] as const) {
-		const path = find(target, list);
-		if (path) return { path, archived: isArchived };
-	}
+	if (!ctx) return null;
+	const { notes, archived } = wikiCtxResolvers(ctx);
+	let path = notes.exact(target);
+	if (path) return { path, archived: false };
+	if ((path = archived.exact(target))) return { path, archived: true };
+	if ((path = notes.resolve(target))) return { path, archived: false };
+	if ((path = archived.resolve(target))) return { path, archived: true };
 	return null;
 }
 

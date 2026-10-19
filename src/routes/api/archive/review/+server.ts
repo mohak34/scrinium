@@ -5,7 +5,7 @@ import { manifestNotes, safeResolve } from '$lib/server/vault';
 import { linkedNotePaths } from '$lib/server/db';
 import { sharedNotePaths } from '$lib/server/shares';
 import { effectiveTitle, stripFrontmatter } from '$lib/editor/frontmatter';
-import { findWikilinksInText, resolveWikilink } from '$lib/editor/wikilinks';
+import { findWikilinksInText, wikiResolver } from '$lib/editor/wikilinks';
 import type { ReviewNote } from '$lib/archive';
 
 // Notes that look abandoned: not edited in `days` days (default 60), no
@@ -24,10 +24,11 @@ export const GET: RequestHandler = async ({ url }) => {
 		}))
 	);
 
+	const links = wikiResolver(paths);
 	const linked = new Set<string>();
 	for (const f of files) {
 		for (const w of findWikilinksInText(f.content)) {
-			const to = resolveWikilink(w.target, paths);
+			const to = links.resolve(w.target);
 			if (to && to !== f.path) linked.add(to);
 		}
 	}
