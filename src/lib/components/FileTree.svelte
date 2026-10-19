@@ -203,7 +203,7 @@
 					<span class="file-label">{entry.name.replace(/\.md$/, '')}</span>
 				</button>
 			{:else}
-				{@const viewable = /\.(png|jpe?g|gif|webp)$/i.test(entry.name)}
+				{@const viewable = /\.(png|jpe?g|gif|webp|pdf)$/i.test(entry.name)}
 				<div
 					class="file asset"
 					class:viewable={viewable}

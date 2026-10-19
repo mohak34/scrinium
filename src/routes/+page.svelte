@@ -31,6 +31,7 @@
 		hideNote
 	} from '$lib/stores/vault';
 	import { settings } from '$lib/stores/settings';
+	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 	import { createRequest, focusSearchRequest, renameRequest, startCreate } from '$lib/stores/actions';
 	import { paletteOpen, leaderPending, usePageCommands, isTyping } from '$lib/stores/palette';
 	import { goto } from '$app/navigation';
@@ -257,6 +258,7 @@
 				run: withNote((path) => void navigator.clipboard?.writeText(path).catch(() => {}))
 			},
 			{ label: 'Close tab', hint: 'Close the open note', leader: 'x', run: withNote(closeTab) },
+			{ label: 'Close PDF', hint: 'Close the PDF beside the editor', run: () => pdfPath.set(null) },
 			{ label: 'Next tab', hint: ']', run: () => stepTab(1) },
 			{ label: 'Previous tab', hint: '[', run: () => stepTab(-1) },
 						{
@@ -383,6 +385,10 @@
 			onSelect={openNote}
 			onToggleCollapse={toggleCollapse}
 			onOpenAsset={(path) => {
+				if (isPdfPath(path)) {
+					pdfPath.set(path);
+					return;
+				}
 				imagePreview = path;
 				zoom = 100;
 			}}
@@ -457,6 +463,13 @@
 				<FileInfo content={panelContent} />
 			</div>
 		</aside>
+	{/if}
+	{#if $pdfPath}
+		{#await import('$lib/components/PdfPane.svelte') then { default: PdfPane }}
+			{#key $pdfPath}
+				<PdfPane path={$pdfPath} onClose={() => pdfPath.set(null)} />
+			{/key}
+		{/await}
 	{/if}
 </div>
 
