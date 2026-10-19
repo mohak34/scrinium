@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { usePageCommands } from '$lib/stores/palette';
 	import {
 		tasks,
 		loadTasks,
@@ -98,6 +99,14 @@
 			return '';
 		}
 	}
+
+	onMount(() =>
+		usePageCommands([
+			{ label: 'Previous month', hint: 'Calendar', run: () => shiftMonth(-1) },
+			{ label: 'Next month', hint: 'Calendar', run: () => shiftMonth(1) },
+			{ label: 'Jump to today', hint: 'Calendar', run: goToday }
+		])
+	);
 
 	onMount(() => {
 		void loadTasks();

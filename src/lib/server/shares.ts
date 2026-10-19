@@ -143,6 +143,19 @@ export function listSharesForNote(notePath: string): PublicShare[] {
 	return rows.map(toPublic);
 }
 
+// Every link in the vault, for Settings > Shared links.
+export function listAllShares(): PublicShare[] {
+	const rows = db.prepare(`SELECT * FROM shares ORDER BY note_path, created_at DESC`).all() as ShareRow[];
+	return rows.map(toPublic);
+}
+
+// Set, change or (null) remove a link's password. Viewers unlocked with the
+// old password lose their image proofs and have to unlock again.
+export function setSharePassword(id: string, password: string | null) {
+	db.prepare(`UPDATE shares SET password_hash = ? WHERE id = ?`).run(password ? hashSharePassword(password) : null, id);
+	for (const key of proofCache.keys()) if (key.startsWith(`${id}:`)) proofCache.delete(key);
+}
+
 export function deleteShare(id: string): boolean {
 	const res = db.prepare(`DELETE FROM shares WHERE id = ?`).run(id);
 	return res.changes > 0;
