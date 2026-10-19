@@ -49,6 +49,9 @@ import { perDoc } from './docRanges';
 	// re-run once onMount assigns it - plain let silently skipped them.
 	let view = $state<EditorView | undefined>(undefined);
 	let suppressChange = false;
+	// The doc as a string, kept current by every path that changes it, so
+	// the parent echoing it back costs a reference compare, not a stringify.
+	let docText = '';
 	let vimOn = $state(false);
 	let toasts = $state<{ id: number; text: string }[]>([]);
 	let toastId = 0;
@@ -344,6 +347,7 @@ import { perDoc } from './docRanges';
 
 	onMount(() => {
 		const initialSettings = get(settings);
+		docText = value;
 		view = new EditorView({
 			doc: value,
 			parent: container,
@@ -549,7 +553,8 @@ import { perDoc } from './docRanges';
 				}),
 				EditorView.updateListener.of((update) => {
 					if (update.docChanged && !suppressChange) {
-						onChange(update.state.doc.toString());
+						docText = update.state.doc.toString();
+						onChange(docText);
 					}
 					if (update.selectionSet || update.docChanged) {
 						const head = update.state.selection.main.head;
@@ -627,6 +632,7 @@ import { perDoc } from './docRanges';
 			selection: resetCursor ? { anchor: 0 } : undefined,
 			effects: resetCursor ? [EditorView.scrollIntoView(0)] : []
 		});
+		docText = newValue;
 		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
 		// Note switches also take focus so typing starts immediately.
 		if (resetCursor) view.focus();
@@ -677,11 +683,12 @@ import { perDoc } from './docRanges';
 	// can never go stale even if setDoc's timing races the editor mount.
 	$effect(() => {
 		const content = value;
-		if (view && view.state.doc.toString() !== content) {
+		if (view && content !== docText) {
 			suppressChange = true;
 			view.dispatch({
 				changes: { from: 0, to: view.state.doc.length, insert: content }
 			});
+			docText = content;
 			suppressChange = false;
 		}
 	});
