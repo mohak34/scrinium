@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getTask, updateTask, deleteTask, getProject, setSubtreeProject } from '$lib/server/db';
 import { isArea, isPriority, isStatus } from '$lib/taskModel';
-import { parseStamp } from '$lib/server/taskInput';
+import { parseStamp, parseWaitingSince } from '$lib/server/taskInput';
 
 // Walk the whole parent chain to reject a reparent that would cycle. No hop
 // cap: a cap let a 26-deep chain close a loop. The seen set stops on any
@@ -66,6 +66,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			throw error(400, 'Bad project');
 		patch.project = body.project;
 	}
+	if (body.waiting_since !== undefined) patch.waiting_since = parseWaitingSince(body.waiting_since);
 	if (body.due_at !== undefined) patch.due_at = parseStamp(body.due_at, 'due date');
 	if (body.remind_at !== undefined) patch.remind_at = parseStamp(body.remind_at, 'reminder');
 	if (body.position !== undefined) {

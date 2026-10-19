@@ -363,8 +363,9 @@ State channels you will touch:
 - Tasks: `src/lib/taskModel.ts` is the single list of statuses (`inbox`,
   `todo` = "This week", `doing`, `waiting`, `done`), areas and priorities,
   shared by the API validation and the UI. Rows live in sqlite (`tasks`,
-  `task_links`), not the vault. `waiting_since` is stamped by `updateTask`
-  when a task enters Waiting. `GET /api/tasks?note=` lists tasks linked to a
+  `task_links`), not the vault. `waiting_since` is stamped when a task
+  enters Waiting and cleared when it leaves; the task routes (and the MCP
+  task tools) accept an earlier start, never a future one. `GET /api/tasks?note=` lists tasks linked to a
   note; note renames move `task_links` with the file like shares.
   Projects: a `projects` row registers a folder at the vault root, never
   a nested one (`POST /api/projects` creates it; `NewProjectDialog.svelte`

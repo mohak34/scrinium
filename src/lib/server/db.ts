@@ -286,8 +286,8 @@ export function listRecentNotes(limit = 15) {
 // for the later Calendar sync phase - no sync logic reads it yet.
 // status, area and priority come from $lib/taskModel. waiting_on names who a
 // 'waiting' task is blocked on; waiting_since stamps when it entered that
-// column (set and cleared by updateTask). parent_id nests a task as a
-// subtask of another (one level in the UI; deeper nesting is stored but the
+// column (set and cleared by updateTask; a caller may give an earlier
+// start). parent_id nests a task as a subtask of another (one level in the UI; deeper nesting is stored but the
 // drawer only renders direct children). remind_at is an absolute timestamp,
 // independent of due_at, so reminders survive due-date moves. Vault
 // references live in task_links (many notes per task), not on the row.
@@ -406,6 +406,7 @@ export interface NewTask {
 	priority?: TaskPriority;
 	area?: TaskArea | null;
 	waiting_on?: string | null;
+	waiting_since?: number | null;
 	parent_id?: string | null;
 	project?: string | null;
 	due_at?: number | null;
@@ -427,7 +428,7 @@ export function insertTask(t: NewTask): TaskRow {
 		t.priority ?? 'none',
 		t.area ?? null,
 		t.waiting_on ?? null,
-		t.status === 'waiting' ? now : null,
+		t.status === 'waiting' ? (t.waiting_since ?? now) : null,
 		t.parent_id ?? null,
 		t.project ?? null,
 		t.due_at ?? null,
@@ -448,6 +449,7 @@ export type TaskPatch = Partial<
 		| 'priority'
 		| 'area'
 		| 'waiting_on'
+		| 'waiting_since'
 		| 'parent_id'
 		| 'project'
 		| 'due_at'
@@ -463,10 +465,12 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 	const next = { ...cur, ...patch, updated_at: Date.now() };
 	// A changed (or cleared) reminder re-arms: a new time must fire again.
 	if ('remind_at' in patch && patch.remind_at !== cur.remind_at) next.notified_at = null;
-	// Entering Waiting starts its clock; leaving it clears the clock.
-	if (next.status !== cur.status) {
-		next.waiting_since = next.status === 'waiting' ? next.updated_at : null;
-	}
+	// Entering Waiting starts its clock (now, unless a start is given);
+	// leaving it clears the clock.
+	next.waiting_since =
+		next.status !== 'waiting'
+			? null
+			: (patch.waiting_since ?? (cur.status === 'waiting' ? cur.waiting_since : next.updated_at));
 	db.prepare(
 		`UPDATE tasks SET title = ?, detail = ?, status = ?, priority = ?, area = ?,
 		 waiting_on = ?, waiting_since = ?, parent_id = ?, project = ?,

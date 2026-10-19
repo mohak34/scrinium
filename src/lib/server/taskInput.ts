@@ -13,3 +13,12 @@ export function parseStamp(v: unknown, what: string): number | null {
 	if (!Number.isFinite(n) || n < 0) throw error(400, `Bad ${what}: use milliseconds or an ISO date-time`);
 	return Math.round(n);
 }
+
+// When a task started waiting: a timestamp like parseStamp, never in the
+// future (days waited would go negative). Omitted or null means "now".
+export function parseWaitingSince(v: unknown): number | undefined {
+	const n = v === undefined ? null : parseStamp(v, 'waiting_since');
+	if (n === null) return undefined;
+	if (n > Date.now()) throw error(400, 'Bad waiting_since: it is in the future');
+	return n;
+}

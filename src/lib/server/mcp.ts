@@ -490,6 +490,9 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		due: When.nullable().optional(),
 		remind_at: When.nullable().optional().describe('When to show a reminder, independent of due'),
 		waiting_on: z.string().max(120).nullable().optional().describe('Who a waiting task is blocked on'),
+		waiting_since: When.optional().describe(
+			'When a waiting task started waiting, e.g. the day an application was sent. Only kept while status is waiting; defaults to the moment it enters waiting'
+		),
 		parent_id: z.string().nullable().optional().describe('Make this a subtask of another task'),
 		project: z.string().nullable().optional().describe('Project folder path from list_projects. Subtasks always follow their parent.')
 	};
@@ -504,9 +507,15 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 				note_paths: z.array(NotePath).optional().describe('Notes to link this task to')
 			}
 		},
-		async ({ title, due, remind_at, note_paths, ...rest }) => {
+		async ({ title, due, remind_at, waiting_since, note_paths, ...rest }) => {
 			const row = (await (
-				await send('POST', '/api/tasks', { title, ...rest, due_at: ms(due), remind_at: ms(remind_at) })
+				await send('POST', '/api/tasks', {
+					title,
+					...rest,
+					due_at: ms(due),
+					remind_at: ms(remind_at),
+					waiting_since: ms(waiting_since)
+				})
 			).json()) as TaskRow;
 			for (const p of note_paths ?? []) await send('POST', `/api/tasks/${row.id}/links`, { note_path: p });
 			onWrite('create_task', row.title);
@@ -520,10 +529,11 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			description: 'Change a task. Only the given fields change; pass null to clear area, due, remind_at, waiting_on or parent_id.',
 			inputSchema: { id: z.string(), title: z.string().min(1).max(200).optional(), ...taskFields }
 		},
-		async ({ id, due, remind_at, ...rest }) => {
+		async ({ id, due, remind_at, waiting_since, ...rest }) => {
 			const patch: Record<string, unknown> = { ...rest };
 			if (due !== undefined) patch.due_at = ms(due);
 			if (remind_at !== undefined) patch.remind_at = ms(remind_at);
+			if (waiting_since !== undefined) patch.waiting_since = ms(waiting_since);
 			const row = (await (await send('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch)).json()) as TaskRow;
 			onWrite('update_task', row.title);
 			return result(taskOut(row));
