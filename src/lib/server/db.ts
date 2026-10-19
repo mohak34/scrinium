@@ -36,6 +36,22 @@ db.exec(`
 	);
 `);
 
+// note_fts can't index its path column, so finding a note's row by path
+// would scan the whole index. note_docs maps each path to its FTS rowid,
+// plus the file mtime the startup scan indexed (null when an app write
+// indexed it, so the next scan reads that file once more).
+// An index from before this table has no map: drop it and let the startup
+// scan rebuild it from the vault.
+const ftsMapped = db.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'note_docs'`).get();
+db.exec(`
+	CREATE TABLE IF NOT EXISTS note_docs (
+		id INTEGER PRIMARY KEY,
+		path TEXT NOT NULL UNIQUE,
+		mtime REAL
+	);
+`);
+if (!ftsMapped) db.exec(`DELETE FROM note_fts`);
+
 // SQL for "`col` is `path` itself or anything inside the folder `path`",
 // bound with underArgs(path). A binary range, not LIKE: LIKE ignores case
 // and treats _ and % as wildcards, so renaming "cs_589" would also drag
@@ -64,29 +80,50 @@ export function renameNoteMeta(oldPath: string, newPath: string) {
 	}
 }
 
-export function indexNote(relPath: string, title: string, body: string) {
-	db.prepare(`DELETE FROM note_fts WHERE path = ?`).run(relPath);
-	db.prepare(`INSERT INTO note_fts (path, title, body) VALUES (?, ?, ?)`).run(relPath, title, body);
-}
+const dropDocs = (where: string, args: string[]) => {
+	db.prepare(`DELETE FROM note_fts WHERE rowid IN (SELECT id FROM note_docs WHERE ${where})`).run(...args);
+	db.prepare(`DELETE FROM note_docs WHERE ${where}`).run(...args);
+};
 
-export function deleteNoteIndexByPrefix(relPath: string) {
-	db.prepare(`DELETE FROM note_fts WHERE ${under('path')}`).run(...underArgs(relPath));
-}
-
-export function renameNoteIndex(oldPath: string, newPath: string) {
-	const rows = db
-		.prepare(`SELECT path, title, body FROM note_fts WHERE ${under('path')}`)
-		.all(...underArgs(oldPath)) as { path: string; title: string; body: string }[];
-	for (const row of rows) {
-		const renamed = newPath + row.path.slice(oldPath.length);
-		db.prepare(`DELETE FROM note_fts WHERE path = ?`).run(row.path);
-		db.prepare(`INSERT INTO note_fts (path, title, body) VALUES (?, ?, ?)`).run(
-			renamed,
-			row.title,
-			row.body
+export const indexNote = db.transaction(
+	(relPath: string, title: string, body: string, mtime: number | null = null) => {
+		const { id } = db
+			.prepare(
+				`INSERT INTO note_docs (path, mtime) VALUES (?, ?)
+				 ON CONFLICT(path) DO UPDATE SET mtime = excluded.mtime RETURNING id`
+			)
+			.get(relPath, mtime) as { id: number };
+		db.prepare(`DELETE FROM note_fts WHERE rowid = ?`).run(id);
+		db.prepare(`INSERT INTO note_fts (rowid, path, title, body) VALUES (?, ?, ?, ?)`).run(
+			id,
+			relPath,
+			title,
+			body
 		);
 	}
-}
+);
+
+// The mtime the startup scan last indexed this note at, if any.
+export const indexedMtime = (relPath: string) =>
+	(db.prepare(`SELECT mtime FROM note_docs WHERE path = ?`).get(relPath) as { mtime: number | null } | undefined)
+		?.mtime ?? null;
+
+export const deleteNoteIndexByPrefix = db.transaction((relPath: string) => {
+	dropDocs(under('path'), underArgs(relPath));
+});
+
+export const renameNoteIndex = db.transaction((oldPath: string, newPath: string) => {
+	const rows = db
+		.prepare(`SELECT id, path FROM note_docs WHERE ${under('path')}`)
+		.all(...underArgs(oldPath)) as { id: number; path: string }[];
+	for (const row of rows) {
+		const renamed = newPath + row.path.slice(oldPath.length);
+		// A stale row already at the target would collide on the path.
+		dropDocs('path = ?', [renamed]);
+		db.prepare(`UPDATE note_docs SET path = ? WHERE id = ?`).run(renamed, row.id);
+		db.prepare(`UPDATE note_fts SET path = ? WHERE rowid = ?`).run(renamed, row.id);
+	}
+});
 
 // Long-lived API tokens for the mobile client and agents (MCP). Only the
 // SHA-256 hash is stored - the raw token is returned once at issue time and
@@ -311,6 +348,16 @@ db.exec(`
 	if (names.has('remind_min')) db.exec(`ALTER TABLE tasks DROP COLUMN remind_min`);
 	if (names.has('note_path')) db.exec(`ALTER TABLE tasks DROP COLUMN note_path`);
 }
+
+// Lookups the task code runs often: a note's tasks (and renames moving its
+// links), a task's subtasks, a project's tasks, and the reminder poll every
+// open tab runs every 30 s.
+db.exec(`
+	CREATE INDEX IF NOT EXISTS idx_task_links_note ON task_links(note_path);
+	CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
+	CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
+	CREATE INDEX IF NOT EXISTS idx_tasks_remind ON tasks(remind_at) WHERE notified_at IS NULL;
+`);
 
 export type { TaskStatus, TaskPriority, TaskArea };
 
