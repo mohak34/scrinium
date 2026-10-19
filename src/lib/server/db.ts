@@ -349,6 +349,16 @@ db.exec(`
 	if (names.has('note_path')) db.exec(`ALTER TABLE tasks DROP COLUMN note_path`);
 }
 
+// Lookups the task code runs often: a note's tasks (and renames moving its
+// links), a task's subtasks, a project's tasks, and the reminder poll every
+// open tab runs every 30 s.
+db.exec(`
+	CREATE INDEX IF NOT EXISTS idx_task_links_note ON task_links(note_path);
+	CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
+	CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
+	CREATE INDEX IF NOT EXISTS idx_tasks_remind ON tasks(remind_at) WHERE notified_at IS NULL;
+`);
+
 export type { TaskStatus, TaskPriority, TaskArea };
 
 export interface TaskRow {
