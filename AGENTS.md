@@ -238,8 +238,8 @@ State channels you will touch:
   memory, the VPS has 1 GB. SvelteKit drops bodies without a
   `Content-Type`, so uploaders always send one. The 100 MB cap must stay
   under `BODY_SIZE_LIMIT` in `deploy/scrinium.service`.
-  `src/lib/attachments.ts` (`isImagePath`, `attachmentMarkdown`) is shared
-  by the editor, MCP and share pages.
+  `src/lib/attachments.ts` (`isImagePath`, `attachmentMarkdown`,
+  `resolveAssetUrl`) is shared by the editor, MCP and share pages.
   mobileAuth.ts (Google ID-token verification + API-token issue/verify),
   mcp.ts (MCP tools for agents; each tool calls the REST routes through
   SvelteKit's in-process `fetch`, so validation and index/link bookkeeping
@@ -257,7 +257,10 @@ State channels you will touch:
   renderer (markdown-it plus the editor's math, code, callout, wikilink
   and tag parsing). Used by `/print` (NoteBar's Print / PDF) and the
   `/s/[id]` share viewer; a markdown feature that should show up in PDFs
-  and shares goes here as well as in the editor.
+  and shares goes here as well as in the editor. It builds its own GFM
+  parser from `@lezer/markdown` and must never import `livePreview.ts`,
+  `markdownSetup.ts` or `@codemirror/lang-markdown`: any of them ships the
+  whole editor to share pages.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
   in the root layout except on login and share pages; polls

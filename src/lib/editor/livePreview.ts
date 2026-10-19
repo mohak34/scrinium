@@ -33,6 +33,7 @@ import {
 } from '@codemirror/view';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { resolveAssetUrl } from '$lib/attachments';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
 import { findTableRanges } from './tableRanges';
 import { CALLOUT_ICONS, calloutLines, defaultCalloutTitle, findCallouts, quoteBoxLines } from './callouts';
@@ -307,28 +308,6 @@ class CalloutHeaderWidget extends WidgetType {
 	}
 }
 
-// Turn a markdown image reference into a browser-loadable URL. Absolute
-// (http(s)/data) URLs pass through; anything else is resolved against the
-// folder of the note being edited and served through the auth-gated asset API.
-// Turn a markdown image reference into a browser-loadable URL. Shared with
-// the print renderer (renderNote.ts) so pasted images resolve identically.
-export function resolveAssetUrl(url: string, noteDir: string | null): string | null {
-	const clean = url.trim();
-	if (!clean) return null;
-	if (/^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith('/')) return clean;
-	const joined = noteDir ? `${noteDir}/${clean}` : clean;
-	const parts: string[] = [];
-	for (const seg of joined.split('/')) {
-		if (!seg || seg === '.') continue;
-		if (seg === '..') {
-			parts.pop();
-			continue;
-		}
-		parts.push(seg);
-	}
-	if (!parts.length) return null;
-	return '/api/assets/' + parts.map(encodeURIComponent).join('/');
-}
 
 class ImageWidget extends WidgetType {
 	constructor(

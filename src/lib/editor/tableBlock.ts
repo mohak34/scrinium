@@ -21,9 +21,9 @@ import {
 	noteDirEffect,
 	noteDirField,
 	previewModeEffect,
-	resolveAssetUrl,
 	setPreviewMode
 } from './livePreview';
+import { resolveAssetUrl } from '$lib/attachments';
 import { findTableRanges } from './tableRanges';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
 import { fmEnd, perDoc } from './docRanges';

@@ -17,8 +17,8 @@
 import MarkdownIt from 'markdown-it';
 import katex from 'katex';
 import { EditorState } from '@codemirror/state';
-import { syntaxTree } from '@codemirror/language';
-import { markdownLanguage } from '$lib/editor/markdownSetup';
+import { Language, defineLanguageFacet, syntaxTree } from '@codemirror/language';
+import { parser as mdParser, GFM, Subscript, Superscript, Emoji } from '@lezer/markdown';
 import { findMathBlockRanges, inlineMathRegex } from '$lib/editor/mathRanges';
 import {
 	calloutChevronSvg,
@@ -29,7 +29,19 @@ import {
 import { findWikilinksInText, wikilinkDisplay } from '$lib/editor/wikilinks';
 import { findTagsInText } from '$lib/editor/tags';
 import { stripFrontmatter } from '$lib/editor/frontmatter';
-import { resolveAssetUrl } from '$lib/editor/livePreview';
+import { resolveAssetUrl } from '$lib/attachments';
+
+// The editor's markdown grammar (lang-markdown's GFM set) built straight
+// from @lezer/markdown. Importing the editor setup or lang-markdown here
+// would ship the editor, HTML and JS parsers to share pages. Nested
+// code-language and HTML parsing never change which nodes are code, so the
+// guards below see the same tree as the editor.
+const md = new Language(
+	defineLanguageFacet(),
+	mdParser.configure([GFM, Subscript, Superscript, Emoji]),
+	[],
+	'markdown'
+).extension;
 
 const parser = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
@@ -132,7 +144,7 @@ export function renderNoteToHtml(
 	// Properties are metadata, not content: drop the block before the
 	// pipeline so `---` never renders as a rule plus stray paragraphs.
 	src = stripFrontmatter(src);
-	const state = EditorState.create({ doc: src, extensions: [markdownLanguage()] });
+	const state = EditorState.create({ doc: src, extensions: md });
 	const chunks: string[] = [];
 	const stash = (html: string): string => {
 		chunks.push(html);
@@ -214,7 +226,7 @@ export function renderNoteToHtml(
 	// 4. Inline math on what's left (no code remains except raw fences of
 	// unclosed blocks, which the tree guard below still skips).
 	const inlineRe = inlineMathRegex();
-	const liveState = EditorState.create({ doc: text, extensions: [markdownLanguage()] });
+	const liveState = EditorState.create({ doc: text, extensions: md });
 	const inlineSpans: Span[] = [];
 	let m: RegExpExecArray | null;
 	while ((m = inlineRe.exec(text)) !== null) {
@@ -251,7 +263,7 @@ export function renderNoteToHtml(
 	// against them silently drops matches later in the note that happen to
 	// overlap (bottom-of-note wikilinks/tags rendering raw).
 	const wikiTokens = tokenRanges(text);
-	const wikiState = EditorState.create({ doc: text, extensions: [markdownLanguage()] });
+	const wikiState = EditorState.create({ doc: text, extensions: md });
 	const wikiSpans: Span[] = [];
 	for (const w of findWikilinksInText(text)) {
 		if (overlaps(w.from, w.to, wikiTokens)) {
@@ -284,7 +296,7 @@ export function renderNoteToHtml(
 	// grammar-safe (letters/digits/`_`/`-`/`/`), so no escaping needed.
 	// Same current-text token guard as wikilinks (see above).
 	const tagTokens = tokenRanges(text);
-	const tagState = EditorState.create({ doc: text, extensions: [markdownLanguage()] });
+	const tagState = EditorState.create({ doc: text, extensions: md });
 	const tagSpans: Span[] = [];
 	for (const t of findTagsInText(text)) {
 		if (overlaps(t.from, t.to, tagTokens)) {
