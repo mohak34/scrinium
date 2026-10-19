@@ -385,8 +385,9 @@ State channels you will touch:
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
 - Fonts ship as packages (`@fontsource-variable/atkinson-hyperlegible-next`,
-  `space-grotesk`, `jetbrains-mono`) plus `@material-symbols/font-400`, whose
-  outlined font carries the FILL axis used by the `.fill` icon class.
+  `space-grotesk`, `jetbrains-mono`) plus `@material-symbols/font-400`, of which
+  only `outlined.css` is imported; that font carries the FILL axis used by
+  the `.fill` icon class.
 - The vault and `data/` live OUTSIDE `app/` on the box and are never touched
   by deploys.
 

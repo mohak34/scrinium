@@ -4,7 +4,7 @@
 	import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css';
 	import '@fontsource-variable/space-grotesk';
 	import '@fontsource-variable/jetbrains-mono';
-	import '@material-symbols/font-400';
+	import '@material-symbols/font-400/outlined.css';
 	import '$lib/design/theme.css';
 	import ReminderToasts from '$lib/components/ReminderToasts.svelte';
 	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
