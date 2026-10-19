@@ -291,6 +291,18 @@
 			{ label: 'Math inline', hint: `${mod}M`, run: edit('mathInline') },
 			{ label: 'Math block', hint: `${mod}Shift+E`, run: edit('mathBlock') },
 			{ label: 'Insert callout', hint: 'Obsidian-style [!note] box', run: edit('callout') },
+			{ label: 'Table: insert row above', hint: 'Cursor in a table', run: edit('tableRowAbove') },
+			{ label: 'Table: insert row below', hint: 'Cursor in a table', run: edit('tableRowBelow') },
+			{ label: 'Table: delete row', hint: 'Cursor in a table', run: edit('tableDeleteRow') },
+			{ label: 'Table: insert column left', hint: 'Cursor in a table', run: edit('tableColLeft') },
+			{ label: 'Table: insert column right', hint: 'Cursor in a table', run: edit('tableColRight') },
+			{ label: 'Table: delete column', hint: 'Cursor in a table', run: edit('tableDeleteCol') },
+			{ label: 'Table: align column left', hint: 'Cursor in a table', run: edit('tableAlignLeft') },
+			{ label: 'Table: align column center', hint: 'Cursor in a table', run: edit('tableAlignCenter') },
+			{ label: 'Table: align column right', hint: 'Cursor in a table', run: edit('tableAlignRight') },
+			{ label: 'Table: sort by column A-Z', hint: 'Cursor in a table', run: edit('tableSortAsc') },
+			{ label: 'Table: sort by column Z-A', hint: 'Cursor in a table', run: edit('tableSortDesc') },
+			{ label: 'Table: edit as markdown', hint: 'Raw lines until the cursor leaves the table', run: edit('tableSource') },
 			{ label: 'Full preview', hint: 'Esc', run: edit('preview') }
 		])
 	);
