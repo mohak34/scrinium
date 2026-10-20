@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { movedBy, relinkNote } from '$lib/relink';
-import { linkFirstMention } from '$lib/editor/wikilinks';
+import { linkFirstMention, notePathsFromTree, wikiResolver, type WikiResolver } from '$lib/editor/wikilinks';
 import { effectiveTitle, setEffectiveTitle, updateFrontmatterBlock } from '$lib/editor/frontmatter';
 import type { Document } from 'yaml';
 import type { ArchiveEntry } from '$lib/archive';
@@ -243,13 +243,13 @@ function afterSaved<T>(fn: () => Promise<T>): Promise<T | null> {
 }
 
 // Pending text follows a rename so a late save never recreates the old file,
-// and gets the relative-link fix the server gave the saved copies, so it
-// never writes the old links back.
-function remapPending(from: string, to: string) {
+// and gets the link fix the server gave the saved copies, so it never
+// writes the old links back.
+function remapPending(from: string, to: string, wiki: { before: WikiResolver; after: WikiResolver }) {
 	const moved = movedBy(from, to);
 	for (const [path, content] of [...pending]) {
 		pending.delete(path);
-		pending.set(moved(path), relinkNote(content, path, moved(path), moved));
+		pending.set(moved(path), relinkNote(content, path, moved(path), moved, wiki));
 	}
 }
 
@@ -263,9 +263,23 @@ export interface EditorHost {
 	// The editor's live text, and a replacement autosaved like typing.
 	read(): string;
 	write(content: string): void;
+	// Move the cursor to a heading of the shown note, if it has one.
+	reveal(heading: string): void;
 }
 let editorHost: EditorHost | null = null;
 let shown: string | null = null;
+// A heading to jump to once its note is shown (`[[Note#Heading]]`).
+let pendingHeading: { path: string; heading: string } | null = null;
+
+// Open a note at one of its headings (null: wherever it opens).
+export function openNoteAt(path: string, heading: string | null) {
+	if (heading && path === shown && get(activePath) === path) {
+		editorHost?.reveal(heading);
+		return;
+	}
+	pendingHeading = heading ? { path, heading } : null;
+	openTab(path);
+}
 
 export function attachEditor(host: EditorHost): () => void {
 	editorHost = host;
@@ -306,7 +320,10 @@ export function showNote(path: string): Promise<void> {
 				return;
 			}
 		}
-		if (editorHost?.show(path, content)) shown = path;
+		if (!editorHost?.show(path, content)) return;
+		shown = path;
+		if (pendingHeading?.path === path) editorHost.reveal(pendingHeading.heading);
+		pendingHeading = null;
 	});
 }
 
@@ -459,7 +476,8 @@ export function updateFrontmatter(path: string, mutate: (doc: Document) => void)
 // Convert the first bare mention of the target note into a `[[link]]`
 // inside the source file.
 export function linkUnlinkedMention(sourcePath: string, targetPath: string): Promise<boolean> {
-	return rewriteNote(sourcePath, (content) => linkFirstMention(content, targetPath));
+	const links = wikiResolver(notePathsFromTree(get(tree)));
+	return rewriteNote(sourcePath, (content) => linkFirstMention(content, targetPath, links));
 }
 
 // Centralized rename/move that keeps tabs/activePath/pinned and pending
@@ -470,23 +488,26 @@ export function linkUnlinkedMention(sourcePath: string, targetPath: string): Pro
 export async function renameNote(oldPath: string, newPath: string): Promise<boolean> {
 	if (oldPath === newPath) return true;
 	const ok = await afterSaved(async () => {
+		// Wikilinks resolve by name, so the fix needs the notes before and after.
+		const moved = movedBy(oldPath, newPath);
+		const live = notePathsFromTree(get(tree));
+		const wiki = { before: wikiResolver(live), after: wikiResolver(live.map(moved)) };
 		const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ newPath })
 		}).catch(() => null);
 		if (!res?.ok) return false;
-		remapPending(oldPath, newPath);
-		const moved = movedBy(oldPath, newPath);
+		remapPending(oldPath, newPath, wiki);
 		const before = shown;
 		if (shown) shown = moved(shown);
-		// The server fixed the relative links the move broke; the open note
+		// The server fixed the links the move broke; the open note
 		// gets the same fix in its live text (which may hold links typed
 		// during the request), autosaved like typing, so the next save never
 		// puts the old links back.
 		if (before && shown && editorHost) {
 			const text = editorHost.read();
-			const out = relinkNote(text, before, shown, moved);
+			const out = relinkNote(text, before, shown, moved, wiki);
 			if (out !== text) editorHost.write(out);
 		}
 		const current = get(activePath);

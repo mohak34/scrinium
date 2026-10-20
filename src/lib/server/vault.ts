@@ -8,6 +8,7 @@ import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import path from 'node:path';
 import { error } from '@sveltejs/kit';
 import { movedBy, relinkNote } from '$lib/relink';
+import { wikiResolver } from '$lib/editor/wikilinks';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
 const TRASH_DIR = path.join(VAULT_DIR, '.trash');
@@ -208,10 +209,11 @@ export async function createFolder(relPath: string): Promise<void> {
 
 // fs.rename replaces an existing file (or empty folder), so the free check
 // and the move must not interleave with other mutations: hold the vault lock.
-// Relative links that the move broke are fixed in the same lock, in the
-// moved notes and in every note linking into the move (a whole-vault scan,
-// like backlinks). Archived notes are fixed too, read from where they came
-// from, so a restore brings them back with working links. A note that fails
+// Links that the move broke are fixed in the same lock, in the moved notes
+// and in every note linking into the move (a whole-vault scan, like
+// backlinks): relative markdown links and wikilinks. Archived and trashed
+// notes are fixed too, read from where they came from, so a restore brings
+// them back with working links. A note that fails
 // to rewrite keeps its old links rather than failing a move already made.
 // Resolves the notes it rewrote, under their current paths.
 export async function renamePath(
@@ -230,19 +232,23 @@ export async function renamePath(
 			const moved = movedBy(was, now);
 			const back = movedBy(now, was);
 			const notes = (await readNotesUnder('')).map((n) => ({ ...n, from: back(n.path), to: n.path, moved }));
-			for (const e of await listBin('archive')) {
-				const at = binPath('archive', e.name);
-				// Files archived with the note come back with it: only links
-				// leaving the archived item follow the move.
-				const o = e.originalPath;
-				const keep = (p: string) => (p === o || p.startsWith(o + '/') ? p : moved(p));
-				for (const n of await readNotesUnder(at)) {
-					const original = e.originalPath + n.path.slice(at.length);
-					notes.push({ ...n, from: original, to: original, moved: keep });
+			const live = notes.map((n) => n.path);
+			const wiki = { before: wikiResolver(live.map(back)), after: wikiResolver(live) };
+			for (const bin of ['archive', 'trash'] as const) {
+				for (const e of await listBin(bin)) {
+					const at = binPath(bin, e.name);
+					// Files binned with the note come back with it: only links
+					// leaving the binned item follow the move.
+					const o = e.originalPath;
+					const keep = (p: string) => (p === o || p.startsWith(o + '/') ? p : moved(p));
+					for (const n of await readNotesUnder(at)) {
+						const original = e.originalPath + n.path.slice(at.length);
+						notes.push({ ...n, from: original, to: original, moved: keep });
+					}
 				}
 			}
 			for (const n of notes) {
-				const out = relinkNote(n.content, n.from, n.to, n.moved);
+				const out = relinkNote(n.content, n.from, n.to, n.moved, wiki);
 				if (out === n.content) continue;
 				await writeAtomic(safeResolve(n.path), out).then(
 					() => changed.push({ path: n.path, content: out }),
@@ -417,6 +423,15 @@ export function restoreFromBin(bin: Bin, name: string): Promise<Restored> {
 		const targetFull = safeResolve(targetRel);
 		await fs.mkdir(path.dirname(targetFull), { recursive: true });
 		await fs.rename(src, targetFull);
+		// Landed under a new name: its own relative links start one name over.
+		if (targetRel !== originalPath) {
+			const moved = movedBy(originalPath, targetRel);
+			for (const n of await readNotesUnder(targetRel)) {
+				const was = originalPath + n.path.slice(targetRel.length);
+				const out = relinkNote(n.content, was, n.path, moved);
+				if (out !== n.content) await writeAtomic(safeResolve(n.path), out).catch((e) => console.error(`relink ${n.path}:`, e));
+			}
+		}
 		delete idx[name];
 		try {
 			await writeBinIndex(bin, idx);

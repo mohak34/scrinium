@@ -28,7 +28,7 @@ import { perDoc } from './docRanges';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
 	import { attachmentMarkdown, resolveAssetUrl } from '$lib/attachments';
-	import { tree, archiveEntries } from '$lib/stores/vault';
+	import { tree, archiveEntries, flushSave, openTab } from '$lib/stores/vault';
 	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
 	import { syncCell, tableBlockField, tableCommands, tableVim } from './tableBlock';
@@ -545,9 +545,10 @@ import { perDoc } from './docRanges';
 								const href = url && resolveAssetUrl(url, view.state.field(noteDirField));
 								if (href) {
 									e.preventDefault();
-									// Vault PDFs open in the pane beside the editor.
-									const asset = href.startsWith('/api/assets/') ? decodeURIComponent(href.slice(12)) : '';
-									if (asset && isPdfPath(asset)) pdfPath.set(asset);
+									// Vault notes open in the editor, PDFs in the pane beside it.
+									const asset = href.startsWith('/api/assets/') ? decodeURIComponent(href.slice(12).replace(/[?#].*$/, '')) : '';
+									if (asset.toLowerCase().endsWith('.md')) void flushSave().then(() => openTab(asset));
+									else if (asset && isPdfPath(asset)) pdfPath.set(asset);
 									else window.open(href, '_blank', 'noopener,noreferrer');
 									return true;
 								}

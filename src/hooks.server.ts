@@ -5,6 +5,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { auth, isAllowedEmail } from '$lib/server/auth';
 import { emailForBearerToken } from '$lib/server/mobileAuth';
 import { env } from '$env/dynamic/private';
+import { dev } from '$app/environment';
 
 // Bring the better-auth tables up to date once at startup. Idempotent: it
 // only creates missing tables/columns, so deploys need no migrate CLI.
@@ -28,6 +29,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 		sameSecret(event.request.headers.get('x-hub-secret'), env.HUB_SECRET);
 
 	if (isHub) return resolve(event);
+
+	// Local previews with a throwaway vault, where Google sign-in can't
+	// reach: `bun run dev` with DEV_LOGIN_EMAIL set signs every request in
+	// as that email. `dev` is false in builds, so production never does.
+	if (dev && env.DEV_LOGIN_EMAIL) {
+		event.locals.session = null;
+		event.locals.email = env.DEV_LOGIN_EMAIL;
+		return resolve(event);
+	}
 
 	// The allowlist is checked on every request, not only at sign-up, so
 	// removing an email from ALLOWED_EMAILS locks that account out at once

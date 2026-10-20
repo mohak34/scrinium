@@ -41,12 +41,12 @@ import {
 	findWikilinksInText,
 	wikiResolver,
 	wikilinkDisplay,
-	wikilinkFilename,
+	wikilinkNewPath,
 	type Wikilink,
 	type WikiResolver
 } from './wikilinks';
 import { findTagsInText } from './tags';
-import { createNote, flushSave, openTab } from '$lib/stores/vault';
+import { createNote, flushSave, openNoteAt, openTab } from '$lib/stores/vault';
 import { openBins } from '$lib/stores/bins';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
@@ -188,23 +188,29 @@ function linkTarget(target: string, ctx: WikiCtx | undefined): { path: string; a
 }
 
 // A `[[wikilink]]` rendered as a clickable pill when the cursor is off
-// the line. Click navigates; a link to an archived note opens it in the
+// the line. Click navigates (to the heading, for `[[Note#Heading]]`; within
+// the note for `[[#Heading]]`); a link to an archived note opens it in the
 // archive; clicking an unresolved target creates the note first (same
-// folder as the open note, vault root otherwise).
+// folder as the open note, or the folder the link names).
 class WikilinkWidget extends WidgetType {
 	constructor(
 		readonly target: string,
+		readonly heading: string | null,
 		readonly display: string
 	) {
 		super();
 	}
 	eq(other: WikilinkWidget) {
-		return other.target === this.target && other.display === this.display;
+		return other.target === this.target && other.heading === this.heading && other.display === this.display;
+	}
+	resolve(ctx: WikiCtx | undefined) {
+		if (this.target) return linkTarget(this.target, ctx);
+		return ctx?.current ? { path: ctx.current, archived: false } : null;
 	}
 	toDOM(view: EditorView) {
 		const span = document.createElement('span');
 		const ctx = view.state.field(wikiCtxField, false);
-		const hit = linkTarget(this.target, ctx);
+		const hit = this.resolve(ctx);
 		span.className = !hit
 			? 'cm-wikilink cm-wikilink-unresolved'
 			: hit.archived
@@ -216,20 +222,18 @@ class WikilinkWidget extends WidgetType {
 			e.preventDefault();
 			const ctx = view.state.field(wikiCtxField, false);
 			const current = ctx?.current ?? null;
-			const hit = linkTarget(this.target, ctx);
+			const hit = this.resolve(ctx);
 			if (hit?.archived) {
 				openBins('archive', hit.path);
 				return;
 			}
 			if (hit) {
 				const path = hit.path;
-				void flushSave().then(() => openTab(path));
+				void flushSave().then(() => openNoteAt(path, this.heading));
 				return;
 			}
-			const name = wikilinkFilename(this.target);
-			if (!name) return;
-			const dir = current?.includes('/') ? current.slice(0, current.lastIndexOf('/')) : null;
-			const full = dir ? `${dir}/${name}` : name;
+			const full = this.target ? wikilinkNewPath(this.target, current) : null;
+			if (!full) return;
 			void (async () => {
 				try {
 					await flushSave();
@@ -748,7 +752,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				from: w.from,
 				to: w.to,
 				deco: Decoration.replace({
-					widget: new WikilinkWidget(w.target, wikilinkDisplay(w))
+					widget: new WikilinkWidget(w.target, w.heading, wikilinkDisplay(w))
 				})
 			});
 		}

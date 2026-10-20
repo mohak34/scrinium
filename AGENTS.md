@@ -139,6 +139,11 @@ Scrinium is small, but there are a few footguns specific to it.
 Use `bun` (never npm/yarn) for dev tooling. The lockfile is `bun.lock`.
 
 - `bun run dev` — dev server on `http://localhost:5173`. Bounces to `/login`.
+  With `DEV_LOGIN_EMAIL` set (plus `VAULT_DIR`/`DATABASE_PATH` pointing at
+  a throwaway vault) it signs every request in as that email, for previews
+  Google sign-in can't reach. Dev only: builds ignore it.
+- `bun run test` — unit tests in `tests/` (pure modules: link parsing,
+  relinking). Kept outside `src` so svelte-check never sees `node:test`.
 - `bun run check` — the gate: `svelte-kit sync && svelte-check`. Must be
   0 errors / 0 warnings before committing.
 - `bun run build` — production build via `@sveltejs/adapter-node` → `build/`,
@@ -179,8 +184,12 @@ State channels you will touch:
   callouts.ts (shared Obsidian `> [!note]` parser: kinds, aliases, icons,
   `findCallouts`; editor boxes via line decos + `!active` hides, print
   rewrites blockquotes post-restore so math/code inside keep rendering),
-  wikilinks.ts (shared `[[link]]` parse/resolve/backlink-match; the editor
-  pill `WikilinkWidget` and its click-to-open/create live in livePreview.ts,
+  wikilinks.ts (shared `[[link]]` parse/resolve, `[[#heading]]` for the
+  note itself, `wikiTargetFor` (shortest unambiguous way to write a link),
+  `wikilinkNewPath` (where an unresolved link creates its note, folders
+  included); the editor pill `WikilinkWidget` and its click-to-open/create
+  live in livePreview.ts - a heading link opens through `openNoteAt`, which
+  jumps once `showNote` lands,
   fed the note list by `wikiCtxField` there; `[[` completion in
   wikiComplete.ts),
   frontmatter.ts (shared YAML `---` props: parse, `effectiveTitle`
@@ -337,15 +346,20 @@ State channels you will touch:
   settings dialog.
   `src/lib/archive.ts` holds the archive types and path mapping shared by
   the routes, MCP and the view.
-  `src/lib/relink.ts` finds relative markdown link destinations
-  (`[t](url)`, `![a](url)`, `[ref]: url`) with the editor's Lezer parser,
-  so code is never touched. `renamePath` in vault.ts uses it inside the
-  vault lock to fix the links a move broke, in the moved notes, in every
-  note linking into the move and in archived notes (from their original
-  path); the PATCH route reindexes and returns those paths. `renameNote`
-  applies the same `relinkNote` to the open note's live text and to queued
-  unsaved text, so autosave never writes the old links back. Moves that
-  skip `renamePath` leave broken images.
+  `src/lib/relink.ts` is the one link scanner: relative markdown link
+  destinations (`[t](url)`, `![a](url)`, `[ref]: url`) and wikilinks, found
+  with the editor's Lezer parser so code is never touched. `noteLinks`
+  lists where a note's links go (backlinks, archive review). `relinkNote`
+  fixes links after a move; wikilinks need resolvers for the vault before
+  and after it, since a move can also hand a bare name to another note
+  (old links then get pinned by path). `renamePath` in vault.ts runs it
+  inside the vault lock over the moved notes, every note linking into the
+  move and archived and trashed notes (from their original path); the
+  PATCH route reindexes and returns those paths. A restore that lands
+  under a new name fixes its own relative links. `renameNote` applies the
+  same `relinkNote` to the open note's live text and to queued unsaved
+  text, so autosave never writes the old links back. Moves that skip
+  `renamePath` leave broken links.
   `settings/SettingsDialog.svelte` is the one settings surface:
   a modal the root layout mounts (and loads) only while open, through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer

@@ -31,6 +31,7 @@
 		hideNote
 	} from '$lib/stores/vault';
 	import { settings } from '$lib/stores/settings';
+	import { headingLine } from '$lib/editor/outline';
 	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 	import { createRequest, focusSearchRequest, renameRequest, startCreate } from '$lib/stores/actions';
 	import { paletteOpen, leaderPending, usePageCommands, isTyping } from '$lib/stores/palette';
@@ -60,6 +61,10 @@
 				return true;
 			},
 			read: () => currentContent,
+			reveal(heading) {
+				const line = headingLine(currentContent, heading);
+				if (line !== null) editorRef?.gotoLine(line);
+			},
 			write(content) {
 				editorRef?.setDoc(content);
 				onChange(content);
