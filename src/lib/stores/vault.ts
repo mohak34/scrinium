@@ -398,11 +398,12 @@ function getNewNoteTemplate(title: string): string {
 export async function createNote(path: string) {
 	const base = path.replace(/\.md$/, '').split('/').pop() ?? 'Untitled';
 	const body = getNewNoteTemplate(base);
-	await fetch(`/api/notes/${encPath(path)}`, {
+	const res = await fetch(`/api/notes/${encPath(path)}`, {
 		method: 'PUT',
-		headers: { 'Content-Type': 'text/plain' },
+		headers: { 'Content-Type': 'text/plain', 'If-None-Match': '*' },
 		body
 	});
+	if (!res.ok) throw new Error(`create ${path}: ${res.status}`);
 	await loadTree();
 }
 

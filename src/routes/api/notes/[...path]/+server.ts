@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import {
 	readNote,
 	writeNote,
+	createNoteFile,
 	createFolder,
 	renamePath,
 	isFolder,
@@ -43,7 +44,9 @@ export const GET: RequestHandler = async ({ params }) => {
 export const PUT: RequestHandler = async ({ params, request }) => {
 	const path = writable(params.path);
 	const content = await request.text();
-	await writeNote(path, content);
+	// `If-None-Match: *` asks for create-only: 409 instead of overwriting.
+	if (request.headers.get('if-none-match') === '*') await createNoteFile(path, content);
+	else await writeNote(path, content);
 
 	const title = effectiveTitle(content, path);
 	upsertNoteMeta(path, title, Date.now());
@@ -65,6 +68,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	const body = await request.json().catch(() => null);
 	if (!body?.newPath || typeof body.newPath !== 'string') throw error(400, 'Invalid request');
 	const to = writable(body.newPath);
+	// Same path: nothing moves, and the bookkeeping below would drop the
+	// note's own task links and index row as "stale rows at the target".
+	if (from === to) return json({ relinked: [] });
 	const relinked = await renamePath(from, to);
 	renameNoteMeta(from, to);
 	renameNoteIndex(from, to);
