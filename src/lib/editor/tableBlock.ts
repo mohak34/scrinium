@@ -38,6 +38,12 @@ import {
 } from '@codemirror/view';
 import { defaultKeymap, redo, undo } from '@codemirror/commands';
 import {
+	autocompletion,
+	startCompletion,
+	type CompletionContext,
+	type CompletionResult
+} from '@codemirror/autocomplete';
+import {
 	isPreviewMode,
 	noteDirEffect,
 	noteDirField,
@@ -290,6 +296,8 @@ interface CellEdit {
 	host: HTMLElement;
 	ref: CellRef;
 	refocus: boolean;
+	// The cell's text when it opened, for its completions.
+	opened: string;
 }
 
 // The open cell editor, at most one: the main view has one selection.
@@ -429,12 +437,45 @@ export function syncCell(view: EditorView) {
 		parent: freshTd,
 		state: EditorState.create({ doc: text, selection: local, extensions: cellExtensions })
 	});
-	edit = { main: view, cell, host: freshHost, ref, refocus: false };
+	edit = { main: view, cell, host: freshHost, ref, refocus: false, opened: text };
 	if (click) {
 		const pos = cell.posAtCoords(click);
 		if (pos !== null) cell.dispatch({ selection: { anchor: pos } });
 	}
 	cell.focus();
+	startCompletion(cell);
+}
+
+/**
+ * The values used in the open cell's column, when the column repeats a
+ * value: a status column then edits like a select, while a free text
+ * column (every value different) offers nothing. `own` adds the open
+ * cell's value, left out once edited so a half-typed word is no choice.
+ */
+function columnChoices(own: boolean): string[] {
+	if (!edit || edit.ref.row === 0) return [];
+	const { main, ref } = edit;
+	const t = tableAt(main.state, ref.from);
+	if (!t) return [];
+	const column = readTable(main.state, t).rows.map((r) => r[ref.col]);
+	const filled = column.slice(1).filter(Boolean);
+	if (new Set(filled).size === filled.length) return [];
+	const others = column.filter((v, i) => v && i > 0 && (own || i !== ref.row));
+	return [...new Set(others)].sort((a, b) => a.localeCompare(b));
+}
+
+// A cell lists every choice until it is edited, to show what a filled
+// cell can change to; typing filters them.
+function cellCompletions(ctx: CompletionContext): CompletionResult | null {
+	const untouched = ctx.state.doc.toString() === edit?.opened;
+	const choices = columnChoices(untouched);
+	if (!choices.length) return null;
+	return {
+		from: 0,
+		to: ctx.state.doc.length,
+		options: choices.map((label) => ({ label })),
+		filter: !untouched
+	};
 }
 
 // Copy cell edits and caret moves into the main doc, as one transaction
@@ -569,10 +610,25 @@ function enterKey(cell: EditorView): boolean {
 const onMain = (cmd: (view: EditorView) => boolean) => (cell: EditorView) =>
 	!!edit && edit.cell === cell && (cmd(edit.main), true);
 
+// The completion keymap runs before the cell keys, so while the list is
+// open Up/Down/Enter/Esc work it and Tab still steps to the next cell.
 const cellExtensions = [
 	EditorView.lineWrapping,
 	cellInputFilter,
 	writeBack,
+	autocompletion({ override: [cellCompletions], icons: false }),
+	// The note theme styles the list, but inside the cell editor its own
+	// base styles are more specific for these two.
+	EditorView.theme(
+		{
+			'.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--font-ui)' },
+			'.cm-tooltip-autocomplete ul li[aria-selected]': {
+				backgroundColor: 'var(--hover)',
+				color: 'var(--text)'
+			}
+		},
+		{ dark: true }
+	),
 	Prec.high(
 		keymap.of([
 			{ key: 'Tab', run: step('next') },

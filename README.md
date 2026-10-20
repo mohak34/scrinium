@@ -8,7 +8,7 @@ Every note is a `.md` file under `VAULT_DIR`. You can edit, back up, or move not
 
 The editor is CodeMirror 6. It hides markdown syntax and shows it again on the line the cursor is on. Pasted or dropped files go to an `attachments` folder inside the note's project, or at the vault root for notes outside a project; Settings > Attachments changes that.
 
-Tables stay rendered while you edit them. Click a cell to edit its markdown in place. Tab and Shift+Tab move between cells, Enter moves down a row (adding one at the bottom), and arrow keys cross cell edges. With vim motions on, j and k move between rows and `i` or `a` edits the cell. The palette adds and deletes rows and columns, aligns and sorts columns, and has "Table: edit as markdown" for the raw lines.
+Tables stay rendered while you edit them. Click a cell to edit its markdown in place. Tab and Shift+Tab move between cells, Enter moves down a row (adding one at the bottom), and arrow keys cross cell edges. In a column that repeats a value, like a status column, opening a cell lists the column's values to pick from, and typing filters them. With vim motions on, j and k move between rows and `i` or `a` edits the cell. The palette adds and deletes rows and columns, aligns and sorts columns, and has "Table: edit as markdown" for the raw lines.
 
 PDFs in the vault open beside the editor: click one in the file tree, or Ctrl+click a link to it in a note. Highlights, drawings and text notes are saved into the PDF file itself as standard annotations, so any other PDF reader shows them.
 
