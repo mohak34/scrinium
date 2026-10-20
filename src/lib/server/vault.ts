@@ -224,7 +224,10 @@ export async function renamePath(
 	const to = safeResolve(newRelPath);
 	if (from === to) return [];
 	return withVaultLock(async () => {
+		if (!(await exists(from))) throw error(404, 'Not found');
+		if (to.startsWith(from + path.sep)) throw error(400, 'Cannot move a folder into itself');
 		if (await exists(to)) throw error(409, 'Target already exists');
+		await fs.mkdir(path.dirname(to), { recursive: true });
 		await fs.rename(from, to);
 		const [was, now] = [vaultRel(oldRelPath), vaultRel(newRelPath)];
 		const changed: { path: string; content: string }[] = [];

@@ -142,8 +142,6 @@ Use `bun` (never npm/yarn) for dev tooling. The lockfile is `bun.lock`.
   With `DEV_LOGIN_EMAIL` set (plus `VAULT_DIR`/`DATABASE_PATH` pointing at
   a throwaway vault) it signs every request in as that email, for previews
   Google sign-in can't reach. Dev only: builds ignore it.
-- `bun run test` — unit tests in `tests/` (pure modules: link parsing,
-  relinking). Kept outside `src` so svelte-check never sees `node:test`.
 - `bun run check` — the gate: `svelte-kit sync && svelte-check`. Must be
   0 errors / 0 warnings before committing.
 - `bun run build` — production build via `@sveltejs/adapter-node` → `build/`,
