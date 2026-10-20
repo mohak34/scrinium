@@ -135,6 +135,30 @@ export function setEffectiveTitle(content: string, newTitle: string): string | n
 	return lines.join('\n');
 }
 
+/** A title as a filename stem, null when nothing usable is left. */
+export function sanitizeTitleForFilename(title: string): string | null {
+	let name = title.trim().replace(/[\\/:*?"<>|]/g, '').replace(/^\.+/, '').trim();
+	if (!name || name === '.' || name === '..' || name.startsWith('.')) return null;
+	// Cap length to keep filesystem happy
+	if (name.length > 100) name = name.slice(0, 100).trim();
+	return name;
+}
+
+/**
+ * A note renamed to a new filename takes the new name as its title when
+ * its title was the old filename. A title that already differed (the
+ * heading-to-filename sync renamed it, or the author chose another) is
+ * left alone, so the two sync directions never undo each other. Applied
+ * by the server on every move and by the editor to its live copy.
+ */
+export function retitle(content: string, oldPath: string, newPath: string): string {
+	const stem = (p: string) => (/\.md$/i.test(p) ? p.slice(p.lastIndexOf('/') + 1, -3) : null);
+	const [was, now] = [stem(oldPath), stem(newPath)];
+	if (was === null || now === null || was === now) return content;
+	if (sanitizeTitleForFilename(effectiveTitle(content, '')) !== was) return content;
+	return setEffectiveTitle(content, now) ?? content;
+}
+
 /**
  * Rewrite the frontmatter block via a YAML Document (preserves comments and
  * key order). Creates the block when missing, drops it when the mutation

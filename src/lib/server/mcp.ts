@@ -233,13 +233,11 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		'move_note',
 		{
 			description:
-				'Rename or move a note or folder. Shares and task links follow it. Wikilinks in other notes are not rewritten.',
+				'Rename or move a note or folder. Missing folders on the way are created. Links in other notes (wikilinks and markdown links), shares, task links and projects follow it, and a note whose title was its old filename takes the new name as its title. Project folders stay at the vault root. Calling it again after it succeeded is harmless.',
 			inputSchema: { path: NotePath, new_path: NotePath }
 		},
 		async ({ path, new_path }) => {
 			const to = new_path.replace(/^\/+/, '');
-			const cut = to.lastIndexOf('/');
-			if (cut > 0) await send('POST', `/api/notes/${enc(to.slice(0, cut))}`, { folder: true });
 			await send('PATCH', `/api/notes/${enc(path)}`, { newPath: to });
 			onWrite('move_note', `${path} -> ${to}`);
 			return result(`Moved ${path} to ${new_path}`);

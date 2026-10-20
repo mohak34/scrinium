@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { movedBy, relinkNote } from '$lib/relink';
 import { linkFirstMention, notePathsFromTree, wikiResolver, type WikiResolver } from '$lib/editor/wikilinks';
-import { effectiveTitle, setEffectiveTitle, updateFrontmatterBlock } from '$lib/editor/frontmatter';
+import { effectiveTitle, retitle, sanitizeTitleForFilename, updateFrontmatterBlock } from '$lib/editor/frontmatter';
 import type { Document } from 'yaml';
 import type { ArchiveEntry } from '$lib/archive';
 
@@ -243,13 +243,13 @@ function afterSaved<T>(fn: () => Promise<T>): Promise<T | null> {
 }
 
 // Pending text follows a rename so a late save never recreates the old file,
-// and gets the link fix the server gave the saved copies, so it never
-// writes the old links back.
+// and gets the link and title fix the server gave the saved copies, so it
+// never writes the old ones back.
 function remapPending(from: string, to: string, wiki: { before: WikiResolver; after: WikiResolver }) {
 	const moved = movedBy(from, to);
 	for (const [path, content] of [...pending]) {
 		pending.delete(path);
-		pending.set(moved(path), relinkNote(content, path, moved(path), moved, wiki));
+		pending.set(moved(path), relinkNote(retitle(content, path, moved(path)), path, moved(path), moved, wiki));
 	}
 }
 
@@ -337,14 +337,6 @@ export function extractTitle(content: string, fallback = ''): string | null {
 	return title || null;
 }
 
-export function sanitizeTitleForFilename(title: string): string | null {
-	let name = title.trim().replace(/[\\/:*?"<>|]/g, '').replace(/^\.+/, '').trim();
-	if (!name || name === '.' || name === '..' || name.startsWith('.')) return null;
-	// Cap length to keep filesystem happy
-	if (name.length > 100) name = name.slice(0, 100).trim();
-	return name;
-}
-
 let pendingTitleSync: { path: string; title: string } | null = null;
 let titleSyncTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -383,18 +375,6 @@ async function executeTitleSync() {
 export function cancelTitleSync() {
 	clearTimeout(titleSyncTimer);
 	pendingTitleSync = null;
-}
-
-// Rewrite the renamed note's title (fm `title:` key when the block owns
-// one, else the body heading) to match its new filename.
-export async function syncFilenameToTitle(oldPath: string, newPath: string) {
-	if (!newPath.endsWith('.md')) return;
-	const newBase = newPath.split('/').pop()!.replace(/\.md$/, '');
-	const ok = await rewriteNote(newPath, (content) =>
-		effectiveTitle(content, '') === newBase ? null : setEffectiveTitle(content, newBase)
-	);
-	// A title sync queued before the rename would rename it back.
-	if (ok && shown === newPath) cancelTitleSync();
 }
 
 // --- New note defaults ---
@@ -498,16 +478,19 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 			body: JSON.stringify({ newPath })
 		}).catch(() => null);
 		if (!res?.ok) return false;
+		// A heading-to-filename rename queued for the old path is stale now.
+		if (pendingTitleSync && moved(pendingTitleSync.path) !== pendingTitleSync.path) cancelTitleSync();
 		remapPending(oldPath, newPath, wiki);
 		const before = shown;
 		if (shown) shown = moved(shown);
-		// The server fixed the links the move broke; the open note
+		// The server fixed the links the move broke (and the title, when it
+		// was the old filename); the open note
 		// gets the same fix in its live text (which may hold links typed
 		// during the request), autosaved like typing, so the next save never
 		// puts the old links back.
 		if (before && shown && editorHost) {
 			const text = editorHost.read();
-			const out = relinkNote(text, before, shown, moved, wiki);
+			const out = relinkNote(retitle(text, before, shown), before, shown, moved, wiki);
 			if (out !== text) editorHost.write(out);
 		}
 		const current = get(activePath);

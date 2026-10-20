@@ -9,6 +9,7 @@ import path from 'node:path';
 import { error } from '@sveltejs/kit';
 import { movedBy, relinkNote } from '$lib/relink';
 import { wikiResolver } from '$lib/editor/wikilinks';
+import { retitle } from '$lib/editor/frontmatter';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
 const TRASH_DIR = path.join(VAULT_DIR, '.trash');
@@ -213,25 +214,40 @@ export async function createFolder(relPath: string): Promise<void> {
 // and in every note linking into the move (a whole-vault scan, like
 // backlinks): relative markdown links and wikilinks. Archived and trashed
 // notes are fixed too, read from where they came from, so a restore brings
-// them back with working links. A note that fails
-// to rewrite keeps its old links rather than failing a move already made.
-// Resolves the notes it rewrote, under their current paths.
+// them back with working links. A renamed note whose title was its old
+// filename takes the new one (`retitle`). A note that fails to rewrite keeps
+// its old links rather than failing a move already made. `book` moves the
+// database rows (meta, index, shares, task links, projects) in the same lock,
+// so a second move can never run between the file and its rows. A retry of
+// a move already made (source gone, target there) is a no-op. Resolves the
+// notes it rewrote, under their current paths.
 export async function renamePath(
 	oldRelPath: string,
-	newRelPath: string
+	newRelPath: string,
+	book: () => void
 ): Promise<{ path: string; content: string }[]> {
 	const from = safeResolve(oldRelPath);
 	const to = safeResolve(newRelPath);
 	if (from === to) return [];
 	return withVaultLock(async () => {
-		if (!(await exists(from))) throw error(404, 'Not found');
+		if (!(await exists(from))) {
+			if (await exists(to)) return [];
+			throw error(404, 'Not found');
+		}
 		if (to.startsWith(from + path.sep)) throw error(400, 'Cannot move a folder into itself');
 		if (await exists(to)) throw error(409, 'Target already exists');
 		await fs.mkdir(path.dirname(to), { recursive: true });
 		await fs.rename(from, to);
 		const [was, now] = [vaultRel(oldRelPath), vaultRel(newRelPath)];
-		const changed: { path: string; content: string }[] = [];
+		book();
+		const changed = new Map<string, string>();
 		try {
+			const text = now.endsWith('.md') ? await fs.readFile(to, 'utf-8').catch(() => null) : null;
+			const titled = text === null ? text : retitle(text, was, now);
+			if (titled !== null && titled !== text) {
+				await writeAtomic(to, titled);
+				changed.set(now, titled);
+			}
 			const moved = movedBy(was, now);
 			const back = movedBy(now, was);
 			const notes = (await readNotesUnder('')).map((n) => ({ ...n, from: back(n.path), to: n.path, moved }));
@@ -254,14 +270,14 @@ export async function renamePath(
 				const out = relinkNote(n.content, n.from, n.to, n.moved, wiki);
 				if (out === n.content) continue;
 				await writeAtomic(safeResolve(n.path), out).then(
-					() => changed.push({ path: n.path, content: out }),
+					() => changed.set(n.path, out),
 					(e) => console.error(`relink ${n.path}:`, e)
 				);
 			}
 		} catch (e) {
 			console.error('relink after move:', e);
 		}
-		return changed;
+		return [...changed].map(([path, content]) => ({ path, content }));
 	});
 }
 

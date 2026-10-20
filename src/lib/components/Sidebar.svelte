@@ -15,7 +15,6 @@
 		createNote,
 		createFolder,
 		renameNote,
-		syncFilenameToTitle,
 		deletePath,
 		archivePath,
 		movePath,
@@ -230,7 +229,6 @@
 				const ok = await renameNote(path, newPath);
 				if (ok) {
 					renameDir(path, newPath);
-					await syncFilenameToTitle(path, newPath);
 					// The server moved the project and its tasks with the folder.
 					if (wasProject) {
 						await Promise.all([loadProjects(), loadTasks()]);

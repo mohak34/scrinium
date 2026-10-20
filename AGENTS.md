@@ -83,12 +83,17 @@ Scrinium is small, but there are a few footguns specific to it.
    plus `BETTER_AUTH_SECRET` gate the whole deployment. Never log or commit
    them.
 4. **Breaking the title ↔ filename sync loop.** For `.md` notes the first `# `
-   heading and the filename are kept identical (see `scheduleTitleSync` /
-   `syncFilenameToTitle` in `src/lib/stores/vault.ts`). Both directions guard
-   against loops by comparing sanitized values before acting; a rename also
-   flushes pending saves first. Don't add a second path that renames notes
-   without going through `renameNote` (moves included), or tabs/pins/
-   activePath and queued saves drift. A rename of the open note moves
+   heading and the filename are kept identical. Heading to filename is
+   `scheduleTitleSync` in `src/lib/stores/vault.ts`; filename to heading is
+   `retitle` in frontmatter.ts, applied by the server on every move and by
+   `renameNote` to the editor's live text. Both directions guard against
+   loops by comparing sanitized values before acting (`retitle` only
+   touches a title that was the old filename); a rename also flushes
+   pending saves first. Every move, from the UI or MCP, is the notes PATCH
+   route: `renamePath` moves the file and its database rows in one vault
+   lock. Don't add a second path that renames notes without going through
+   `renameNote` on the client (moves included), or tabs/pins/activePath and
+   queued saves drift. A rename of the open note moves
    `shownNote()` with it, so the page keeps the editor instead of reloading.
 5. **Bypassing the bin indexes.** Deletes move files into `VAULT_DIR/.trash/`,
    archiving into `VAULT_DIR/.archive/`, flat as `<stamp>-<name>`, with the
@@ -412,7 +417,8 @@ State channels you will touch:
   a nested one (`POST /api/projects` creates it; `NewProjectDialog.svelte`
   from the sidebar, the palette or the board's tabs); tasks with no
   project are Quotidian. `tasks.project` holds that folder path, and a note/folder
-  rename moves both via `renameProjects`. Rows outlive a trashed folder;
+  rename moves both via `renameProjects`; the PATCH route refuses to move
+  a project folder below the root. Rows outlive a trashed folder;
   a restore under a new name moves the ones whose folders came back.
   Subtasks always carry their parent's project: the task routes enforce
   it and `setSubtreeProject` cascades a change on the parent.

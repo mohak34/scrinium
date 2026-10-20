@@ -18,7 +18,8 @@ import {
 	indexNote,
 	renameNoteIndex,
 	renameTaskLinks,
-	renameProjects
+	renameProjects,
+	getProject
 } from '$lib/server/db';
 import { renameShares } from '$lib/server/shares';
 
@@ -71,14 +72,20 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	// Same path: nothing moves, and the bookkeeping below would drop the
 	// note's own task links and index row as "stale rows at the target".
 	if (from === to) return json({ relinked: [] });
-	const relinked = await renamePath(from, to);
-	renameNoteMeta(from, to);
-	renameNoteIndex(from, to);
-	renameShares(from, to);
-	renameTaskLinks(from, to);
-	renameProjects(vaultRel(from), vaultRel(to), isFolder);
-	// Notes whose relative links the move rewrote; the editor fixes its
-	// copy of the open one the same way (relinkNote). Archived ones stay
+	// Projects are folders at the vault root; nested, the row would point
+	// at a folder the sidebar never shows as one.
+	if (getProject(vaultRel(from)) && vaultRel(to).includes('/')) {
+		throw error(400, 'A project folder stays at the vault root');
+	}
+	const relinked = await renamePath(from, to, () => {
+		renameNoteMeta(from, to);
+		renameNoteIndex(from, to);
+		renameShares(from, to);
+		renameTaskLinks(from, to);
+		renameProjects(vaultRel(from), vaultRel(to), isFolder);
+	});
+	// Notes whose links or title the move rewrote; the editor fixes its
+	// copy of the open one the same way (relinkNote, retitle). Archived ones stay
 	// searchable but have no metadata, like every binned note.
 	for (const n of relinked) {
 		const title = effectiveTitle(n.content, n.path);
