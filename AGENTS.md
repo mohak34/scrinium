@@ -71,10 +71,14 @@ Scrinium is small, but there are a few footguns specific to it.
    hideable element keeps the guard, or it is a regression. Tables are
    the one exception: they never show raw on cursor lines, the cell
    editor gives each cell its raw source instead (tableBlock.ts).
-2. **Treating the SQLite table as authoritative.** It is a metadata cache.
-   If it drifts, delete `data/scrinium.db` and restart (tables are recreated on boot) — the vault
-   `.md` files are untouched. Never let a feature depend on the cache being
-   present or correct.
+2. **Treating the note cache as authoritative.** `note_meta`, `note_fts`
+   and `note_docs` cache the vault (recent notes, search). Everything else
+   in `data/scrinium.db` (tasks, projects, shares, tokens, auth) is the only
+   copy: never delete the file. If the cache drifts, stop the app, run
+   `node -e "const d=require('better-sqlite3')(process.argv[1]);d.exec('DELETE FROM note_meta; DROP TABLE note_docs')" data/scrinium.db`
+   from the app directory and start it; boot clears the search index and
+   the first search rebuilds it from the vault. Never let a feature depend
+   on the cache being present or correct.
 3. **Committing secrets.** `.env` is gitignored for a reason. `ALLOWED_EMAILS`
    plus `BETTER_AUTH_SECRET` gate the whole deployment. Never log or commit
    them.

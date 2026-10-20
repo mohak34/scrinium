@@ -189,6 +189,16 @@ export async function writeNote(relPath: string, content: string): Promise<void>
 	return withVaultLock(() => writeAtomic(fullPath, content));
 }
 
+// Writes a new note, failing with a 409 if anything already sits at the path.
+// The check and the write share the lock, so a create never replaces a note.
+export async function createNoteFile(relPath: string, content: string): Promise<void> {
+	const fullPath = safeResolve(relPath);
+	return withVaultLock(async () => {
+		if (await exists(fullPath)) throw error(409, 'Note already exists');
+		await writeAtomic(fullPath, content);
+	});
+}
+
 export async function createFolder(relPath: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
 	return withVaultLock(async () => {

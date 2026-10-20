@@ -81,10 +81,9 @@ const enc = (p: string) => p.replace(/^\/+/, '').split('/').map(encodeURICompone
 export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite = () => {}) {
 	// Throws the route's error message so the SDK reports it as a tool error.
 	async function call(path: string, init?: RequestInit): Promise<Response> {
-		const res = await fetch(path, {
-			...init,
-			headers: typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : init?.headers
-		});
+		const headers = new Headers(init?.headers);
+		if (typeof init?.body === 'string' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+		const res = await fetch(path, { ...init, headers });
 		if (!res.ok) {
 			const raw = await res.text();
 			let msg = raw;
@@ -99,7 +98,6 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		(await (await call(path, init)).json()) as T;
 	const send = (method: string, path: string, body?: unknown) =>
 		call(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
-	const exists = async (path: string) => (await fetch(`/api/notes/${enc(path)}`)).ok;
 	const readNote = async (path: string) => (await call(`/api/notes/${enc(path)}`)).text();
 	const writeNote = (path: string, content: string) =>
 		call(`/api/notes/${enc(path)}`, { method: 'PUT', body: content });
@@ -170,8 +168,13 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		},
 		async ({ path, content }) => {
 			if (!path.endsWith('.md')) throw new Error('Note paths end in .md');
-			if (await exists(path)) throw new Error(`${path} already exists. Use update_note or append_to_note.`);
-			await writeNote(path, content);
+			await call(`/api/notes/${enc(path)}`, {
+				method: 'PUT',
+				headers: { 'If-None-Match': '*' },
+				body: content
+			}).catch((e: Error) => {
+				throw e.message.startsWith('409') ? new Error(`${path} already exists. Use update_note or append_to_note.`) : e;
+			});
 			onWrite('create_note', path);
 			return result(`Created ${path}`);
 		}

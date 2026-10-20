@@ -70,15 +70,17 @@ export function deleteNoteMetaByPrefix(relPath: string) {
 	db.prepare(`DELETE FROM note_meta WHERE ${under('path')}`).run(...underArgs(relPath));
 }
 
-export function renameNoteMeta(oldPath: string, newPath: string) {
+export const renameNoteMeta = db.transaction((oldPath: string, newPath: string) => {
 	const rows = db
 		.prepare(`SELECT path FROM note_meta WHERE ${under('path')}`)
 		.all(...underArgs(oldPath)) as { path: string }[];
 	for (const row of rows) {
 		const renamed = newPath + row.path.slice(oldPath.length);
+		// A stale row already at the target would collide on the path.
+		db.prepare(`DELETE FROM note_meta WHERE path = ?`).run(renamed);
 		db.prepare(`UPDATE note_meta SET path = ? WHERE path = ?`).run(renamed, row.path);
 	}
-}
+});
 
 const dropDocs = (where: string, args: string[]) => {
 	db.prepare(`DELETE FROM note_fts WHERE rowid IN (SELECT id FROM note_docs WHERE ${where})`).run(...args);
