@@ -213,7 +213,9 @@ State channels you will touch:
   the cell's raw source; its edits are written back to the main doc as
   one transaction each (same userEvent, so undo groups like typing and
   runs through the main history), and the widget skips repainting for
-  its own echo. Tab/Enter/arrows step cells via the main selection;
+  its own echo. A column that repeats a value offers the column's
+  values as completions in that cell editor (`columnChoices`), so a
+  status column edits like a select with nothing declared. Tab/Enter/arrows step cells via the main selection;
   typed `|` is escaped. In vim normal mode the cell is only outlined
   and j/k move by row (vim's own j/k jump over the widget); `i`/`a`
   open it through `tableVim`, a facet CodeEditor provides. Row/column/
