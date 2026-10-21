@@ -228,9 +228,10 @@ export async function createFolder(relPath: string): Promise<void> {
 // filename takes the new one (`retitle`). A note that fails to rewrite keeps
 // its old links rather than failing a move already made. `book` moves the
 // database rows (meta, index, shares, task links, projects) in the same lock,
-// so a second move can never run between the file and its rows. A retry of
-// a move already made (source gone, target there) is a no-op. Resolves the
-// notes it rewrote, under their current paths.
+// so a second move can never run between the file and its rows. A missing
+// source is a 404 even when the target exists: the caller may hold a stale
+// copy, and reporting success would let it write that copy over the target.
+// Resolves the notes it rewrote, under their current paths.
 export async function renamePath(
 	oldRelPath: string,
 	newRelPath: string,
@@ -240,10 +241,7 @@ export async function renamePath(
 	const to = safeResolve(newRelPath);
 	if (from === to) return [];
 	return withVaultLock(async () => {
-		if (!(await exists(from))) {
-			if (await exists(to)) return [];
-			throw error(404, 'Not found');
-		}
+		if (!(await exists(from))) throw error(404, 'Not found');
 		if (to.startsWith(from + path.sep)) throw error(400, 'Cannot move a folder into itself');
 		if (await exists(to)) throw error(409, 'Target already exists');
 		await fs.mkdir(path.dirname(to), { recursive: true });
