@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import type { TaskPriority, TaskStatus } from '$lib/taskModel';
+import type { ProjectColor, ProjectIcon } from '$lib/projects';
 
 export type { TaskPriority, TaskStatus };
 export { PRIORITIES, STATUSES } from '$lib/taskModel';
@@ -220,6 +221,8 @@ export async function deleteTask(id: string): Promise<boolean> {
 export interface Project {
 	path: string;
 	created_at: number;
+	icon: string | null;
+	color: string | null;
 }
 
 export const projects = writable<Project[]>([]);
@@ -264,6 +267,18 @@ export async function createProject(path: string): Promise<Project | string> {
 		[...all.filter((p) => p.path !== row.path), row].sort((a, b) => a.path.localeCompare(b.path))
 	);
 	return row;
+}
+
+/** Sets the sidebar icon or color, shown at once; the reload puts it back if the write failed. */
+export async function styleProject(path: string, style: { icon?: ProjectIcon; color?: ProjectColor }) {
+	projects.update((all) => all.map((p) => (p.path === path ? { ...p, ...style } : p)));
+	await fetch(`/api/projects?path=${encodeURIComponent(path)}`, {
+		method: 'PATCH',
+		credentials: 'include',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(style)
+	}).catch(() => null);
+	void loadProjects();
 }
 
 /** Unregisters the project; the folder stays and its tasks join Quotidian. */

@@ -152,6 +152,9 @@
 						<span class="material-symbols-outlined file-chevron"
 							>{$collapsedDirs.has(entry.path) ? 'chevron_right' : 'expand_more'}</span
 						>
+						<span class="material-symbols-outlined fill dir-icon"
+							>{$collapsedDirs.has(entry.path) ? 'folder' : 'folder_open'}</span
+						>
 						<span class="file-label">{entry.name}</span>
 						{#if noteCount(entry) > 0}<span class="count">{noteCount(entry)}</span>{/if}
 					</div>
@@ -293,8 +296,10 @@
 		user-select: none;
 		white-space: nowrap;
 	}
+	/* Folders sit between notes (400) and project headers (700). */
 	.dir {
 		color: var(--text);
+		font-weight: 550;
 	}
 	.file {
 		padding-left: calc(30px + var(--depth, 0) * 16px);
@@ -318,9 +323,15 @@
 	.file.dragging {
 		opacity: 0.4;
 	}
+	/* The icon font has one weight; a stroke makes the arrow read bolder. */
 	.file-chevron {
-		font-size: 18px;
-		color: var(--text-3);
+		font-size: 17px;
+		color: var(--text-2);
+		-webkit-text-stroke: 0.6px currentColor;
+	}
+	.dir-icon {
+		font-size: 16px;
+		color: var(--text-2);
 	}
 	.file-icon {
 		font-size: 16px;

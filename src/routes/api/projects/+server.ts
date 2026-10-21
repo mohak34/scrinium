@@ -1,10 +1,11 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { listProjects, getProject, insertProject, deleteProject } from '$lib/server/db';
+import { listProjects, getProject, insertProject, deleteProject, setProjectStyle } from '$lib/server/db';
+import { isProjectColor, isProjectIcon } from '$lib/projects';
 import { createFolder } from '$lib/server/vault';
 
 // Projects are vault folders, addressed by path in the body (POST) or
-// ?path= (DELETE), since paths carry slashes. Only a new project's path is
+// ?path= (PATCH, DELETE), since paths carry slashes. Only a new project's path is
 // cleaned; an existing one is addressed by its stored path exactly, which a
 // folder rename may have set to anything the vault accepts.
 
@@ -38,4 +39,15 @@ export const DELETE: RequestHandler = async ({ url }) => {
 	if (!getProject(path)) throw error(404, 'Project not found');
 	deleteProject(path);
 	return json({ ok: true });
+};
+
+// Sets the sidebar icon and/or color.
+export const PATCH: RequestHandler = async ({ url, request }) => {
+	const path = url.searchParams.get('path') ?? '';
+	if (!getProject(path)) throw error(404, 'Project not found');
+	const body = await request.json().catch(() => null);
+	const { icon, color } = body ?? {};
+	if (icon !== undefined && !isProjectIcon(icon)) throw error(400, 'Bad icon');
+	if (color !== undefined && !isProjectColor(color)) throw error(400, 'Bad color');
+	return json(setProjectStyle(path, { icon, color }));
 };

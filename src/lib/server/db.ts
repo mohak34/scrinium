@@ -592,10 +592,17 @@ db.exec(`
 		created_at INTEGER NOT NULL
 	);
 `);
+// The sidebar look; null until picked (see projectStyle).
+for (const col of ['icon', 'color']) {
+	const cols = db.prepare(`PRAGMA table_info(projects)`).all() as { name: string }[];
+	if (!cols.some((c) => c.name === col)) db.exec(`ALTER TABLE projects ADD COLUMN ${col} TEXT`);
+}
 
 export interface ProjectRow {
 	path: string;
 	created_at: number;
+	icon: string | null;
+	color: string | null;
 }
 
 export function listProjects(): ProjectRow[] {
@@ -612,6 +619,15 @@ export function insertProject(path: string): ProjectRow | undefined {
 		.prepare(`INSERT OR IGNORE INTO projects (path, created_at) VALUES (?, ?)`)
 		.run(path, Date.now());
 	return changes ? getProject(path) : undefined;
+}
+
+export function setProjectStyle(path: string, style: { icon?: string; color?: string }) {
+	db.prepare(`UPDATE projects SET icon = coalesce(?, icon), color = coalesce(?, color) WHERE path = ?`).run(
+		style.icon ?? null,
+		style.color ?? null,
+		path
+	);
+	return getProject(path);
 }
 
 // Tasks used to group by a fixed area (uni, learning, work, quotidian) next

@@ -4,6 +4,7 @@
 	import { settings } from '$lib/stores/settings';
 	import FileTree from './FileTree.svelte';
 	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
+	import ProjectStylePicker from './ProjectStylePicker.svelte';
 	import SearchBox from './SearchBox.svelte';
 	import {
 		tree,
@@ -41,7 +42,15 @@
 		newProjectOpen,
 		topLevel
 	} from '$lib/stores/tasks';
-	import { projectOf, projectLabel, boardHref, type ProjectKey, type ProjectView } from '$lib/projects';
+	import {
+		projectOf,
+		projectLabel,
+		projectStyle,
+		colorVar,
+		boardHref,
+		type ProjectKey,
+		type ProjectView
+	} from '$lib/projects';
 	import { drag, beginDrag, type DragSource, type DropTarget } from './sidebarDrag';
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest } from '$lib/stores/actions';
@@ -64,6 +73,7 @@
 		| { kind: 'section'; key: ProjectKey }
 		| { kind: 'view' };
 	let menu = $state<({ x: number; y: number } & MenuOn) | null>(null);
+	let stylePicker = $state<{ x: number; y: number; path: string } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ path: string } | null>(null);
 	let treeEl = $state<HTMLDivElement>();
@@ -118,6 +128,10 @@
 	// Quotidian. A section folds under its folder path ("" for Quotidian) in
 	// collapsedDirs, so a rename keeps it folded.
 	const projectSet = $derived(new Set($projects.map((p) => p.path)));
+	const styleOf = $derived.by(() => {
+		const rows = new Map($projects.map((p) => [p.path, p]));
+		return (key: ProjectKey) => projectStyle(key, key === null ? undefined : rows.get(key));
+	});
 	const isProjectDir = (e: VaultEntry) => e.type === 'directory' && projectSet.has(e.path);
 	const sections = $derived<{ key: ProjectKey; entries: VaultEntry[] }[]>([
 		{ key: null, entries: $tree.filter((e) => !isProjectDir(e)) },
@@ -406,6 +420,7 @@
 		}
 		if (menu.kind === 'section') {
 			const key = menu.key;
+			const at = { x: menu.x, y: menu.y };
 			const items: ContextMenuItem[] = [
 				{ label: 'New note', action: () => startCreate(key, 'note') },
 				{ label: 'New folder', action: () => startCreate(key, 'folder') },
@@ -415,6 +430,7 @@
 			return [
 				...items,
 				{ label: 'Rename project', action: () => (renameTarget = { path: key }) },
+				{ label: 'Icon and color', action: () => (stylePicker = { ...at, path: key }) },
 				{ label: 'Remove project', action: () => void dropProject(key) }
 			];
 		}
@@ -521,7 +537,12 @@
 			menu = { x: r.left, y: r.bottom + 4, kind: 'view' };
 		}}
 	>
-		<span class="material-symbols-outlined">{current === 'all' ? 'apps' : 'folder'}</span>
+		{#if current === 'all'}
+			<span class="material-symbols-outlined">apps</span>
+		{:else}
+			{@const st = styleOf(current.project)}
+			<span class="material-symbols-outlined fill" style:color={colorVar(st.color)}>{st.icon}</span>
+		{/if}
 		<span class="pin-name">{current === 'all' ? 'All projects' : projectLabel(current.project)}</span>
 		<span class="sp"></span>
 		<span class="material-symbols-outlined">unfold_more</span>
@@ -551,6 +572,7 @@
 			{@const folded = $collapsedDirs.has(foldKey(s.key))}
 			{@const pins = pinsIn(s.key)}
 			{@const open = openTasks.get(s.key) ?? 0}
+			{@const st = styleOf(s.key)}
 			<section
 				class:drop-root={dropTarget?.kind === 'move' && dropTarget.dir === s.key}
 				data-drop-dir={s.key ?? ''}
@@ -569,6 +591,7 @@
 				{:else}
 					<div
 						class="group sec-h"
+						style:color={colorVar(st.color)}
 						role="button"
 						tabindex="0"
 						title={folded ? 'Expand' : 'Collapse'}
@@ -585,7 +608,8 @@
 							menu = { x: e.clientX, y: e.clientY, kind: 'section', key: s.key };
 						}}
 					>
-						<span class="material-symbols-outlined">{folded ? 'chevron_right' : 'expand_more'}</span>
+						<span class="material-symbols-outlined chev">{folded ? 'chevron_right' : 'expand_more'}</span>
+						<span class="material-symbols-outlined fill">{st.icon}</span>
 						<span class="pin-name">{projectLabel(s.key)}</span>
 						<span class="sp"></span>
 						<span class="acts">
@@ -658,6 +682,10 @@
 	</div>
 	{#if menu}
 		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
+	{/if}
+	{#if stylePicker}
+		{@const st = styleOf(stylePicker.path)}
+		<ProjectStylePicker {...stylePicker} icon={st.icon} color={st.color} onClose={() => (stylePicker = null)} />
 	{/if}
 	{#if $drag}
 		<div class="drag-card" style="top: {$drag.top}px; left: {$drag.left}px; width: {$drag.width}px">
@@ -830,10 +858,18 @@
 	}
 	.sec-h {
 		cursor: pointer;
-		padding-right: 8px;
+		padding: 12px 8px 4px 12px;
+		font-size: calc(var(--fs) + 1px);
+		font-weight: 700;
 	}
-	.sec-h:hover {
-		color: var(--text);
+	.sec-h > .material-symbols-outlined {
+		font-size: 18px;
+	}
+	/* The icon font has one weight; a stroke makes the arrow read bolder. */
+	.sec-h > .chev {
+		font-size: 17px;
+		color: var(--text-2);
+		-webkit-text-stroke: 0.6px currentColor;
 	}
 	/* The buttons replace the count on hover or keyboard focus. A mouse
 	   click leaves focus on the header, so plain :focus-within would keep
