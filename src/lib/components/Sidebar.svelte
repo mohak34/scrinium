@@ -557,9 +557,13 @@
 			menu = { x: e.clientX, y: e.clientY, kind: 'entry', entry, pinRow: true };
 		}}
 	>
-		<span class="material-symbols-outlined">keep</span>
+		{#if key !== undefined}
+			<span class="material-symbols-outlined">keep</span>
+		{/if}
 		{#if isDir}
 			<span class="material-symbols-outlined fill dir-icon">{open ? 'folder_open' : 'folder'}</span>
+		{:else if key === undefined}
+			<span class="material-symbols-outlined file-icon">draft</span>
 		{/if}
 		<span class="pin-name">{pinName(p)}</span>
 		{#if isDir}
@@ -647,7 +651,15 @@
 	>
 		{#if topPins.length > 0}
 			<div class="pins" data-drop-pins>
-				<div class="group"><span class="material-symbols-outlined">keep</span>Pinned</div>
+				<div class="group sec-h pins-h">
+					<span class="ring">
+						<svg viewBox="0 0 30 30" aria-hidden="true"><circle class="track" cx="15" cy="15" r="12" /></svg>
+						<span class="material-symbols-outlined fill">keep</span>
+					</span>
+					<span class="pin-name">Pinned</span>
+					<span class="sp"></span>
+					<span class="sec-s">{topPins.length}</span>
+				</div>
 				{#each topPins as p, i (p)}
 					{@render pinRow(p, i === topPins.length - 1)}
 				{/each}
@@ -857,8 +869,10 @@
 		font-size: var(--fs-sm);
 		font-weight: 500;
 	}
-	.group .material-symbols-outlined {
-		font-size: 16px;
+	/* The global pins' band: a project header in plain text color. */
+	.pins-h.sec-h {
+		--c: var(--text);
+		cursor: default;
 	}
 	.pin-row {
 		position: relative;
@@ -884,6 +898,9 @@
 	.pin-row.dir {
 		color: var(--text);
 		font-weight: 550;
+	}
+	.pin-row .file-icon {
+		color: var(--text-3);
 	}
 	.pin-row .dir-icon {
 		color: var(--text-2);

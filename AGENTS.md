@@ -322,7 +322,9 @@ State channels you will touch:
   The notes sidebar is split by project (`src/lib/projects.ts`): a
   switcher shows All projects or one, each project is a collapsible
   section (Quotidian, everything outside a project folder, first) holding
-  its own pins and its file tree, and global pins sit above them. A
+  its own pins and its file tree, and global pins sit above them
+  under a Pinned band drawn like a project header in plain text color
+  (its rows show file and folder icons; project pins keep the pin icon). A
   section folds under its folder path in `collapsedDirs` ("" for
   Quotidian), so its pins fold with it. A project header is a sticky one-line
   band in its color with its icon inside a ring that fills as the
