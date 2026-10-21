@@ -18,6 +18,7 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 //                     bar and a project header carry it too, plus
 //                     data-pin-here, while the dragged item can pin there.
 //   [data-tree-entry] a tree row (data-path, data-type)
+//   [data-pin-tree]   an open pinned folder's tree, moving into that folder
 //   [data-drop-dir]   a project section, moving into its folder ("" is the
 //                     vault root, Quotidian)
 //   [data-drag-scroll] the container that autoscrolls near its edges
@@ -89,6 +90,8 @@ function treeDir(el: Element | null): string | null | undefined {
 	if (entry?.dataset.path) {
 		return entry.dataset.type === 'directory' ? entry.dataset.path : parentDirOf(entry.dataset.path);
 	}
+	const pinTree = el?.closest<HTMLElement>('[data-pin-tree]');
+	if (pinTree?.dataset.pinTree) return pinTree.dataset.pinTree;
 	const section = el?.closest<HTMLElement>('[data-drop-dir]');
 	return section ? section.dataset.dropDir || null : undefined;
 }
@@ -112,8 +115,9 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	if (row?.dataset.type === 'file' && source.kind === 'file' && !source.fromPins) {
 		return placeTarget(source, row, y);
 	}
-	// A pinned folder's own tree sits inside its pin list; its rows move.
-	const pins = row ? null : el?.closest<HTMLElement>('[data-drop-pins]');
+	// A pinned folder's own tree sits inside its pin list; it moves into that
+	// folder like the main tree does.
+	const pins = el?.closest('[data-tree-entry], [data-pin-tree]') ? null : el?.closest<HTMLElement>('[data-drop-pins]');
 	if (pins) {
 		// A pinned folder row moves into the folder; only a thin strip at its
 		// top and bottom reorders the pins.
@@ -122,7 +126,7 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 		if (dirRow && into) {
 			const b = dirRow.getBoundingClientRect();
 			const middle = y > b.top + PIN_EDGE && y < b.bottom - PIN_EDGE;
-			if (middle && canMove(source, into)) return { kind: 'move', dir: into };
+			if (middle) return canMove(source, into) ? { kind: 'move', dir: into } : null;
 		}
 		const project = pins.dataset.project;
 		const pinnable =
@@ -132,6 +136,8 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	}
 	const dir = treeDir(el);
 	if (dir !== undefined && canMove(source, dir)) return { kind: 'move', dir };
+	// A folder over its own tree (open under its pin row) goes nowhere.
+	if (dir && source.kind === 'directory' && (dir === source.path || dir.startsWith(source.path + '/'))) return null;
 	// A pin let go anywhere else leaves the Pinned list.
 	return source.fromPins ? { kind: 'unpin' } : null;
 }

@@ -184,8 +184,10 @@
 
 	async function makeProject(path: string) {
 		const row = await createProject(path);
-		if (typeof row === 'string') alert(row);
-		else await loadTree();
+		if (typeof row === 'string') return alert(row);
+		// The project's section shows the folder now; a pin would list it twice.
+		if ($pinnedPaths.includes(path)) togglePin(path);
+		await loadTree();
 	}
 
 	function sanitizeName(raw: string, kind: 'note' | 'folder' | 'file'): string | null {
@@ -317,8 +319,9 @@
 		let at = path;
 		if (parentDirOf(path) !== toDir) {
 			if (!(await movePath(path, toDir))) return;
-			if (toDir) expandDir(toDir);
 			at = joinPath(toDir, path.split('/').pop()!);
+			renameDir(path, at);
+			if (toDir) expandDir(toDir);
 		}
 		// A file's spot in its old folder means nothing in the new one.
 		if (!place) return fileOrder.update((order) => order.filter((p) => p !== at));
@@ -572,7 +575,7 @@
 		{/if}
 	</button>
 	{#if open}
-		<div class="pin-tree">
+		<div class="pin-tree" data-pin-tree={p}>
 		<FileTree
 			entries={entry.children ?? []}
 			dirPath={p}
