@@ -38,7 +38,8 @@
 		loadProjects,
 		createProject,
 		removeProject,
-		newProjectOpen
+		newProjectOpen,
+		topLevel
 	} from '$lib/stores/tasks';
 	import { projectOf, projectLabel, boardHref, type ProjectKey, type ProjectView } from '$lib/projects';
 	import { drag, beginDrag, type DragSource, type DropTarget } from './sidebarDrag';
@@ -134,9 +135,10 @@
 	const homeDir = $derived(current === 'all' ? null : current.project);
 	const foldKey = (key: ProjectKey) => key ?? '';
 
+	// Open cards on each project's board, subtasks left out like the board does.
 	const openTasks = $derived.by(() => {
 		const counts = new Map<ProjectKey, number>();
-		for (const t of $tasks) if (t.status !== 'done') counts.set(t.project, (counts.get(t.project) ?? 0) + 1);
+		for (const t of topLevel($tasks)) if (t.status !== 'done') counts.set(t.project, (counts.get(t.project) ?? 0) + 1);
 		return counts;
 	});
 
@@ -608,7 +610,9 @@
 								<span class="material-symbols-outlined">add</span>
 							</button>
 						</span>
-						{#if open > 0}<span class="open" title="Open tasks">{open}</span>{/if}
+						{#if open > 0}<span class="open" title="{open} open {open === 1 ? 'task' : 'tasks'}"
+								><span class="material-symbols-outlined">task_alt</span>{open}</span
+							>{/if}
 					</div>
 				{/if}
 				{#if !folded}
@@ -625,6 +629,9 @@
 						</div>
 					{/if}
 					<div class="tree">
+						{#if s.entries.length === 0 && createTarget?.parent !== s.key}
+							<div class="tree-empty">No notes</div>
+						{/if}
 						<FileTree
 							entries={s.entries}
 							dirPath={s.key}
@@ -846,9 +853,20 @@
 		height: 22px;
 	}
 	.open {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
 		color: var(--text-3);
 		font-size: var(--fs-xs);
 		font-variant-numeric: tabular-nums;
+	}
+	.open .material-symbols-outlined {
+		font-size: 13px;
+	}
+	.tree-empty {
+		padding: 6px 30px;
+		color: var(--text-4);
+		font-size: var(--fs-xs);
 	}
 	.rename-input {
 		width: calc(100% - 12px);
