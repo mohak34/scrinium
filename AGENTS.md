@@ -324,7 +324,10 @@ State channels you will touch:
   section (Quotidian, everything outside a project folder, first) holding
   its own pins and its file tree, and global pins sit above them. A
   section folds under its folder path in `collapsedDirs` ("" for
-  Quotidian), so its pins fold with it. Pins live in `pinnedPaths`; the
+  Quotidian), so its pins fold with it. A project header shows its icon
+  and color (`projectStyle` in projects.ts; set from the header's
+  right-click menu, stored on the `projects` row, an unpicked color comes
+  from the path) so it never reads as a folder. Pins live in `pinnedPaths`; the
   global ones are also in `globalPins`, the rest show in their project's
   section. In one project, search passes `?folder=` to `/api/search`.
   `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
