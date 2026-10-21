@@ -320,7 +320,8 @@
 			if (toDir) expandDir(toDir);
 			at = joinPath(toDir, path.split('/').pop()!);
 		}
-		if (!place) return;
+		// A file's spot in its old folder means nothing in the new one.
+		if (!place) return fileOrder.update((order) => order.filter((p) => p !== at));
 		const siblings = inFileOrder(filesIn($tree, toDir), $fileOrder).map((e) => e.path);
 		placeFile(at, siblings, place.path, place.after);
 	}
