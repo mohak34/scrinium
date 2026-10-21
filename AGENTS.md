@@ -344,8 +344,10 @@ State channels you will touch:
   (a Pin target in place of its task count). Pins reorder, move into a folder they are dropped on (staying
   pinned), and unpin when dropped anywhere else. Targets are found by
   `data-*` attributes under the pointer; the lifted row and its "Move to
-  X" label live in Sidebar.svelte. A pinned note shows only in its pin
-  list, not in the tree; its pin row carries the file menu minus Rename.
+  X" label live in Sidebar.svelte. Folders pin like notes and list
+  before the pinned notes, opening in place with their own tree. A pinned
+  note or folder shows only in its pin list, not in the tree; its pin row
+  carries its menu minus Rename.
   `bins/BinsView.svelte` is the full-page Archive / Trash / Review view,
   mounted (and its code loaded) by the root layout only while open,
   through `openBins(tab, focus?)` (`stores/bins.ts`) from the sidebar footer, the palette, task links and

@@ -364,7 +364,7 @@
 	// list can be dropped on without anything appearing in the tree.
 	const canPin = (key?: ProjectKey) =>
 		!!$drag &&
-		($drag.source.fromPins || ($drag.source.kind === 'file' && $drag.source.path.endsWith('.md'))) &&
+		($drag.source.fromPins || $drag.source.kind === 'directory' || $drag.source.path.endsWith('.md')) &&
 		(key === undefined || ($drag.source.project || null) === key);
 	// What releasing would do, shown on the lifted row.
 	const dropLabel = $derived.by(() => {
@@ -400,14 +400,29 @@
 	const noteCount = $derived(shownSections.reduce((n, s) => n + countNotes(s.entries), 0));
 	const pinName = (path: string) => (path.split('/').pop() ?? path).replace(/\.md$/, '');
 
-	// Pins are per browser, so a note deleted elsewhere (another device, an
-	// agent) can linger in the list; only show pins that still exist.
-	function hasFile(entries: VaultEntry[], path: string): boolean {
-		return entries.some((e) =>
-			e.type === 'file' ? e.path === path : path.startsWith(e.path + '/') && hasFile(e.children ?? [], path)
-		);
+	function findEntry(entries: VaultEntry[], path: string): VaultEntry | undefined {
+		for (const e of entries) {
+			if (e.path === path) return e;
+			if (e.type === 'directory' && path.startsWith(e.path + '/')) return findEntry(e.children ?? [], path);
+		}
 	}
-	const livePins = $derived($pinnedPaths.filter((p) => hasFile($tree, p)));
+	// Pins are per browser, so a note deleted elsewhere (another device, an
+	// agent) can linger in the list; only show pins that still exist. Pinned
+	// folders come before pinned notes.
+	const pinEntries = $derived(
+		new Map(
+			$pinnedPaths.flatMap((p) => {
+				const e = findEntry($tree, p);
+				return e ? [[p, e] as const] : [];
+			})
+		)
+	);
+	const livePins = $derived.by(() => {
+		const pinned = [...pinEntries.values()];
+		return [...pinned.filter((e) => e.type === 'directory'), ...pinned.filter((e) => e.type === 'file')].map(
+			(e) => e.path
+		);
+	});
 	const topPins = $derived(livePins.filter((p) => $globalPins.includes(p)));
 	const pinsIn = (key: ProjectKey) =>
 		livePins.filter((p) => !$globalPins.includes(p) && projectOf(p, projectSet) === key);
@@ -497,9 +512,10 @@
 			return items;
 		}
 		return [
+			...pinItems(entry.path),
 			{ label: 'New note', action: () => startCreate(entry.path, 'note') },
 			{ label: 'New folder', action: () => startCreate(entry.path, 'folder') },
-			{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) },
+			...(pinRow ? [] : [{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) }]),
 			...(entry.path.includes('/') ? [] : [{ label: 'Make project', action: () => void makeProject(entry.path) }]),
 			{ label: 'Archive', action: () => void archivePath(entry.path) },
 			{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
@@ -519,31 +535,56 @@
 </script>
 
 {#snippet pinRow(p: string, last: boolean, key?: ProjectKey)}
+	{@const entry = pinEntries.get(p)!}
+	{@const isDir = entry.type === 'directory'}
+	{@const open = isDir && !$collapsedDirs.has(p)}
 	<button
 		class="pin-row"
 		class:active={$activePath === p}
 		class:dragging={$drag?.source.fromPins && $drag.source.path === p}
 		class:ins-before={pinBefore === p}
 		class:ins-after={last && endOfList(key)}
+		class:drop-into={isDir && dropTarget?.kind === 'move' && !dropTarget.place && dropTarget.dir === p}
 		title={p}
 		data-pin={p}
-		onclick={() => onSelect(p)}
-		onpointerdown={(e) => startDrag(e, p, 'file', true)}
+		data-pin-dir={isDir || undefined}
+		onclick={() => (isDir ? toggleDir(p) : onSelect(p))}
+		onpointerdown={(e) => startDrag(e, p, entry.type, true)}
 		oncontextmenu={(e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			menu = {
-				x: e.clientX,
-				y: e.clientY,
-				kind: 'entry',
-				entry: { name: pinName(p), path: p, type: 'file' },
-				pinRow: true
-			};
+			menu = { x: e.clientX, y: e.clientY, kind: 'entry', entry, pinRow: true };
 		}}
 	>
 		<span class="material-symbols-outlined">keep</span>
+		{#if isDir}
+			<span class="material-symbols-outlined">{open ? 'folder_open' : 'folder'}</span>
+		{/if}
 		<span class="pin-name">{pinName(p)}</span>
+		{#if isDir}
+			<span class="sp"></span>
+			<span class="material-symbols-outlined chev">{open ? 'expand_more' : 'chevron_right'}</span>
+		{/if}
 	</button>
+	{#if open}
+		<div class="pin-tree">
+		<FileTree
+			entries={entry.children ?? []}
+			dirPath={p}
+			depth={1}
+			{onSelect}
+			{onOpenAsset}
+			onContextMenu={onEntryContextMenu}
+			onDragStart={(e, child) => startDrag(e, child.path, child.type, false)}
+			{createTarget}
+			{renameTarget}
+			onCreate={commitCreate}
+			onRename={commitRename}
+			onCancelCreate={() => (createTarget = null)}
+			onCancelRename={() => (renameTarget = null)}
+		/>
+		</div>
+	{/if}
 {/snippet}
 
 <aside
@@ -840,6 +881,10 @@
 		background: none;
 		color: var(--text-2);
 	}
+	.pin-row.drop-into {
+		background: var(--hover);
+		box-shadow: inset 0 0 0 1px var(--accent);
+	}
 	.pin-row.dragging {
 		opacity: 0.4;
 	}
@@ -877,7 +922,8 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.tree {
+	.tree,
+	.pin-tree {
 		padding: 0 6px;
 		min-height: 40px;
 	}

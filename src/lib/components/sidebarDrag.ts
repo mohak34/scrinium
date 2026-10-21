@@ -3,7 +3,7 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 
 // Pointer-driven drag for the notes sidebar. Tree rows move into folders, a
 // file dropped on the top or bottom half of another file lands right before
-// or after it (in that file's folder), notes dropped on Pinned get pinned globally and on their project's pins
+// or after it (in that file's folder), notes and folders dropped on Pinned get pinned globally and on their project's pins
 // in that project, pins reorder, move into a folder when dropped on one
 // (staying pinned), and unpin when dropped anywhere else.
 // Built on pointer events instead of HTML5 drag-and-drop so the lifted row,
@@ -12,7 +12,8 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 //
 // Targets are found in the DOM under the pointer:
 //   [data-drop-pins]  a pin list: global, or one project's when it carries
-//                     data-project; [data-pin=path] its rows. The switcher
+//                     data-project; [data-pin=path] its rows, with
+//                     data-pin-dir on pinned folders. The switcher
 //                     bar and a project header's pin target carry it too.
 //   [data-tree-entry] a tree row (data-path, data-type)
 //   [data-drop-dir]   a project section, moving into its folder ("" is the
@@ -60,7 +61,8 @@ export function canMove(source: DragSource, dir: string | null): boolean {
 }
 
 // Insert position from the pointer's height against the pin rows; null when
-// the drop would leave the order unchanged.
+// the drop would leave the order unchanged. Pinned folders list before
+// pinned notes, so each lands within its own group.
 function pinTarget(source: DragSource, pins: HTMLElement, y: number, global: boolean): DropTarget | null {
 	const rows = Array.from(pins.querySelectorAll<HTMLElement>('[data-pin]'));
 	let at = rows.findIndex((r) => {
@@ -68,6 +70,8 @@ function pinTarget(source: DragSource, pins: HTMLElement, y: number, global: boo
 		return y < b.top + b.height / 2;
 	});
 	if (at === -1) at = rows.length;
+	const dirs = rows.filter((r) => r.dataset.pinDir !== undefined).length;
+	at = source.kind === 'directory' ? Math.min(at, dirs) : Math.max(at, dirs);
 	const paths = rows.map((r) => r.dataset.pin ?? '');
 	const from = paths.indexOf(source.path);
 	if (from !== -1 && (at === from || at === from + 1)) return null;
@@ -105,11 +109,12 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	if (row?.dataset.type === 'file' && source.kind === 'file' && !source.fromPins) {
 		return placeTarget(source, row, y);
 	}
-	const pins = el?.closest<HTMLElement>('[data-drop-pins]');
+	// A pinned folder's own tree sits inside its pin list; its rows move.
+	const pins = row ? null : el?.closest<HTMLElement>('[data-drop-pins]');
 	if (pins) {
 		const project = pins.dataset.project;
 		const pinnable =
-			(source.fromPins || (source.kind === 'file' && source.path.endsWith('.md'))) &&
+			(source.fromPins || source.kind === 'directory' || source.path.endsWith('.md')) &&
 			(project === undefined || project === source.project);
 		return pinnable ? pinTarget(source, pins, y, project === undefined) : null;
 	}
