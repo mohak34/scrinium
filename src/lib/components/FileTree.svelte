@@ -266,11 +266,17 @@
 		padding: 0;
 		position: relative;
 	}
+	/* One level is a chevron plus its gap, so a child's first column (a
+	   folder's chevron, an attachment's icon) sits under its parent's folder
+	   icon and note names line up with folder icons. */
+	ul {
+		--step: 23px;
+	}
 	/* Indent guide for nested levels, aligned under the parent chevron. */
 	ul:not([style*='--depth: 0'])::before {
 		content: '';
 		position: absolute;
-		left: calc(var(--depth) * 16px + 1px);
+		left: calc(var(--depth) * var(--step) - 7px);
 		top: 0;
 		bottom: 0;
 		width: 1px;
@@ -285,7 +291,7 @@
 		gap: 6px;
 		width: 100%;
 		height: 29px;
-		padding: 0 8px 0 calc(8px + var(--depth, 0) * 16px);
+		padding: 0 8px 0 calc(8px + var(--depth, 0) * var(--step));
 		border: none;
 		border-radius: var(--r);
 		background: none;
@@ -302,7 +308,7 @@
 		font-weight: 550;
 	}
 	.file {
-		padding-left: calc(30px + var(--depth, 0) * 16px);
+		padding-left: calc(30px + var(--depth, 0) * var(--step));
 	}
 	.dir:hover,
 	.file:hover {
@@ -338,7 +344,7 @@
 		color: var(--text-3);
 	}
 	.file.asset {
-		padding-left: calc(10px + var(--depth, 0) * 16px);
+		padding-left: calc(8px + var(--depth, 0) * var(--step));
 	}
 	.count {
 		margin-left: auto;
@@ -372,8 +378,8 @@
 	}
 	.rename-input {
 		display: block;
-		margin: 1px 0 1px calc(8px + var(--depth, 0) * 16px);
-		width: calc(100% - 8px - var(--depth, 0) * 16px);
+		margin: 1px 0 1px calc(8px + var(--depth, 0) * var(--step));
+		width: calc(100% - 8px - var(--depth, 0) * var(--step));
 		height: 27px;
 		background: var(--bg);
 		border: 1px solid var(--accent);

@@ -858,7 +858,7 @@
 	}
 	.sec-h {
 		cursor: pointer;
-		padding: 12px 8px 4px 12px;
+		padding: 12px 8px 4px 14px;
 		font-size: calc(var(--fs) + 1px);
 		font-weight: 700;
 	}
