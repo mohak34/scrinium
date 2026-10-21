@@ -175,9 +175,10 @@ export async function updateTask(id: string, patch: TaskUpdate): Promise<Task | 
 	);
 	const row = res?.ok ? ((await res.json()) as Task) : null;
 	if (editSeq.get(id) !== n) return row;
-	// A failed edit shows what the server kept, not a guess at it.
-	if (row) tasks.update((all) => all.map((t) => (t.id === id ? row : t)));
-	else void loadTasks();
+	// A failed edit shows what the server kept, not a guess at it. A new
+	// project or parent moves the whole subtree on the server, so reload.
+	if (!row || 'project' in patch || 'parent_id' in patch) void loadTasks();
+	else tasks.update((all) => all.map((t) => (t.id === id ? row : t)));
 	return row;
 }
 

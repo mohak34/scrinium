@@ -5,7 +5,6 @@
 	import {
 		tasks,
 		projects,
-		loadTasks,
 		openTaskId,
 		closeTask,
 		openTask,
@@ -374,11 +373,8 @@
 							class="ctl bare grow"
 							value={task.project ?? ''}
 							aria-label="Project"
-							onchange={async (e) => {
-								// Subtasks follow on the server; reload to show it.
-								if (await updateTask(task.id, { project: (e.target as HTMLSelectElement).value || null }))
-									void loadTasks();
-							}}
+							onchange={(e) =>
+								void updateTask(task.id, { project: (e.target as HTMLSelectElement).value || null })}
 						>
 							<option value="">{QUOTIDIAN}</option>
 							{#each $projects as p (p.path)}
