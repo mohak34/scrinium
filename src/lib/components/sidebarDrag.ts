@@ -14,7 +14,8 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 //   [data-drop-pins]  a pin list: global, or one project's when it carries
 //                     data-project; [data-pin=path] its rows, with
 //                     data-pin-dir on pinned folders. The switcher
-//                     bar and a project header's pin target carry it too.
+//                     bar and a project header carry it too, plus
+//                     data-pin-here, while the dragged item can pin there.
 //   [data-tree-entry] a tree row (data-path, data-type)
 //   [data-drop-dir]   a project section, moving into its folder ("" is the
 //                     vault root, Quotidian)
@@ -171,6 +172,9 @@ export function beginDrag(
 		if (!scroller) return;
 		const b = scroller.getBoundingClientRect();
 		if (x < b.left || x > b.right) return;
+		// The switcher bar and a sticky project header sit in the edge zone;
+		// scrolling under a pin target would swap the header being dropped on.
+		if (document.elementFromPoint(x, y)?.closest('[data-pin-here]')) return;
 		const depth = y < b.top + EDGE ? y - (b.top + EDGE) : y > b.bottom - EDGE ? y - (b.bottom - EDGE) : 0;
 		if (!depth) return;
 		scroller.scrollTop += Math.max(-EDGE, Math.min(EDGE, depth)) / 2;

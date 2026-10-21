@@ -540,6 +540,7 @@
 	{@const open = isDir && !$collapsedDirs.has(p)}
 	<button
 		class="pin-row"
+		class:dir={isDir}
 		class:active={$activePath === p}
 		class:dragging={$drag?.source.fromPins && $drag.source.path === p}
 		class:ins-before={pinBefore === p}
@@ -558,7 +559,7 @@
 	>
 		<span class="material-symbols-outlined">keep</span>
 		{#if isDir}
-			<span class="material-symbols-outlined">{open ? 'folder_open' : 'folder'}</span>
+			<span class="material-symbols-outlined fill dir-icon">{open ? 'folder_open' : 'folder'}</span>
 		{/if}
 		<span class="pin-name">{pinName(p)}</span>
 		{#if isDir}
@@ -611,6 +612,7 @@
 		class:pin-drop={canPin()}
 		class:on={canPin() && endOfList()}
 		data-drop-pins={canPin() || undefined}
+		data-pin-here={canPin() || undefined}
 		title="Show one project or all of them"
 		onclick={(e) => {
 			const r = e.currentTarget.getBoundingClientRect();
@@ -674,7 +676,11 @@
 				{:else}
 					<div
 						class="group sec-h"
+						class:pin-on={canPin(s.key) && endOfList(s.key)}
 						style:--c={colorVar(st.color)}
+						data-drop-pins={canPin(s.key) || undefined}
+						data-pin-here={canPin(s.key) || undefined}
+						data-project={canPin(s.key) ? (s.key ?? '') : undefined}
 						role="button"
 						tabindex="0"
 						title={folded ? 'Expand' : 'Collapse'}
@@ -710,13 +716,7 @@
 						<span class="pin-name">{projectLabel(s.key)}</span>
 						<span class="sp"></span>
 						{#if canPin(s.key)}
-							<span
-								class="sec-pin"
-								class:on={endOfList(s.key)}
-								title="Pin in {projectLabel(s.key)}"
-								data-drop-pins
-								data-project={s.key ?? ''}
-							>
+							<span class="sec-pin" class:on={endOfList(s.key)}>
 								<span class="material-symbols-outlined">keep</span>Pin
 							</span>
 						{:else if pr.total > 0}
@@ -879,6 +879,13 @@
 	}
 	:global(html.sidebar-dragging) .pin-row:not(.active):hover {
 		background: none;
+		color: var(--text-2);
+	}
+	.pin-row.dir {
+		color: var(--text);
+		font-weight: 550;
+	}
+	.pin-row .dir-icon {
 		color: var(--text-2);
 	}
 	.pin-row.drop-into {
@@ -1044,6 +1051,9 @@
 	}
 	.sec-pin .material-symbols-outlined {
 		font-size: 14px;
+	}
+	.sec-h.pin-on {
+		box-shadow: inset 0 0 0 1px var(--accent);
 	}
 	.sec-pin.on,
 	.view-pick.pin-drop.on {
