@@ -4,14 +4,21 @@ import { getMigrations } from 'better-auth/db/migration';
 import { timingSafeEqual } from 'node:crypto';
 import { auth, isAllowedEmail } from '$lib/server/auth';
 import { emailForBearerToken } from '$lib/server/mobileAuth';
+import { migrateAreasToProjects } from '$lib/server/db';
+import { createFolder, safeResolve } from '$lib/server/vault';
+import { readdir } from 'node:fs/promises';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 
 // Bring the better-auth tables up to date once at startup. Idempotent: it
-// only creates missing tables/columns, so deploys need no migrate CLI.
+// only creates missing tables/columns, so deploys need no migrate CLI. Old
+// task areas become projects here, where the vault's folders are known.
 export const init: ServerInit = async () => {
 	const { runMigrations } = await getMigrations(auth.options);
 	await runMigrations();
+	const dirents = await readdir(safeResolve(''), { withFileTypes: true }).catch(() => []);
+	const roots = dirents.filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name);
+	for (const path of migrateAreasToProjects(roots)) await createFolder(path);
 };
 
 const PUBLIC_PATHS =['/login', '/api/auth', '/s', '/api/share'];

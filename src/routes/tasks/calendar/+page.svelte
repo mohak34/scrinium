@@ -13,7 +13,7 @@
 		dueTimeValue,
 		type Task
 	} from '$lib/stores/tasks';
-	import { areaMeta } from '$lib/taskModel';
+	import { projectName, selectTasks } from '$lib/taskModel';
 	import { connectCalendar } from '$lib/auth-client';
 	import { eventOnDay, eventStart, type CalendarEvent } from '$lib/calendar';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
@@ -165,9 +165,13 @@
 		return out.slice(35).every((c) => !c.inMonth);
 	}
 
+	// Every planned task, subtasks included: a dated subtask is a date too.
+	const planned = $derived(selectTasks($tasks, 'all'));
+	const titles = $derived(new Map($tasks.map((t) => [t.id, t.title])));
+
 	const byDay = $derived.by(() => {
 		const map = new Map<string, Task[]>();
-		for (const t of topLevel($tasks)) {
+		for (const t of planned) {
 			if (t.due_at == null) continue;
 			const k = keyOf(t.due_at);
 			if (!map.has(k)) map.set(k, []);
@@ -179,9 +183,7 @@
 		return map;
 	});
 
-	const unscheduled = $derived(
-		topLevel($tasks).filter((t) => t.due_at == null && t.status !== 'done').length
-	);
+	const undated = $derived(topLevel(planned).filter((t) => t.due_at == null && t.status !== 'done'));
 
 	const selectedTasks = $derived.by(() => {
 		const list = byDay.get(selected) ?? [];
@@ -250,9 +252,6 @@
 		return 'radio_button_unchecked';
 	}
 
-	const undated = $derived(
-		topLevel($tasks).filter((t) => t.due_at == null && t.status !== 'done')
-	);
 
 	function dayStart(key: string): number {
 		const [y, m, d] = key.split('-').map(Number);
@@ -439,7 +438,8 @@
 							>
 								<span class="material-symbols-outlined" class:fill={t.status === 'done'}>{statusIcon(t)}</span>
 							</button>
-							{#if t.area}<i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}{/if}
+							{#if t.parent_id}<span class="ctx">{titles.get(t.parent_id)}</span>{/if}
+							{#if t.project}<span class="ctx">{projectName(t.project)}</span>{/if}
 							{#if t.priority !== 'none'}<span class="pri-{t.priority}">{t.priority}</span>{/if}
 						</div>
 					</div>
@@ -473,7 +473,6 @@
 					>
 						<span class="material-symbols-outlined">drag_indicator</span>
 						<span class="und-t">{t.title}</span>
-						{#if t.area}<i style="background: {areaMeta(t.area).color}"></i>{/if}
 					</div>
 				{/each}
 			{/if}
@@ -742,11 +741,10 @@
 	.src .material-symbols-outlined {
 		font-size: 15px;
 	}
-	.src i,
-	.und i {
-		width: 7px;
-		height: 7px;
-		border-radius: 2px;
+	.ctx {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.st {
 		display: grid;

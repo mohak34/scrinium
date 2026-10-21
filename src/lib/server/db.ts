@@ -3,7 +3,7 @@ import { env } from '$env/dynamic/private';
 import fs from 'node:fs';
 import path from 'node:path';
 import { titleScore } from './rank';
-import type { TaskStatus, TaskPriority, TaskArea } from '../taskModel';
+import type { TaskStatus, TaskPriority } from '../taskModel';
 
 const dbPath = env.DATABASE_PATH || './data/scrinium.db';
 
@@ -286,7 +286,7 @@ export function listRecentNotes(limit = 15) {
 // Standalone tasks section (separate from note checklists). Due dates are
 // first-class columns, not parsed from text. gcal_event_id is a placeholder
 // for the later Calendar sync phase - no sync logic reads it yet.
-// status, area and priority come from $lib/taskModel. waiting_on names who a
+// status and priority come from $lib/taskModel. waiting_on names who a
 // 'waiting' task is blocked on; waiting_since stamps when it entered that
 // column (set and cleared by updateTask; a caller may give an earlier
 // start). parent_id nests a task as a subtask of another (one level in the UI; deeper nesting is stored but the
@@ -337,7 +337,6 @@ db.exec(`
 			);
 		}
 	}
-	if (!names.has('area')) db.exec(`ALTER TABLE tasks ADD COLUMN area TEXT`);
 	if (!names.has('waiting_on')) db.exec(`ALTER TABLE tasks ADD COLUMN waiting_on TEXT`);
 	if (!names.has('waiting_since')) db.exec(`ALTER TABLE tasks ADD COLUMN waiting_since INTEGER`);
 	if (!names.has('project')) db.exec(`ALTER TABLE tasks ADD COLUMN project TEXT`);
@@ -363,7 +362,7 @@ db.exec(`
 	CREATE INDEX IF NOT EXISTS idx_tasks_remind ON tasks(remind_at) WHERE notified_at IS NULL;
 `);
 
-export type { TaskStatus, TaskPriority, TaskArea };
+export type { TaskStatus, TaskPriority };
 
 export interface TaskRow {
 	id: string;
@@ -371,7 +370,6 @@ export interface TaskRow {
 	detail: string;
 	status: TaskStatus;
 	priority: TaskPriority;
-	area: TaskArea | null;
 	waiting_on: string | null;
 	waiting_since: number | null;
 	parent_id: string | null;
@@ -406,7 +404,6 @@ export interface NewTask {
 	detail?: string;
 	status?: TaskStatus;
 	priority?: TaskPriority;
-	area?: TaskArea | null;
 	waiting_on?: string | null;
 	waiting_since?: number | null;
 	parent_id?: string | null;
@@ -419,16 +416,15 @@ export interface NewTask {
 export function insertTask(t: NewTask): TaskRow {
 	const now = Date.now();
 	db.prepare(
-		`INSERT INTO tasks (id, title, detail, status, priority, area, waiting_on, waiting_since,
+		`INSERT INTO tasks (id, title, detail, status, priority, waiting_on, waiting_since,
 		 parent_id, project, due_at, remind_at, position, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		t.id,
 		t.title,
 		t.detail ?? '',
 		t.status ?? 'todo',
 		t.priority ?? 'none',
-		t.area ?? null,
 		t.waiting_on ?? null,
 		t.status === 'waiting' ? (t.waiting_since ?? now) : null,
 		t.parent_id ?? null,
@@ -449,7 +445,6 @@ export type TaskPatch = Partial<
 		| 'detail'
 		| 'status'
 		| 'priority'
-		| 'area'
 		| 'waiting_on'
 		| 'waiting_since'
 		| 'parent_id'
@@ -474,7 +469,7 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 			? null
 			: (patch.waiting_since ?? (cur.status === 'waiting' ? cur.waiting_since : next.updated_at));
 	db.prepare(
-		`UPDATE tasks SET title = ?, detail = ?, status = ?, priority = ?, area = ?,
+		`UPDATE tasks SET title = ?, detail = ?, status = ?, priority = ?,
 		 waiting_on = ?, waiting_since = ?, parent_id = ?, project = ?,
 		 due_at = ?, remind_at = ?, notified_at = ?,
 		 position = ?, updated_at = ?, gcal_event_id = ? WHERE id = ?`
@@ -483,7 +478,6 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow | undefined {
 		next.detail,
 		next.status,
 		next.priority,
-		next.area,
 		next.waiting_on,
 		next.waiting_since,
 		next.parent_id,
@@ -590,26 +584,17 @@ export function removeTaskLink(taskId: string, notePath: string): string[] {
 }
 
 // Projects: vault folders registered as a project board. The folder holds
-// the project's notes; tasks.project holds the folder path. area is the
-// default for tasks created on the board. Rows outlive a trashed folder, so
-// restoring it brings the project back as it was.
+// the project's notes; tasks.project holds the folder path. Rows outlive a
+// trashed folder, so restoring it brings the project back as it was.
 db.exec(`
 	CREATE TABLE IF NOT EXISTS projects (
 		path TEXT PRIMARY KEY,
-		area TEXT,
 		created_at INTEGER NOT NULL
 	);
 `);
 
-// Areas renamed: college -> uni, life -> quotidian.
-for (const t of ['tasks', 'projects']) {
-	db.exec(`UPDATE ${t} SET area = 'uni' WHERE area = 'college'`);
-	db.exec(`UPDATE ${t} SET area = 'quotidian' WHERE area = 'life'`);
-}
-
 export interface ProjectRow {
 	path: string;
-	area: TaskArea | null;
 	created_at: number;
 }
 
@@ -622,16 +607,48 @@ export function getProject(path: string): ProjectRow | undefined {
 }
 
 // Undefined when the path is already a project.
-export function insertProject(path: string, area: TaskArea | null): ProjectRow | undefined {
+export function insertProject(path: string): ProjectRow | undefined {
 	const { changes } = db
-		.prepare(`INSERT OR IGNORE INTO projects (path, area, created_at) VALUES (?, ?, ?)`)
-		.run(path, area, Date.now());
+		.prepare(`INSERT OR IGNORE INTO projects (path, created_at) VALUES (?, ?)`)
+		.run(path, Date.now());
 	return changes ? getProject(path) : undefined;
 }
 
-export function setProjectArea(path: string, area: TaskArea | null): ProjectRow | undefined {
-	db.prepare(`UPDATE projects SET area = ? WHERE path = ?`).run(area, path);
-	return getProject(path);
+// Tasks used to group by a fixed area (uni, learning, work, quotidian) next
+// to projects. Run once at boot while the old column is there: each area's
+// root tasks without a project join the project of the same name, reusing a
+// vault-root folder or project whose name matches case-insensitively, and
+// their subtasks follow; quotidian means no project. Then the area columns
+// go. Resolves the project folders the caller must create.
+const AREA_PROJECTS: Record<string, string> = { uni: 'Uni', college: 'Uni', learning: 'Learning', work: 'Work' };
+
+export function migrateAreasToProjects(rootFolders: string[]): string[] {
+	const has = (table: string) =>
+		(db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === 'area');
+	if (!has('tasks')) {
+		if (has('projects')) db.exec(`ALTER TABLE projects DROP COLUMN area`);
+		return [];
+	}
+	const missing: string[] = [];
+	db.transaction(() => {
+		const known = [...listProjects().map((p) => p.path), ...rootFolders];
+		const roots = db
+			.prepare(`SELECT id, area FROM tasks WHERE parent_id IS NULL AND project IS NULL AND area IS NOT NULL`)
+			.all() as { id: string; area: string }[];
+		const set = db.prepare(`UPDATE tasks SET project = ? WHERE id = ?`);
+		for (const { id, area } of roots) {
+			const name = AREA_PROJECTS[area];
+			if (!name) continue;
+			const path = known.find((k) => k.toLowerCase() === name.toLowerCase()) ?? name;
+			if (insertProject(path) && !rootFolders.includes(path)) missing.push(path);
+			known.push(path);
+			set.run(path, id);
+			setSubtreeProject(id, path);
+		}
+		db.exec(`ALTER TABLE tasks DROP COLUMN area`);
+		if (has('projects')) db.exec(`ALTER TABLE projects DROP COLUMN area`);
+	})();
+	return missing;
 }
 
 // Unregistering a project leaves its folder alone; its tasks fall back to

@@ -49,6 +49,16 @@ export function isFolder(relPath: string): boolean {
 	}
 }
 
+// A live note: an existing .md file outside the trash and archive.
+export function isNote(relPath: string): boolean {
+	if (!/\.md$/i.test(relPath) || isHiddenPath(relPath)) return false;
+	try {
+		return statSync(safeResolve(relPath)).isFile();
+	} catch {
+		return false;
+	}
+}
+
 // Every vault mutation (write, mkdir, rename, trash, restore, purge) runs one
 // at a time through this in-process queue. Renames and restores check that the
 // target is free and then move onto it; without the queue a concurrent write or

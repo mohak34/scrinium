@@ -19,32 +19,28 @@
 		dueLabel,
 		stampShort,
 		STATUSES,
-		AREAS,
 		type Task,
-		type TaskArea,
 		type TaskStatus,
 		type TaskUpdate as TaskPatch,
 		projects,
 		loadProjects,
-		setProjectArea,
 		removeProject,
 		newProjectOpen
 	} from '$lib/stores/tasks';
-	import { areaMeta, DOING_LIMIT, onMainBoard, projectName } from '$lib/taskModel';
-	import { boardHref, projectLabel, type ProjectView } from '$lib/projects';
+	import { DOING_LIMIT, projectName, selectTasks } from '$lib/taskModel';
+	import { boardHref, projectLabel, type ProjectKey, type ProjectView } from '$lib/projects';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 
-	// Two views of the same tasks: status columns, or the same columns split
-	// into one row per area. Drag a card to change its status (and its area,
-	// in the area view). Done only shows the last week unless expanded.
-	// ?project=<folder> narrows the board to one project, whose Inbox is its
-	// backlog; an empty ?project= is Quotidian (tasks in no project). With no
-	// ?project= it shows everything but the project backlogs (onMainBoard).
-	type View = 'columns' | 'areas';
+	// Two views of the same tasks: status columns, or, on the All board, the
+	// same columns split into one row per project. Drag a card to change its
+	// status (and its project, in the lanes). Done only shows the last week
+	// unless expanded. ?project=<folder> narrows the board to one project,
+	// whose Inbox is its backlog; an empty ?project= is Quotidian (tasks in no
+	// project). With no ?project= it is the All view of selectTasks.
+	type View = 'columns' | 'lanes';
 	const VIEW_KEY = 'scrinium:boardView';
 	let view = $state<View>('columns');
-	let area = $state<TaskArea | null>(null);
 	let showAllDone = $state(false);
 
 	let draft = $state('');
@@ -55,12 +51,13 @@
 	let overId = $state<string | null>(null);
 
 	const WEEK = 7 * 86400000;
-	// The area view leaves Inbox out: unplanned work has no row to sit in yet.
+	// The lanes leave Inbox out: unplanned work has no row to sit in yet.
 	const LANE_STATUSES = STATUSES.filter((s) => s.key !== 'inbox');
 
 	const project = $derived(page.url.searchParams.get('project'));
 	const proj = $derived($projects.find((p) => p.path === project) ?? null);
 	const boardView = $derived<ProjectView>(project === null ? 'all' : { project: project || null });
+	const lanesOn = $derived(view === 'lanes' && boardView === 'all');
 
 	// A project that isn't in the list gets a fresh load before giving up:
 	// one that no longer exists (removed or renamed, maybe in another tab)
@@ -76,10 +73,10 @@
 
 	onMount(() => {
 		void loadTasks();
-		if (localStorage.getItem(VIEW_KEY) === 'areas') view = 'areas';
+		if (localStorage.getItem(VIEW_KEY) === 'lanes') view = 'lanes';
 		return usePageCommands([
 			{ label: 'Board: status columns', hint: 'One column per status', run: () => setView('columns') },
-			{ label: 'Board: area lanes', hint: 'Columns split by area', run: () => setView('areas') },
+			{ label: 'Board: project lanes', hint: 'Columns split by project', run: () => lanes_() },
 			{ label: 'Board: toggle older done tasks', hint: 'Done shows the last week by default', run: () => (showAllDone = !showAllDone) },
 			{ label: 'Board: all tasks', hint: 'Every project on one board', run: () => openBoard('all') },
 			{ label: 'Board: Quotidian', hint: 'Tasks in no project', run: () => openBoard({ project: null }) }
@@ -91,13 +88,13 @@
 		localStorage.setItem(VIEW_KEY, v);
 	}
 
-	const pool = $derived(
-		topLevel($tasks).filter(
-			(t) =>
-				(project === null ? onMainBoard(t) : t.project === (project || null)) &&
-				(area == null || t.area === area)
-		)
-	);
+	const pool = $derived(topLevel(selectTasks($tasks, boardView)));
+
+	// Lanes split the All board, so asking for them from a project board goes there.
+	function lanes_() {
+		setView('lanes');
+		if (boardView !== 'all') openBoard('all');
+	}
 
 	function openBoard(v: ProjectView) {
 		void goto(boardHref(v));
@@ -108,10 +105,8 @@
 		if (await removeProject(path)) openBoard('all');
 	}
 
-	function cellRows(status: TaskStatus, laneArea?: TaskArea | null): Task[] {
-		let rows = pool.filter(
-			(t) => t.status === status && (laneArea === undefined || (t.area ?? null) === laneArea)
-		);
+	function cellRows(status: TaskStatus, lane?: ProjectKey): Task[] {
+		let rows = pool.filter((t) => t.status === status && (lane === undefined || t.project === lane));
 		if (status === 'done') {
 			rows = rows.sort((a, b) => b.updated_at - a.updated_at);
 			if (!showAllDone) rows = rows.filter((t) => t.updated_at >= Date.now() - WEEK);
@@ -125,12 +120,7 @@
 	const overdueCount = $derived(pool.filter(isOverdue).length);
 	const todayCount = $derived(pool.filter((t) => t.status !== 'done' && isDueToday(t)).length);
 	const inboxCount = $derived(pool.filter((t) => t.status === 'inbox').length);
-	const lanes = $derived([
-		...AREAS.map((a) => ({ key: a.key as TaskArea | null, label: a.label, color: a.color })),
-		...(pool.some((t) => t.area == null && t.status !== 'inbox')
-			? [{ key: null, label: 'No area', color: 'var(--text-4)' }]
-			: [])
-	]);
+	const lanes = $derived<ProjectKey[]>([null, ...$projects.map((p) => p.path)]);
 
 	function weekRange(): string {
 		const now = new Date();
@@ -154,16 +144,11 @@
 		openTask(t.id);
 	}
 
-	async function add(status: TaskStatus, laneArea?: TaskArea | null) {
+	async function add(status: TaskStatus, lane?: ProjectKey) {
 		const title = draft.trim();
 		if (!title) return;
 		draft = '';
-		const row = await createTask({
-			title,
-			status,
-			area: laneArea === undefined ? (area ?? proj?.area ?? null) : laneArea,
-			project: project || null
-		});
+		const row = await createTask({ title, status, project: lane === undefined ? project || null : lane });
 		if (!row && !draft) draft = title;
 	}
 
@@ -172,8 +157,8 @@
 		addingTo = cell;
 	}
 
-	function cellKey(status: TaskStatus, laneArea?: TaskArea | null) {
-		return laneArea === undefined ? status : `${status}|${laneArea ?? ''}`;
+	function cellKey(status: TaskStatus, lane?: ProjectKey) {
+		return lane === undefined ? status : `${status}|${lane ?? ''}`;
 	}
 
 	function onDragStart(t: Task, e: DragEvent) {
@@ -242,7 +227,7 @@
 		}
 	}
 
-	async function onDrop(status: TaskStatus, laneArea: TaskArea | null | undefined, e: DragEvent) {
+	async function onDrop(status: TaskStatus, lane: ProjectKey | undefined, e: DragEvent) {
 		e.preventDefault();
 		const id = dragId ?? e.dataTransfer?.getData('text/plain');
 		const targetId = overId;
@@ -250,12 +235,12 @@
 		if (!id) return;
 		const moving = $tasks.find((t) => t.id === id);
 		if (!moving) return;
-		const sameCell = moving.status === status && (laneArea === undefined || (moving.area ?? null) === laneArea);
+		const sameCell = moving.status === status && (lane === undefined || moving.project === lane);
 		// Dropped back onto itself: nothing moves.
 		if (targetId === id && sameCell) return;
-		const rows = cellRows(status, laneArea).filter((t) => t.id !== id);
+		const rows = cellRows(status, lane).filter((t) => t.id !== id);
 		const patch: TaskPatch = { status };
-		if (laneArea !== undefined) patch.area = laneArea;
+		if (lane !== undefined && lane !== moving.project) patch.project = lane;
 		const position = positionAt(rows, targetId === id ? null : targetId);
 		if (Number.isNaN(position)) await renumber(rows, moving, targetId, patch);
 		else await updateTask(id, { ...patch, position });
@@ -268,11 +253,11 @@
 		if (next) await updateTask(t.id, { status: next, position: Date.now() });
 	}
 
-	// Swap with the neighbour in the same cell (the lane, in By area). Done
-	// is ordered by completion time, so there is nothing to reorder there.
-	async function shiftOrder(t: Task, dir: 1 | -1, laneArea: TaskArea | null | undefined) {
+	// Swap with the neighbour in the same cell (the lane, in By project).
+	// Done is ordered by completion time, so there is nothing to reorder there.
+	async function shiftOrder(t: Task, dir: 1 | -1, lane: ProjectKey | undefined) {
 		if (t.status === 'done') return;
-		const rows = cellRows(t.status, laneArea);
+		const rows = cellRows(t.status, lane);
 		const i = rows.findIndex((x) => x.id === t.id);
 		const other = rows[i + dir];
 		if (!other) return;
@@ -286,10 +271,11 @@
 		await updateTask(other.id, { position: t.position });
 	}
 
-	// The lane a card's cell key names: undefined in Columns view.
-	function laneOf(key: string): TaskArea | null | undefined {
-		if (!key.includes('|')) return undefined;
-		return (key.split('|')[1] || null) as TaskArea | null;
+	// The lane a card's cell key names: undefined in Columns view. Status
+	// keys hold no '|', so the first one ends the status.
+	function laneOf(key: string): ProjectKey | undefined {
+		const at = key.indexOf('|');
+		return at === -1 ? undefined : key.slice(at + 1) || null;
 	}
 
 	function subCount(t: Task): string | null {
@@ -304,7 +290,7 @@
 	}
 </script>
 
-{#snippet card(t: Task, key: string, showArea: boolean)}
+{#snippet card(t: Task, key: string, showProject: boolean)}
 	<div
 		class="kc"
 		class:done={t.status === 'done'}
@@ -338,16 +324,11 @@
 		}}
 	>
 		{#if overId === t.id && dragId && dragId !== t.id}<div class="ins"></div>{/if}
-		{#if (showArea && t.area) || (!project && t.project)}
+		{#if showProject && t.project}
 			<div class="tags">
-				{#if showArea && t.area}
-					<span class="area"><i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}</span>
-				{/if}
-				{#if !project && t.project}
-					<span class="area" title={t.project}>
-						<span class="material-symbols-outlined">folder</span>{projectName(t.project)}
-					</span>
-				{/if}
+				<span class="proj" title={t.project}>
+					<span class="material-symbols-outlined">folder</span>{projectName(t.project)}
+				</span>
 			</div>
 		{/if}
 		<div class="kt">{t.title}</div>
@@ -398,8 +379,8 @@
 	</div>
 {/snippet}
 
-{#snippet adder(status: TaskStatus, laneArea?: TaskArea | null)}
-	{@const key = cellKey(status, laneArea)}
+{#snippet adder(status: TaskStatus, lane?: ProjectKey)}
+	{@const key = cellKey(status, lane)}
 	{#if addingTo === key}
 		<input
 			class="add-in"
@@ -408,7 +389,7 @@
 			{@attach (el) => el.focus()}
 			onblur={() => (addingTo = null)}
 			onkeydown={(e) => {
-				if (e.key === 'Enter') void add(status, laneArea);
+				if (e.key === 'Enter') void add(status, lane);
 				if (e.key === 'Escape') addingTo = null;
 			}}
 		/>
@@ -423,24 +404,17 @@
 	<header class="page-h">
 		<AppSwitcher current="board" size="lg" />
 		<span class="cnt">{openCount} open</span>
-		<span class="vsep"></span>
-		<div class="areas" role="group" aria-label="Filter by area">
-			<button class:on={area === null} onclick={() => (area = null)}>All</button>
-			{#each AREAS as a (a.key)}
-				<button class:on={area === a.key} onclick={() => (area = area === a.key ? null : a.key)}>
-					<i style="background: {a.color}"></i>{a.label}
-				</button>
-			{/each}
-		</div>
 		<span class="sp"></span>
-		<div class="seg" role="group" aria-label="Board view">
-			<button class:on={view === 'columns'} onclick={() => setView('columns')}>
-				<span class="material-symbols-outlined">view_week</span>Columns
-			</button>
-			<button class:on={view === 'areas'} onclick={() => setView('areas')}>
-				<span class="material-symbols-outlined">table_rows</span>By area
-			</button>
-		</div>
+		{#if boardView === 'all'}
+			<div class="seg" role="group" aria-label="Board view">
+				<button class:on={!lanesOn} onclick={() => setView('columns')}>
+					<span class="material-symbols-outlined">view_week</span>Columns
+				</button>
+				<button class:on={lanesOn} onclick={() => setView('lanes')}>
+					<span class="material-symbols-outlined">table_rows</span>By project
+				</button>
+			</div>
+		{/if}
 		<button
 			class="solid"
 			onclick={() => {
@@ -464,25 +438,13 @@
 		</button>
 		<span class="sp"></span>
 		{#if proj}
-			<select
-				class="pick"
-				aria-label="Default area for new tasks"
-				title="Default area for new tasks"
-				value={proj.area ?? ''}
-				onchange={(e) => void setProjectArea(proj.path, ((e.target as HTMLSelectElement).value || null) as TaskArea | null)}
-			>
-				<option value="">No default area</option>
-				{#each AREAS as a (a.key)}
-					<option value={a.key}>Default area: {a.label}</option>
-				{/each}
-			</select>
 			<button class="icon" title="Remove project" onclick={() => void dropProject(proj.path)}>
 				<span class="material-symbols-outlined">folder_off</span>
 			</button>
 		{/if}
 	</nav>
 
-	{#if view === 'columns'}
+	{#if !lanesOn}
 		<div class="board">
 			{#each STATUSES as col (col.key)}
 				{@const rows = cellRows(col.key)}
@@ -509,7 +471,7 @@
 					<div class="col-sub">{subLabel(col.key)}</div>
 					<div class="cards">
 						{#each rows as t (t.id)}
-							{@render card(t, key, area === null)}
+							{@render card(t, key, boardView === 'all')}
 						{/each}
 						{#if overCell === key && dragId && !overId}<div class="ins end"></div>{/if}
 						{#if col.key !== 'done'}
@@ -529,27 +491,29 @@
 						<span class="n">{st.key === 'done' ? doneTotal : cellRows(st.key).length}</span>
 					</div>
 				{/each}
-				{#each lanes as lane (lane.key ?? 'none')}
+				{#each lanes as lane (lane ?? '')}
 					<div class="ln">
-						<span class="ln-name"><i style="background: {lane.color}"></i>{lane.label}</span>
-						<small>{pool.filter((t) => (t.area ?? null) === lane.key && t.status !== 'done' && t.status !== 'inbox').length} open</small>
+						<span class="ln-name"
+							><span class="material-symbols-outlined">{lane ? 'folder' : 'home'}</span>{projectLabel(lane)}</span
+						>
+						<small>{pool.filter((t) => t.project === lane && t.status !== 'done' && t.status !== 'inbox').length} open</small>
 					</div>
 					{#each LANE_STATUSES as st (st.key)}
-						{@const key = cellKey(st.key, lane.key)}
+						{@const key = cellKey(st.key, lane)}
 						<div
 							class="cell"
 							class:drop={overCell === key && dragId}
 							ondragover={(e) => onCellOver(key, e)}
-							ondrop={(e) => void onDrop(st.key, lane.key, e)}
+							ondrop={(e) => void onDrop(st.key, lane, e)}
 							role="list"
-							aria-label="{lane.label}, {st.label}"
+							aria-label="{projectLabel(lane)}, {st.label}"
 						>
-							{#each cellRows(st.key, lane.key) as t (t.id)}
+							{#each cellRows(st.key, lane) as t (t.id)}
 								{@render card(t, key, false)}
 							{/each}
 							{#if overCell === key && dragId && !overId}<div class="ins end"></div>{/if}
 							{#if st.key !== 'done'}
-								{@render adder(st.key, lane.key)}
+								{@render adder(st.key, lane)}
 							{/if}
 						</div>
 					{/each}
@@ -617,17 +581,6 @@
 		color: var(--text);
 		border-bottom-color: var(--accent);
 	}
-	.pick {
-		height: 28px;
-		max-width: 220px;
-		padding: 0 6px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-md);
-		background: var(--bg);
-		color: var(--text);
-		font: var(--fs) var(--font-ui);
-		cursor: pointer;
-	}
 	.icon {
 		display: grid;
 		place-items: center;
@@ -652,47 +605,6 @@
 	}
 	.sp {
 		flex: 1;
-	}
-	.vsep {
-		width: 1px;
-		height: 18px;
-		background: var(--line-2);
-	}
-	.areas {
-		display: flex;
-		gap: 2px;
-		min-width: 0;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-	.areas button {
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		height: 28px;
-		padding: 0 10px;
-		border: none;
-		border-radius: var(--r-md);
-		background: none;
-		color: var(--text-3);
-		font: var(--fs) var(--font-ui);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.areas button:hover {
-		color: var(--text);
-	}
-	.areas button.on {
-		background: var(--raise);
-		color: var(--text);
-	}
-	.areas i,
-	.area i,
-	.ln-name i {
-		width: 7px;
-		height: 7px;
-		border-radius: 2px;
-		flex-shrink: 0;
 	}
 	.seg {
 		display: inline-flex;
@@ -850,14 +762,14 @@
 		gap: 4px 12px;
 		padding-right: 18px;
 	}
-	.area {
+	.proj {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
 		color: var(--text-2);
 		font-size: var(--fs-xs);
 	}
-	.area .material-symbols-outlined {
+	.proj .material-symbols-outlined {
 		font-size: 14px;
 		color: var(--text-3);
 	}
@@ -1019,6 +931,10 @@
 		align-items: center;
 		gap: 8px;
 		font-weight: 600;
+	}
+	.ln-name .material-symbols-outlined {
+		font-size: 16px;
+		color: var(--text-3);
 	}
 	.ln small {
 		color: var(--text-3);

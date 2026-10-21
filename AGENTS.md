@@ -407,12 +407,17 @@ State channels you will touch:
   `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,
   NoteTasks, Tags, FileInfo in that order), `PageFooter.svelte`.
 - Tasks: `src/lib/taskModel.ts` is the single list of statuses (`inbox`,
-  `todo` = "This week", `doing`, `waiting`, `done`), areas and priorities,
-  shared by the API validation and the UI. Rows live in sqlite (`tasks`,
+  `todo` = "This week", `doing`, `waiting`, `done`) and priorities,
+  shared by the API validation and the UI. Tasks group only by project
+  (the old fixed areas became projects at boot via `migrateAreasToProjects`
+  in db.ts; the routes ignore an `area` older phone builds still send). Rows live in sqlite (`tasks`,
   `task_links`), not the vault. `waiting_since` is stamped when a task
   enters Waiting and cleared when it leaves; the task routes (and the MCP
   task tools) accept an earlier start, never a future one. `GET /api/tasks?note=` lists tasks linked to a
-  note; note renames move `task_links` with the file like shares.
+  note; note renames move `task_links` with the file like shares. A link must name
+  a live note and is stored as a clean vault path (`vaultRel`). The client
+  queues each task's writes (`queued` in `stores/tasks.ts`) so PATCHes land
+  in the order they were made; only the newest edit paints the server row.
   Projects: a `projects` row registers a folder at the vault root, never
   a nested one (`POST /api/projects` creates it; `NewProjectDialog.svelte`
   from the sidebar, the palette or the board's tabs); tasks with no
@@ -422,11 +427,15 @@ State channels you will touch:
   a restore under a new name moves the ones whose folders came back.
   Subtasks always carry their parent's project: the task routes enforce
   it and `setSubtreeProject` cascades a change on the parent.
-  `onMainBoard` in taskModel.ts keeps a project's Inbox (its backlog) off
-  the All board, the list and `get_agenda`; the board's tabs set
+  `selectTasks(tasks, view)` in taskModel.ts is the one rule for what a
+  view shows (board, list, calendar, `get_agenda`): a project's undated
+  Inbox is its backlog and stays off All, a dated task always shows, and
+  subtasks follow the same rule. The board's tabs set
   `?project=<folder>` for one project and an empty `?project=` for
-  Quotidian (`boardHref`). The calendar shows every dated task.
-  `/tasks` (list + filters), `/tasks/kanban` (columns or by-area lanes, both
+  Quotidian (`boardHref`). The calendar shows dated subtasks with their
+  parent's title.
+  `/tasks` (list + filters), `/tasks/kanban` (columns or, on All, one lane
+  per project, both
   drag and drop), `/tasks/calendar` (month grid + day agenda, drop to
   schedule) share `TaskDrawer.svelte` docked by `tasks/+layout.svelte`.
 

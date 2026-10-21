@@ -16,12 +16,12 @@
 		dueLabel,
 		parseDueInput,
 		stampShort,
-		AREAS,
+		projects,
 		type Task,
-		type TaskArea,
 		type TaskStatus
 	} from '$lib/stores/tasks';
-	import { areaMeta, onMainBoard, projectName } from '$lib/taskModel';
+	import { projectName, selectTasks } from '$lib/taskModel';
+	import { projectLabel, type ProjectKey, type ProjectView } from '$lib/projects';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 	import AppActions from '$lib/components/AppActions.svelte';
@@ -31,13 +31,13 @@
 
 	let newTitle = $state('');
 	let newDue = $state('');
-	let newArea = $state<TaskArea | ''>('');
 	let adding = $state(false);
 	let query = $state('');
 	let searching = $state(false);
 	type TaskFilter = 'all' | 'today' | 'overdue' | 'upcoming' | 'undated' | 'completed';
 	let filter = $state<TaskFilter>('all');
-	let area = $state<TaskArea | null>(null);
+	// All, or one project (null is Quotidian). New tasks join that project.
+	let scope = $state<ProjectView>('all');
 	const filters: { key: TaskFilter; label: string; icon: string }[] = [
 		{ key: 'all', label: 'All open', icon: 'inbox' },
 		{ key: 'today', label: 'Today', icon: 'today' },
@@ -68,11 +68,6 @@
 				label: `Show ${f.label.toLowerCase()}`,
 				hint: 'Task list filter',
 				run: () => (filter = f.key)
-			})),
-			...AREAS.map((a) => ({
-				label: `Toggle area ${a.label}`,
-				hint: 'Task list filter',
-				run: () => (area = area === a.key ? null : a.key)
 			}))
 		]);
 	});
@@ -88,13 +83,13 @@
 		return true;
 	}
 
-	// Project backlogs stay on their project board (see onMainBoard).
-	const listed = $derived(topLevel($tasks).filter(onMainBoard));
-	const inArea = $derived(listed.filter((t) => area == null || t.area === area));
+	const listed = $derived(topLevel(selectTasks($tasks, scope)));
+	const scopes = $derived<ProjectKey[]>([null, ...$projects.map((p) => p.path)]);
+	const inScope = (key: ProjectKey) => scope !== 'all' && scope.project === key;
 
 	const visible = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		return inArea.filter(
+		return listed.filter(
 			(t) =>
 				matchesFilter(t, filter) &&
 				(!q || t.title.toLowerCase().includes(q) || t.detail.toLowerCase().includes(q))
@@ -128,20 +123,17 @@
 	});
 
 	const counts = $derived(
-		Object.fromEntries(filters.map((f) => [f.key, inArea.filter((t) => matchesFilter(t, f.key)).length])) as Record<
+		Object.fromEntries(filters.map((f) => [f.key, listed.filter((t) => matchesFilter(t, f.key)).length])) as Record<
 			TaskFilter,
 			number
 		>
 	);
-	const areaCounts = $derived(
-		Object.fromEntries(
-			AREAS.map((a) => [a.key, listed.filter((t) => t.area === a.key && t.status !== 'done').length])
-		) as Record<TaskArea, number>
-	);
+	const openIn = (key: ProjectKey) =>
+		$tasks.filter((t) => t.parent_id == null && t.project === key && t.status !== 'done').length;
 	const openCount = $derived(listed.filter((t) => t.status !== 'done').length);
 	const overdueCount = $derived(listed.filter(isOverdue).length);
 	const heading = $derived(
-		(area ? `${areaMeta(area).label}: ` : '') + filters.find((f) => f.key === filter)!.label
+		(scope !== 'all' ? `${projectLabel(scope.project)}: ` : '') + filters.find((f) => f.key === filter)!.label
 	);
 
 	// Clicking a row opens the detail drawer. Interactive controls stop the
@@ -163,7 +155,7 @@
 				title,
 				due_at: due,
 				status: due == null ? 'inbox' : 'todo',
-				area: newArea || area
+				project: scope === 'all' ? null : scope.project
 			});
 			if (row) {
 				newTitle = '';
@@ -214,18 +206,18 @@
 				</button>
 			{/each}
 		</nav>
-		<div class="grp">Areas</div>
+		<div class="grp">Projects</div>
 		<nav class="filters">
-			{#each AREAS as a (a.key)}
+			{#each scopes as key (key ?? '')}
 				<button
 					class="filt"
-					class:on={area === a.key}
-					onclick={() => (area = area === a.key ? null : a.key)}
-					aria-pressed={area === a.key}
+					class:on={inScope(key)}
+					onclick={() => (scope = inScope(key) ? 'all' : { project: key })}
+					aria-pressed={inScope(key)}
 				>
-					<i class="dot" style="background: {a.color}"></i>
-					<span class="fl">{a.label}</span>
-					<span class="n">{areaCounts[a.key]}</span>
+					<span class="material-symbols-outlined" class:fill={inScope(key)}>{key ? 'folder' : 'home'}</span>
+					<span class="fl">{projectLabel(key)}</span>
+					<span class="n">{openIn(key)}</span>
 				</button>
 			{/each}
 		</nav>
@@ -271,12 +263,6 @@
 					if (e.key === 'Enter') void handleAdd();
 				}}
 			/>
-			<select class="ctl" bind:value={newArea} aria-label="Area">
-				<option value="">{area ? areaMeta(area).label : 'No area'}</option>
-				{#each AREAS as a (a.key)}
-					<option value={a.key}>{a.label}</option>
-				{/each}
-			</select>
 			<input class="ctl" type="date" bind:value={newDue} aria-label="Due date" />
 			<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
 				Add
@@ -340,10 +326,7 @@
 											<span class="material-symbols-outlined">person</span>{t.waiting_on}
 										</span>
 									{/if}
-									{#if t.area}
-										<span class="m area"><i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}</span>
-									{/if}
-									{#if t.project}
+									{#if t.project && scope === 'all'}
 										<span class="m" title={t.project}>
 											<span class="material-symbols-outlined">folder</span>{projectName(t.project)}
 										</span>
@@ -472,12 +455,6 @@
 	}
 	.filt.red .n {
 		color: var(--red);
-	}
-	.dot {
-		width: 8px;
-		height: 8px;
-		margin: 0 5px;
-		border-radius: 2px;
 	}
 	.grp {
 		padding: 20px 18px 6px;
@@ -691,11 +668,6 @@
 	}
 	.m .material-symbols-outlined {
 		font-size: 15px;
-	}
-	.m.area i {
-		width: 7px;
-		height: 7px;
-		border-radius: 2px;
 	}
 	.pri-urgent {
 		color: var(--red);

@@ -1,8 +1,8 @@
 import { writable, get } from 'svelte/store';
-import type { TaskArea, TaskPriority, TaskStatus } from '$lib/taskModel';
+import type { TaskPriority, TaskStatus } from '$lib/taskModel';
 
-export type { TaskArea, TaskPriority, TaskStatus };
-export { AREAS, PRIORITIES, STATUSES } from '$lib/taskModel';
+export type { TaskPriority, TaskStatus };
+export { PRIORITIES, STATUSES } from '$lib/taskModel';
 
 export interface Task {
 	id: string;
@@ -10,7 +10,6 @@ export interface Task {
 	detail: string;
 	status: TaskStatus;
 	priority: TaskPriority;
-	area: TaskArea | null;
 	waiting_on: string | null;
 	waiting_since: number | null;
 	parent_id: string | null;
@@ -30,7 +29,6 @@ export interface NewTaskInput {
 	detail?: string;
 	status?: TaskStatus;
 	priority?: TaskPriority;
-	area?: TaskArea | null;
 	waiting_on?: string | null;
 	parent_id?: string | null;
 	project?: string | null;
@@ -45,7 +43,6 @@ export type TaskUpdate = Partial<
 		| 'detail'
 		| 'status'
 		| 'priority'
-		| 'area'
 		| 'waiting_on'
 		| 'parent_id'
 		| 'project'
@@ -146,33 +143,41 @@ export async function createTask(input: NewTaskInput): Promise<Task | null> {
 	return row;
 }
 
-// Latest request number per task. A response only paints when it answers
-// the newest edit, so a slow earlier PATCH can't overwrite a later one
-// (double-clicking status: doing then done).
+// Writes to one task run one at a time, in the order they were made, like
+// note autosave: two quick edits (doing, then done) can never reach the
+// server swapped. Each queued write resolves to null on a network error.
+const taskQueue = new Map<string, Promise<unknown>>();
+
+function queued(id: string, req: () => Promise<Response>): Promise<Response | null> {
+	const run = (taskQueue.get(id) ?? Promise.resolve()).then(() => taskWrite(req).catch(() => null));
+	taskQueue.set(id, run);
+	void run.then(() => {
+		if (taskQueue.get(id) === run) taskQueue.delete(id);
+	});
+	return run;
+}
+
+// Latest edit number per task. Only the newest edit's answer paints, so the
+// screen keeps every edit still waiting in the queue.
 const editSeq = new Map<string, number>();
 
 export async function updateTask(id: string, patch: TaskUpdate): Promise<Task | null> {
-	// Optimistic: paint first, roll back this row only on failure, so tasks
-	// created or edited meanwhile survive the rollback.
 	const n = (editSeq.get(id) ?? 0) + 1;
 	editSeq.set(id, n);
-	const before = get(tasks).find((t) => t.id === id);
 	tasks.update((all) => all.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-	const res = await taskWrite(() =>
+	const res = await queued(id, () =>
 		fetch(`/api/tasks/${encodeURIComponent(id)}`, {
 			method: 'PATCH',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(patch)
 		})
-	).catch(() => null);
+	);
 	const row = res?.ok ? ((await res.json()) as Task) : null;
 	if (editSeq.get(id) !== n) return row;
-	if (!row) {
-		if (before) tasks.update((all) => all.map((t) => (t.id === id ? before : t)));
-		return null;
-	}
-	tasks.update((all) => all.map((t) => (t.id === id ? row : t)));
+	// A failed edit shows what the server kept, not a guess at it.
+	if (row) tasks.update((all) => all.map((t) => (t.id === id ? row : t)));
+	else void loadTasks();
 	return row;
 }
 
@@ -192,12 +197,12 @@ export async function deleteTask(id: string): Promise<boolean> {
 	}
 	tasks.update((all) => all.filter((t) => !doomed.has(t.id)));
 	if (doomed.has(get(openTaskId) ?? '')) closeTask();
-	const res = await taskWrite(() =>
+	const res = await queued(id, () =>
 		fetch(`/api/tasks/${encodeURIComponent(id)}`, {
 			method: 'DELETE',
 			credentials: 'include'
 		})
-	).catch(() => null);
+	);
 	if (!res?.ok) {
 		// Put back only the subtree, not the whole list as it was.
 		tasks.update((all) => [
@@ -209,11 +214,10 @@ export async function deleteTask(id: string): Promise<boolean> {
 	return true;
 }
 
-// --- Projects (see onMainBoard in $lib/taskModel) ---
+// --- Projects (see selectTasks in $lib/taskModel) ---
 
 export interface Project {
 	path: string;
-	area: TaskArea | null;
 	created_at: number;
 }
 
@@ -250,8 +254,8 @@ const sendProject = (method: string, body: unknown) =>
 	}).catch(() => null);
 
 /** Registers a folder (created when missing). Resolves to an error message on failure. */
-export async function createProject(path: string, area: TaskArea | null = null): Promise<Project | string> {
-	const res = await sendProject('POST', { path, area });
+export async function createProject(path: string): Promise<Project | string> {
+	const res = await sendProject('POST', { path });
 	if (!res?.ok) return (await res?.json().catch(() => null))?.message ?? 'Could not create the project';
 	const row = (await res.json()) as Project;
 	void loadProjects();
@@ -259,15 +263,6 @@ export async function createProject(path: string, area: TaskArea | null = null):
 		[...all.filter((p) => p.path !== row.path), row].sort((a, b) => a.path.localeCompare(b.path))
 	);
 	return row;
-}
-
-export async function setProjectArea(path: string, area: TaskArea | null): Promise<boolean> {
-	const res = await sendProject('PATCH', { path, area });
-	if (!res?.ok) return false;
-	const row = (await res.json()) as Project;
-	void loadProjects();
-	projects.update((all) => all.map((p) => (p.path === path ? row : p)));
-	return true;
 }
 
 /** Unregisters the project; the folder stays and its tasks join Quotidian. */
