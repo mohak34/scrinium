@@ -74,7 +74,7 @@
 		| { kind: 'blank' }
 		| { kind: 'entry'; entry: VaultEntry; pinRow: boolean }
 		| { kind: 'section'; key: ProjectKey }
-		| { kind: 'view' };
+		| { kind: 'view'; width: number };
 	let menu = $state<({ x: number; y: number } & MenuOn) | null>(null);
 	let stylePicker = $state<{ x: number; y: number; path: string } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
@@ -425,9 +425,18 @@
 		if (menu.kind === 'view') {
 			const pick = (v: ProjectView) => () => setView(v);
 			return [
-				{ label: 'All projects', action: pick('all') },
-				...sections.map((s) => ({ label: projectLabel(s.key), action: pick({ project: s.key }) })),
-				newProject
+				{ label: 'All projects', icon: 'apps', current: current === 'all', action: pick('all') },
+				...sections.map((s) => {
+					const st = styleOf(s.key);
+					return {
+						label: projectLabel(s.key),
+						icon: st.icon,
+						color: colorVar(st.color),
+						current: current !== 'all' && current.project === s.key,
+						action: pick({ project: s.key })
+					};
+				}),
+				{ ...newProject, icon: 'add' }
 			];
 		}
 		if (menu.kind === 'blank') {
@@ -553,7 +562,7 @@
 		title="Show one project or all of them"
 		onclick={(e) => {
 			const r = e.currentTarget.getBoundingClientRect();
-			menu = { x: r.left, y: r.bottom + 4, kind: 'view' };
+			menu = { x: r.left, y: r.bottom + 4, kind: 'view', width: r.width };
 		}}
 	>
 		{#if current === 'all'}
@@ -707,7 +716,13 @@
 		<AppActions />
 	</div>
 	{#if menu}
-		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
+		<ContextMenu
+			x={menu.x}
+			y={menu.y}
+			width={menu.kind === 'view' ? menu.width : undefined}
+			items={menuItems}
+			onClose={() => (menu = null)}
+		/>
 	{/if}
 	{#if stylePicker}
 		{@const st = styleOf(stylePicker.path)}
