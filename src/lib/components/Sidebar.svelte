@@ -776,11 +776,11 @@
 		position: relative;
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 		width: calc(100% - 12px);
 		height: 29px;
 		margin: 0 6px;
-		padding: 0 8px 0 14px;
+		padding: 0 8px;
 		border: none;
 		border-radius: var(--r);
 		background: none;
