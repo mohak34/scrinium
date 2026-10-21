@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { VaultEntry } from '$lib/stores/vault';
-	import { activePath, pinnedPaths } from '$lib/stores/vault';
+	import { activePath, fileOrder, inFileOrder, pinnedPaths } from '$lib/stores/vault';
 	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
 	import { drag } from './sidebarDrag';
 	import { isImagePath } from '$lib/attachments';
@@ -46,9 +46,12 @@
 	}
 
 	// The row being dragged fades in place; the folder a drop would land in is
-	// highlighted with everything under it.
+	// highlighted with everything under it, a spot between files gets a line.
 	const dragged = $derived($drag && !$drag.source.fromPins ? $drag.source.path : null);
-	const dropDir = $derived($drag?.target?.kind === 'move' ? $drag.target.dir : undefined);
+	const moveTo = $derived($drag?.target?.kind === 'move' ? $drag.target : null);
+	const dropDir = $derived(moveTo && !moveTo.place ? moveTo.dir : undefined);
+	const insBefore = (path: string) => moveTo?.place?.path === path && !moveTo.place.after;
+	const insAfter = (path: string) => moveTo?.place?.path === path && moveTo.place.after;
 
 	let createName = $state('');
 	let createInput = $state<HTMLInputElement>();
@@ -108,7 +111,7 @@
 		onCancelRename();
 	}
 	// Pinned notes live in the Pinned list only, so each note shows once.
-	const display = $derived(entries.filter((e) => !$pinnedPaths.includes(e.path)));
+	const display = $derived(inFileOrder(entries, $fileOrder).filter((e) => !$pinnedPaths.includes(e.path)));
 
 	// Notes under a folder, shown as a quiet count on the folder row. Pinned
 	// notes are left out, matching what the folder shows when expanded.
@@ -201,6 +204,8 @@
 					class="file"
 					class:active={$activePath === entry.path}
 					class:dragging={dragged === entry.path}
+					class:ins-before={insBefore(entry.path)}
+					class:ins-after={insAfter(entry.path)}
 					data-tree-entry
 					data-path={entry.path}
 					data-type="file"
@@ -220,6 +225,8 @@
 					class="file asset"
 					class:viewable={viewable}
 					class:dragging={dragged === entry.path}
+					class:ins-before={insBefore(entry.path)}
+					class:ins-after={insAfter(entry.path)}
 					title={entry.name}
 					role="button"
 					tabindex={viewable ? 0 : -1}
@@ -337,6 +344,23 @@
 	.dir.dragging,
 	.file.dragging {
 		opacity: 0.4;
+	}
+	/* Insertion line where a dragged file would land. */
+	.file.ins-before::before,
+	.file.ins-after::after {
+		content: '';
+		position: absolute;
+		left: calc(8px + var(--depth, 0) * var(--step));
+		right: 8px;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--accent);
+	}
+	.file.ins-before::before {
+		top: -1px;
+	}
+	.file.ins-after::after {
+		bottom: -1px;
 	}
 	/* The icon font has one weight; a stroke makes the arrow read bolder. */
 	.file-chevron {

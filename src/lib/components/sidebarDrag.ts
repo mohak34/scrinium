@@ -1,8 +1,9 @@
 import { get, writable } from 'svelte/store';
 import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 
-// Pointer-driven drag for the notes sidebar. Tree rows move into folders,
-// notes dropped on Pinned get pinned globally and on their project's pins
+// Pointer-driven drag for the notes sidebar. Tree rows move into folders, a
+// file dropped on the top or bottom half of another file lands right before
+// or after it (in that file's folder), notes dropped on Pinned get pinned globally and on their project's pins
 // in that project, pins reorder, move into a folder when dropped on one
 // (staying pinned), and unpin when dropped anywhere else.
 // Built on pointer events instead of HTML5 drag-and-drop so the lifted row,
@@ -27,7 +28,7 @@ export interface DragSource {
 }
 
 export type DropTarget =
-	| { kind: 'move'; dir: string | null }
+	| { kind: 'move'; dir: string | null; place?: { path: string; after: boolean } }
 	| { kind: 'pin'; before: string | null; global: boolean }
 	| { kind: 'unpin' };
 
@@ -84,8 +85,25 @@ function treeDir(el: Element | null): string | null | undefined {
 	return section ? section.dataset.dropDir || null : undefined;
 }
 
+// A file over another file row: the side of that row it would land on, or
+// null when that is where it already sits.
+function placeTarget(source: DragSource, row: HTMLElement, y: number): DropTarget | null {
+	const path = row.dataset.path ?? '';
+	const b = row.getBoundingClientRect();
+	const after = y > b.top + b.height / 2;
+	const li = row.closest('li');
+	const next = after ? li?.nextElementSibling : li?.previousElementSibling;
+	const beside = next?.querySelector<HTMLElement>('[data-tree-entry]')?.dataset.path;
+	if (path === source.path || beside === source.path) return null;
+	return { kind: 'move', dir: parentDirOf(path), place: { path, after } };
+}
+
 function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	const el = document.elementFromPoint(x, y);
+	const row = el?.closest<HTMLElement>('[data-tree-entry]');
+	if (row?.dataset.type === 'file' && source.kind === 'file' && !source.fromPins) {
+		return placeTarget(source, row, y);
+	}
 	const pins = el?.closest<HTMLElement>('[data-drop-pins]');
 	if (pins) {
 		const project = pins.dataset.project;

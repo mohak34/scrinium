@@ -20,6 +20,9 @@
 		archivePath,
 		movePath,
 		movePin,
+		fileOrder,
+		inFileOrder,
+		placeFile,
 		downloadNote,
 		flushSave,
 		loadTree,
@@ -310,13 +313,31 @@
 		}
 	}
 
-	async function onMove(path: string, toDir: string | null) {
-		const ok = await movePath(path, toDir);
-		if (ok && toDir) expandDir(toDir);
+	async function onMove(path: string, toDir: string | null, place?: { path: string; after: boolean }) {
+		let at = path;
+		if (parentDirOf(path) !== toDir) {
+			if (!(await movePath(path, toDir))) return;
+			if (toDir) expandDir(toDir);
+			at = joinPath(toDir, path.split('/').pop()!);
+		}
+		if (!place) return;
+		const siblings = inFileOrder(filesIn($tree, toDir), $fileOrder).map((e) => e.path);
+		placeFile(at, siblings, place.path, place.after);
+	}
+
+	// The files directly in folder `dir` (null for the vault root).
+	function filesIn(entries: VaultEntry[], dir: string | null): VaultEntry[] {
+		if (dir === null) return entries.filter((e) => e.type === 'file');
+		for (const e of entries) {
+			if (e.type !== 'directory') continue;
+			if (e.path === dir) return (e.children ?? []).filter((c) => c.type === 'file');
+			if (dir.startsWith(e.path + '/')) return filesIn(e.children ?? [], dir);
+		}
+		return [];
 	}
 
 	function onDrop(source: DragSource, target: DropTarget) {
-		if (target.kind === 'move') void onMove(source.path, target.dir);
+		if (target.kind === 'move') void onMove(source.path, target.dir, target.place);
 		else if (target.kind === 'pin') {
 			movePin(source.path, target.before);
 			setPinGlobal(source.path, target.global);
@@ -336,17 +357,6 @@
 		dropTarget?.kind === 'pin' &&
 		dropTarget.before === null &&
 		(key === undefined ? dropTarget.global : !dropTarget.global && ($drag?.source.project || null) === key);
-	// A note dragged from the tree can be pinned even when nothing is pinned yet.
-	const pinDropOpen = $derived(
-		!!$drag && !$drag.source.fromPins && $drag.source.path.endsWith('.md')
-	);
-	// A section offers an empty pin list while one of its notes is dragged
-	// that is not pinned to it yet.
-	const pinDropHere = (key: ProjectKey) =>
-		!!$drag &&
-		$drag.source.path.endsWith('.md') &&
-		($drag.source.project || null) === key &&
-		(!$drag.source.fromPins || $globalPins.includes($drag.source.path));
 	// What releasing would do, shown on the lifted row.
 	const dropLabel = $derived.by(() => {
 		if (!$drag || !dropTarget) return null;
@@ -356,6 +366,8 @@
 			if ($pinnedPaths.includes(path) && $globalPins.includes(path) === dropTarget.global) return null;
 			return dropTarget.global ? 'Pin everywhere' : `Pin in ${projectLabel($drag.source.project || null)}`;
 		}
+		// Reordering within its own folder needs no label; the line says it.
+		if (dropTarget.place && dropTarget.dir === parentDirOf($drag.source.path)) return null;
 		return `Move to ${dropTarget.dir ? dropTarget.dir.split('/').pop() : projectLabel(null)}`;
 	});
 	const dragIcon = $derived(
@@ -563,15 +575,12 @@
 		bind:this={treeEl}
 		onkeydown={treeKey}
 	>
-		{#if topPins.length > 0 || pinDropOpen}
+		{#if topPins.length > 0}
 			<div class="pins" data-drop-pins>
 				<div class="group"><span class="material-symbols-outlined">keep</span>Pinned</div>
 				{#each topPins as p, i (p)}
 					{@render pinRow(p, i === topPins.length - 1)}
 				{/each}
-				{#if topPins.length === 0}
-					<div class="pin-empty" class:drop-target={endOfList()}>Drop to pin everywhere</div>
-				{/if}
 			</div>
 		{/if}
 		{#each shownSections as s (foldKey(s.key))}
@@ -580,7 +589,7 @@
 			{@const pr = progress.get(s.key) ?? { done: 0, total: 0 }}
 			{@const st = styleOf(s.key)}
 			<section
-				class:drop-root={dropTarget?.kind === 'move' && dropTarget.dir === s.key}
+				class:drop-root={dropTarget?.kind === 'move' && !dropTarget.place && dropTarget.dir === s.key}
 				data-drop-dir={s.key ?? ''}
 			>
 				{#if s.key !== null && renameTarget?.path === s.key}
@@ -661,16 +670,11 @@
 					</div>
 				{/if}
 				{#if !folded}
-					{#if pins.length > 0 || pinDropHere(s.key)}
+					{#if pins.length > 0}
 						<div class="pins" data-drop-pins data-project={s.key ?? ''}>
 							{#each pins as p, i (p)}
 								{@render pinRow(p, i === pins.length - 1, s.key)}
 							{/each}
-							{#if pins.length === 0}
-								<div class="pin-empty" class:drop-target={endOfList(s.key)}>
-									Drop to pin in {projectLabel(s.key)}
-								</div>
-							{/if}
 						</div>
 					{/if}
 					<div class="tree">
@@ -812,21 +816,6 @@
 	}
 	.pin-row.ins-after::after {
 		bottom: -1px;
-	}
-	.pin-empty {
-		display: flex;
-		align-items: center;
-		height: 29px;
-		margin: 0 6px;
-		padding: 0 14px;
-		border: 1px dashed var(--line-2);
-		border-radius: var(--r);
-		color: var(--text-3);
-		font-size: var(--fs-sm);
-	}
-	.pin-empty.drop-target {
-		border-color: var(--accent);
-		color: var(--text);
 	}
 	.pin-row .material-symbols-outlined {
 		font-size: 16px;

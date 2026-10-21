@@ -332,10 +332,14 @@ State channels you will touch:
   global ones are also in `globalPins`, the rest show in their project's
   section. In one project, search passes `?folder=` to `/api/search`.
   `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
-  drag-and-drop. Tree rows move into folders (a file row means its folder,
-  a section header or its empty space the section's folder), notes dropped
-  on the global Pinned list pin everywhere and on their own project's pins
-  pin there, pins reorder, move into a folder they are dropped on (staying
+  drag-and-drop. Tree rows move into folders (a section header or its empty
+  space means the section's folder). A file dropped on the top or bottom
+  half of another file lands right before or after it, moving folders if
+  needed; that hand-placed order lives in `fileOrder` (localStorage, like
+  pins, in stores/vault.ts) and `inFileOrder` applies it, folders first.
+  Notes dropped on a non-empty Pinned list pin everywhere and on their own
+  project's pins pin there (nothing appears mid-drag, so the tree never
+  shifts; the first pin comes from the right-click menu), pins reorder, move into a folder they are dropped on (staying
   pinned), and unpin when dropped anywhere else. Targets are found by
   `data-*` attributes under the pointer; the lifted row and its "Move to
   X" label live in Sidebar.svelte. A pinned note shows only in its pin

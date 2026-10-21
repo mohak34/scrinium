@@ -78,11 +78,37 @@ export function movePin(path: string, before: string | null) {
 	});
 }
 
-// Rewrites or drops pins after a rename or delete of `path` (and below it).
+// Files placed by hand in the tree, client-side like pins. A folder whose
+// files were dragged into an order lists them here in that order; files it
+// doesn't list follow, by name. Folders always come first, by name.
+const ORDER_STORAGE = 'scrinium:fileOrder';
+export const fileOrder = storedPaths(ORDER_STORAGE, loadPaths(ORDER_STORAGE) ?? []);
+
+export function inFileOrder(entries: VaultEntry[], order: string[]): VaultEntry[] {
+	const rank = new Map(order.map((p, i) => [p, i]));
+	const of = (e: VaultEntry) => (e.type === 'directory' ? -1 : (rank.get(e.path) ?? Infinity));
+	// Stable, so equal ranks keep the server's folders-then-name order.
+	return [...entries].sort((a, b) => (of(a) === of(b) ? 0 : of(a) - of(b)));
+}
+
+// Drag between two files: puts `path` right before or after `at` among its
+// folder's files (`siblings`, in shown order) and records that folder's order.
+export function placeFile(path: string, siblings: string[], at: string, after: boolean) {
+	const rest = siblings.filter((p) => p !== path);
+	const i = rest.indexOf(at);
+	if (i === -1) return;
+	rest.splice(after ? i + 1 : i, 0, path);
+	const placed = new Set(rest);
+	fileOrder.update((order) => [...order.filter((p) => !placed.has(p)), ...rest]);
+}
+
+// Rewrites or drops pins and placed files after a rename or delete of `path`
+// (and below it).
 function updatePins(fn: (p: string) => string | null) {
 	const apply = (paths: string[]) => paths.map(fn).filter((p): p is string => p !== null);
 	pinnedPaths.update(apply);
 	globalPins.update(apply);
+	fileOrder.update(apply);
 }
 
 // Open tabs, oldest first. The active note is the last one opened (or the
