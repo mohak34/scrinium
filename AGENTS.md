@@ -341,8 +341,9 @@ State channels you will touch:
   project's pins pin there. Nothing is inserted mid-drag, so the tree never
   shifts: an empty list is reached through rows already on screen, the
   switcher bar (reads "Pin everywhere") and the note's project header
-  (a Pin target in place of its task count). Pins reorder, move into a folder they are dropped on (staying
-  pinned), and unpin when dropped anywhere else. Targets are found by
+  (a Pin target in place of its task count). Pins reorder, move into a folder they are dropped on, a pinned
+  folder's row included (its middle; its edges reorder), staying
+  pinned, and unpin when dropped anywhere else. Targets are found by
   `data-*` attributes under the pointer; the lifted row and its "Move to
   X" label live in Sidebar.svelte. Folders pin like notes and list
   before the pinned notes, opening in place with their own tree. A pinned
