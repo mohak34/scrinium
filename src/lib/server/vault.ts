@@ -419,13 +419,13 @@ export interface Restored {
 	notes: { path: string; content: string }[];
 }
 
-// Every .md note at or under a vault path ('' is the whole vault), with its
-// text. Dot folders inside are skipped.
+// Every .md note (any case, like the wikilink resolver) at or under a vault
+// path ('' is the whole vault), with its text. Dot folders inside are skipped.
 export async function readNotesUnder(rel: string): Promise<{ path: string; content: string }[]> {
 	const full = safeResolve(rel);
 	const st = await fs.stat(full).catch(() => null);
 	if (!st?.isDirectory()) {
-		const content = st && rel.endsWith('.md') ? await fs.readFile(full, 'utf-8').catch(() => null) : null;
+		const content = st && rel.toLowerCase().endsWith('.md') ? await fs.readFile(full, 'utf-8').catch(() => null) : null;
 		return content === null ? [] : [{ path: rel, content }];
 	}
 	const out: { path: string; content: string }[] = [];
