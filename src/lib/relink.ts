@@ -73,17 +73,19 @@ interface Link {
 }
 
 // One parse of a note: its relative link destinations and its wikilinks,
-// both outside code.
+// both outside code. A "[[...]]" inside a link's url is part of that url.
 function scan(content: string, dir: string): { links: Link[]; wikis: Wikilink[] } {
 	const links: Link[] = [];
-	const code: { from: number; to: number }[] = [];
+	const skip: { from: number; to: number }[] = [];
 	markdown.parse(content).iterate({
 		enter(node) {
 			if (CODE_NODES.has(node.name)) {
-				code.push({ from: node.from, to: node.to });
+				skip.push({ from: node.from, to: node.to });
 				return false;
 			}
-			if (node.name !== 'URL' || !LINK_NODES.has(node.node.parent?.name ?? '')) return;
+			if (node.name !== 'URL') return;
+			skip.push({ from: node.from, to: node.to });
+			if (!LINK_NODES.has(node.node.parent?.name ?? '')) return;
 			const raw = content.slice(node.from, node.to);
 			const angle = raw.startsWith('<');
 			const url = angle ? raw.slice(1, -1) : raw;
@@ -109,11 +111,11 @@ function scan(content: string, dir: string): { links: Link[]; wikis: Wikilink[] 
 			});
 		}
 	});
-	// Code ranges come out sorted and disjoint, wikilinks sorted: one sweep.
+	// Skipped ranges come out sorted and disjoint, wikilinks sorted: one sweep.
 	let i = 0;
 	const wikis = findWikilinksInText(content).filter((w) => {
-		while (i < code.length && code[i].to <= w.from) i++;
-		return !(i < code.length && code[i].from < w.to);
+		while (i < skip.length && skip[i].to <= w.from) i++;
+		return !(i < skip.length && skip[i].from < w.to);
 	});
 	return { links, wikis };
 }
