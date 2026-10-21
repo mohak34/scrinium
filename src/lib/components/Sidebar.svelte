@@ -630,11 +630,11 @@
 							</svg>
 							<span class="material-symbols-outlined fill">{st.icon}</span>
 						</span>
-						<span class="sec-t">
-							<span class="pin-name">{projectLabel(s.key)}</span>
-							<span class="sec-s">{pr.total === 0 ? 'No tasks' : `${pr.done} of ${pr.total} done`}</span>
-						</span>
+						<span class="pin-name">{projectLabel(s.key)}</span>
 						<span class="sp"></span>
+						{#if pr.total > 0}
+							<span class="sec-s" title="{pr.done} of {pr.total} tasks done">{pr.done}/{pr.total}</span>
+						{/if}
 						<span class="acts">
 							<button
 								class="icon-btn sm"
@@ -883,18 +883,19 @@
 		position: sticky;
 		top: 0;
 		z-index: 1;
-		gap: 10px;
-		margin-top: 8px;
-		padding: 6px 10px 6px 12px;
-		background: color-mix(in srgb, var(--c) 13%, var(--panel));
+		gap: 9px;
+		height: 34px;
+		margin-top: 6px;
+		padding: 0 10px 0 12px;
+		background: color-mix(in srgb, var(--c) 8%, var(--panel));
 		color: var(--c);
 		cursor: pointer;
 	}
 	.ring {
 		position: relative;
 		flex-shrink: 0;
-		width: 30px;
-		height: 30px;
+		width: 24px;
+		height: 24px;
 	}
 	.ring svg {
 		position: absolute;
@@ -917,15 +918,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 15px;
+		font-size: 12px;
 	}
-	.sec-t {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		line-height: 1.2;
-	}
-	.sec-t .pin-name {
+	.sec-h .pin-name {
 		font-size: var(--fs-sm);
 		font-weight: 700;
 		letter-spacing: 0.08em;
@@ -941,14 +936,18 @@
 		font-size: 17px;
 		-webkit-text-stroke: 0.6px currentColor;
 	}
-	/* The buttons show on hover or keyboard focus. A mouse click leaves
-	   focus on the header, so plain :focus-within would keep them up. */
+	/* The buttons replace the count on hover or keyboard focus. A mouse
+	   click leaves focus on the header, so plain :focus-within would keep
+	   them up. */
 	.sec-h .acts {
 		display: none;
 		gap: 2px;
 	}
 	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .acts {
 		display: flex;
+	}
+	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .sec-s {
+		display: none;
 	}
 	.icon-btn.sm {
 		width: 22px;

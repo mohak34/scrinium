@@ -324,9 +324,9 @@ State channels you will touch:
   section (Quotidian, everything outside a project folder, first) holding
   its own pins and its file tree, and global pins sit above them. A
   section folds under its folder path in `collapsedDirs` ("" for
-  Quotidian), so its pins fold with it. A project header is a sticky band
-  in its color with its icon inside a ring that fills as the project's
-  board tasks get done (`projectStyle` in projects.ts; icon and color set
+  Quotidian), so its pins fold with it. A project header is a sticky one-line
+  band in its color with its icon inside a ring that fills as the
+  project's board tasks get done (done/total beside it) (`projectStyle` in projects.ts; icon and color set
   from the header's right-click menu, stored on the `projects` row, an
   unpicked color comes from the path) so it never reads as a folder. Pins live in `pinnedPaths`; the
   global ones are also in `globalPins`, the rest show in their project's
