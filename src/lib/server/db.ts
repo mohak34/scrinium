@@ -640,7 +640,9 @@ export function migrateAreasToProjects(rootFolders: string[]): string[] {
 			const name = AREA_PROJECTS[area];
 			if (!name) continue;
 			const path = known.find((k) => k.toLowerCase() === name.toLowerCase()) ?? name;
-			if (insertProject(path) && !rootFolders.includes(path)) missing.push(path);
+			insertProject(path);
+			// A project row can outlive its folder (trashed), so check the folder itself.
+			if (!rootFolders.includes(path) && !missing.includes(path)) missing.push(path);
 			known.push(path);
 			set.run(path, id);
 			setSubtreeProject(id, path);
