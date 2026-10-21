@@ -184,10 +184,8 @@
 
 	async function makeProject(path: string) {
 		const row = await createProject(path);
-		if (typeof row === 'string') return alert(row);
-		// The project's section shows the folder now; a pin would list it twice.
-		if ($pinnedPaths.includes(path)) togglePin(path);
-		await loadTree();
+		if (typeof row === 'string') alert(row);
+		else await loadTree();
 	}
 
 	function sanitizeName(raw: string, kind: 'note' | 'folder' | 'file'): string | null {
@@ -415,6 +413,8 @@
 	const pinEntries = $derived(
 		new Map(
 			$pinnedPaths.flatMap((p) => {
+				// A folder that became a project shows as its section instead.
+				if (projectSet.has(p)) return [];
 				const e = findEntry($tree, p);
 				return e ? [[p, e] as const] : [];
 			})
