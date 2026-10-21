@@ -344,7 +344,7 @@ State channels you will touch:
   shifts: an empty list is reached through rows already on screen, the
   switcher bar (reads "Pin everywhere") and the note's project header
   (a Pin target in place of its task count). Pins reorder, move into a folder they are dropped on, a pinned
-  folder's row included (its middle; its edges reorder), staying
+  folder's row included (all but a thin strip at its edges, which reorders), staying
   pinned, and unpin when dropped anywhere else. Targets are found by
   `data-*` attributes under the pointer; the lifted row and its "Move to
   X" label live in Sidebar.svelte. Folders pin like notes and list

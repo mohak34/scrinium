@@ -13,8 +13,8 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 // Targets are found in the DOM under the pointer:
 //   [data-drop-pins]  a pin list: global, or one project's when it carries
 //                     data-project; [data-pin=path] its rows, with
-//                     data-pin-dir on pinned folders (their middle
-//                     moves into the folder). The switcher
+//                     data-pin-dir on pinned folders (all but
+//                     their edges move into the folder). The switcher
 //                     bar and a project header carry it too, plus
 //                     data-pin-here, while the dragged item can pin there.
 //   [data-tree-entry] a tree row (data-path, data-type)
@@ -51,6 +51,7 @@ export const drag = writable<DragState | null>(null);
 const THRESHOLD = 4;
 const EXPAND_DELAY = 600;
 const EDGE = 32;
+const PIN_EDGE = 6;
 
 // A move is valid unless it lands where the item already is, or puts a
 // folder inside itself.
@@ -114,12 +115,13 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	// A pinned folder's own tree sits inside its pin list; its rows move.
 	const pins = row ? null : el?.closest<HTMLElement>('[data-drop-pins]');
 	if (pins) {
-		// The middle of a pinned folder moves into it; its edges reorder.
+		// A pinned folder row moves into the folder; only a thin strip at its
+		// top and bottom reorders the pins.
 		const dirRow = el?.closest<HTMLElement>('[data-pin-dir]');
 		const into = dirRow?.dataset.pin;
 		if (dirRow && into) {
 			const b = dirRow.getBoundingClientRect();
-			const middle = y > b.top + b.height / 4 && y < b.bottom - b.height / 4;
+			const middle = y > b.top + PIN_EDGE && y < b.bottom - PIN_EDGE;
 			if (middle && canMove(source, into)) return { kind: 'move', dir: into };
 		}
 		const project = pins.dataset.project;
