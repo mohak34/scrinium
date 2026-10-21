@@ -337,9 +337,11 @@ State channels you will touch:
   half of another file lands right before or after it, moving folders if
   needed; that hand-placed order lives in `fileOrder` (localStorage, like
   pins, in stores/vault.ts) and `inFileOrder` applies it, folders first.
-  Notes dropped on a non-empty Pinned list pin everywhere and on their own
-  project's pins pin there (nothing appears mid-drag, so the tree never
-  shifts; the first pin comes from the right-click menu), pins reorder, move into a folder they are dropped on (staying
+  Notes dropped on the Pinned list pin everywhere and on their own
+  project's pins pin there. Nothing is inserted mid-drag, so the tree never
+  shifts: an empty list is reached through rows already on screen, the
+  switcher bar (reads "Pin everywhere") and the note's project header
+  (a Pin target in place of its task count). Pins reorder, move into a folder they are dropped on (staying
   pinned), and unpin when dropped anywhere else. Targets are found by
   `data-*` attributes under the pointer; the lifted row and its "Move to
   X" label live in Sidebar.svelte. A pinned note shows only in its pin

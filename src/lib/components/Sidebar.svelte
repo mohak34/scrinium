@@ -358,6 +358,14 @@
 		dropTarget?.kind === 'pin' &&
 		dropTarget.before === null &&
 		(key === undefined ? dropTarget.global : !dropTarget.global && ($drag?.source.project || null) === key);
+	// Whether the dragged item can pin onto a list: the global one (undefined)
+	// takes any note, a project's only that project's notes. The project
+	// header and the switcher bar then offer a pin target, so even an empty
+	// list can be dropped on without anything appearing in the tree.
+	const canPin = (key?: ProjectKey) =>
+		!!$drag &&
+		($drag.source.fromPins || ($drag.source.kind === 'file' && $drag.source.path.endsWith('.md'))) &&
+		(key === undefined || ($drag.source.project || null) === key);
 	// What releasing would do, shown on the lifted row.
 	const dropLabel = $derived.by(() => {
 		if (!$drag || !dropTarget) return null;
@@ -559,21 +567,30 @@
 	</div>
 	<button
 		class="view-pick"
+		class:pin-drop={canPin()}
+		class:on={canPin() && endOfList()}
+		data-drop-pins={canPin() || undefined}
 		title="Show one project or all of them"
 		onclick={(e) => {
 			const r = e.currentTarget.getBoundingClientRect();
 			menu = { x: r.left, y: r.bottom + 4, kind: 'view', width: r.width };
 		}}
 	>
-		{#if current === 'all'}
+		{#if canPin()}
+			<span class="material-symbols-outlined">keep</span>
+		{:else if current === 'all'}
 			<span class="material-symbols-outlined">apps</span>
 		{:else}
 			{@const st = styleOf(current.project)}
 			<span class="material-symbols-outlined fill" style:color={colorVar(st.color)}>{st.icon}</span>
 		{/if}
-		<span class="pin-name">{current === 'all' ? 'All projects' : projectLabel(current.project)}</span>
+		<span class="pin-name">
+			{canPin() ? 'Pin everywhere' : current === 'all' ? 'All projects' : projectLabel(current.project)}
+		</span>
 		<span class="sp"></span>
-		<span class="material-symbols-outlined">unfold_more</span>
+		{#if !canPin()}
+			<span class="material-symbols-outlined">unfold_more</span>
+		{/if}
 	</button>
 	<SearchBox {onSelect} folder={homeDir ?? undefined} />
 	<div
@@ -651,7 +668,17 @@
 						</span>
 						<span class="pin-name">{projectLabel(s.key)}</span>
 						<span class="sp"></span>
-						{#if pr.total > 0}
+						{#if canPin(s.key)}
+							<span
+								class="sec-pin"
+								class:on={endOfList(s.key)}
+								title="Pin in {projectLabel(s.key)}"
+								data-drop-pins
+								data-project={s.key ?? ''}
+							>
+								<span class="material-symbols-outlined">keep</span>Pin
+							</span>
+						{:else if pr.total > 0}
 							<span class="sec-s" title="{pr.done} of {pr.total} tasks done">{pr.done}/{pr.total}</span>
 						{/if}
 						<span class="acts">
@@ -953,6 +980,36 @@
 	}
 	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .sec-s {
 		display: none;
+	}
+	:global(html.sidebar-dragging) .sec-h .acts {
+		display: none;
+	}
+	/* Pin targets on the header and the switcher bar while a note is dragged. */
+	.sec-pin {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		height: 24px;
+		padding: 0 8px 0 6px;
+		border-radius: var(--r);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, transparent);
+		color: var(--c);
+		font-size: var(--fs-xs);
+	}
+	.sec-pin .material-symbols-outlined {
+		font-size: 14px;
+	}
+	.sec-pin.on,
+	.view-pick.pin-drop.on {
+		background: var(--hover);
+		box-shadow: inset 0 0 0 1px var(--accent);
+		color: var(--accent);
+	}
+	.view-pick.pin-drop {
+		box-shadow: inset 0 0 0 1px var(--border-raised);
+	}
+	.view-pick.pin-drop.on .material-symbols-outlined {
+		color: var(--accent);
 	}
 	.icon-btn.sm {
 		width: 22px;

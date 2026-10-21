@@ -12,7 +12,8 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 //
 // Targets are found in the DOM under the pointer:
 //   [data-drop-pins]  a pin list: global, or one project's when it carries
-//                     data-project; [data-pin=path] its rows
+//                     data-project; [data-pin=path] its rows. The switcher
+//                     bar and a project header's pin target carry it too.
 //   [data-tree-entry] a tree row (data-path, data-type)
 //   [data-drop-dir]   a project section, moving into its folder ("" is the
 //                     vault root, Quotidian)
