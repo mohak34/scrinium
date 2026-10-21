@@ -209,8 +209,16 @@ export function beginDrag(
 		if (drop && target) onDrop(source, target);
 	}
 
+	// The pin targets only render once the drag has started, so the target is
+	// read again where the pointer is let go.
 	function up(ev: PointerEvent) {
-		if (ev.pointerId === e.pointerId) finish(true);
+		if (ev.pointerId !== e.pointerId) return;
+		if (started) {
+			x = ev.clientX;
+			y = ev.clientY;
+			update();
+		}
+		finish(true);
 	}
 	function cancel(ev: PointerEvent) {
 		if (ev.pointerId === e.pointerId) finish(false);
