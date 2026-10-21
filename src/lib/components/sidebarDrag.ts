@@ -57,11 +57,18 @@ const PIN_EDGE = 6;
 // A move is valid unless it lands where the item already is, or puts a
 // folder inside itself.
 export function canMove(source: DragSource, dir: string | null): boolean {
-	if (parentDirOf(source.path) === dir) return false;
-	if (source.kind === 'directory' && dir !== null) {
-		if (dir === source.path || dir.startsWith(source.path + '/')) return false;
-	}
-	return true;
+	return parentDirOf(source.path) !== dir && !intoItself(source, dir);
+}
+
+function intoItself(source: DragSource, dir: string | null): boolean {
+	return source.kind === 'directory' && dir !== null && (dir === source.path || dir.startsWith(source.path + '/'));
+}
+
+// A drop that moves nothing: a pin leaves the Pinned list (let go anywhere
+// else, or over the folder it already lives in), but a folder dropped over
+// itself goes nowhere.
+function stay(source: DragSource, dir: string | null | undefined): DropTarget | null {
+	return source.fromPins && !(dir !== undefined && intoItself(source, dir)) ? { kind: 'unpin' } : null;
 }
 
 // Insert position from the pointer's height against the pin rows; null when
@@ -126,7 +133,7 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 		if (dirRow && into) {
 			const b = dirRow.getBoundingClientRect();
 			const middle = y > b.top + PIN_EDGE && y < b.bottom - PIN_EDGE;
-			if (middle) return canMove(source, into) ? { kind: 'move', dir: into } : null;
+			if (middle) return canMove(source, into) ? { kind: 'move', dir: into } : stay(source, into);
 		}
 		const project = pins.dataset.project;
 		const pinnable =
@@ -136,10 +143,7 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	}
 	const dir = treeDir(el);
 	if (dir !== undefined && canMove(source, dir)) return { kind: 'move', dir };
-	// A folder over its own tree (open under its pin row) goes nowhere.
-	if (dir && source.kind === 'directory' && (dir === source.path || dir.startsWith(source.path + '/'))) return null;
-	// A pin let go anywhere else leaves the Pinned list.
-	return source.fromPins ? { kind: 'unpin' } : null;
+	return stay(source, dir);
 }
 
 function swallowClick(e: MouseEvent) {
