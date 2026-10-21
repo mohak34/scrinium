@@ -149,10 +149,16 @@
 	const homeDir = $derived(current === 'all' ? null : current.project);
 	const foldKey = (key: ProjectKey) => key ?? '';
 
-	// Open cards on each project's board, subtasks left out like the board does.
-	const openTasks = $derived.by(() => {
-		const counts = new Map<ProjectKey, number>();
-		for (const t of topLevel($tasks)) if (t.status !== 'done') counts.set(t.project, (counts.get(t.project) ?? 0) + 1);
+	// Done and total cards on each project's board, subtasks left out like
+	// the board does. Feeds the header's progress ring.
+	const progress = $derived.by(() => {
+		const counts = new Map<ProjectKey, { done: number; total: number }>();
+		for (const t of topLevel($tasks)) {
+			const c = counts.get(t.project) ?? { done: 0, total: 0 };
+			c.total++;
+			if (t.status === 'done') c.done++;
+			counts.set(t.project, c);
+		}
 		return counts;
 	});
 
@@ -571,7 +577,7 @@
 		{#each shownSections as s (foldKey(s.key))}
 			{@const folded = $collapsedDirs.has(foldKey(s.key))}
 			{@const pins = pinsIn(s.key)}
-			{@const open = openTasks.get(s.key) ?? 0}
+			{@const pr = progress.get(s.key) ?? { done: 0, total: 0 }}
 			{@const st = styleOf(s.key)}
 			<section
 				class:drop-root={dropTarget?.kind === 'move' && dropTarget.dir === s.key}
@@ -591,7 +597,7 @@
 				{:else}
 					<div
 						class="group sec-h"
-						style:color={colorVar(st.color)}
+						style:--c={colorVar(st.color)}
 						role="button"
 						tabindex="0"
 						title={folded ? 'Expand' : 'Collapse'}
@@ -608,9 +614,26 @@
 							menu = { x: e.clientX, y: e.clientY, kind: 'section', key: s.key };
 						}}
 					>
-						<span class="material-symbols-outlined chev">{folded ? 'chevron_right' : 'expand_more'}</span>
-						<span class="material-symbols-outlined fill">{st.icon}</span>
-						<span class="pin-name">{projectLabel(s.key)}</span>
+						<span class="ring">
+							<svg viewBox="0 0 30 30" aria-hidden="true">
+								<circle class="track" cx="15" cy="15" r="12" />
+								{#if pr.done > 0}
+									<circle
+										class="arc"
+										cx="15"
+										cy="15"
+										r="12"
+										pathLength="100"
+										stroke-dasharray="{(pr.done / pr.total) * 100} 100"
+									/>
+								{/if}
+							</svg>
+							<span class="material-symbols-outlined fill">{st.icon}</span>
+						</span>
+						<span class="sec-t">
+							<span class="pin-name">{projectLabel(s.key)}</span>
+							<span class="sec-s">{pr.total === 0 ? 'No tasks' : `${pr.done} of ${pr.total} done`}</span>
+						</span>
 						<span class="sp"></span>
 						<span class="acts">
 							<button
@@ -634,9 +657,7 @@
 								<span class="material-symbols-outlined">add</span>
 							</button>
 						</span>
-						{#if open > 0}<span class="open" title="{open} open {open === 1 ? 'task' : 'tasks'}"
-								><span class="material-symbols-outlined">task_alt</span>{open}</span
-							>{/if}
+						<span class="material-symbols-outlined chev">{folded ? 'chevron_right' : 'expand_more'}</span>
 					</div>
 				{/if}
 				{#if !folded}
@@ -856,24 +877,72 @@
 		font-size: 16px;
 		color: var(--text-3);
 	}
+	/* A project header is a band washed in its color that sticks to the top
+	   while its section scrolls; the band is opaque so rows slide under it. */
 	.sec-h {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		gap: 10px;
+		margin-top: 8px;
+		padding: 6px 10px 6px 12px;
+		background: color-mix(in srgb, var(--c) 13%, var(--panel));
+		color: var(--c);
 		cursor: pointer;
-		padding: 12px 8px 4px 14px;
-		font-size: calc(var(--fs) + 1px);
-		font-weight: 700;
 	}
-	.sec-h > .material-symbols-outlined {
-		font-size: 18px;
+	.ring {
+		position: relative;
+		flex-shrink: 0;
+		width: 30px;
+		height: 30px;
+	}
+	.ring svg {
+		position: absolute;
+		inset: 0;
+		fill: none;
+		stroke-width: 2.5;
+	}
+	.ring .track {
+		stroke: color-mix(in srgb, var(--c) 22%, var(--panel));
+	}
+	.ring .arc {
+		stroke: var(--c);
+		stroke-linecap: round;
+		transform: rotate(-90deg);
+		transform-origin: center;
+	}
+	.ring .material-symbols-outlined {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 15px;
+	}
+	.sec-t {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		line-height: 1.2;
+	}
+	.sec-t .pin-name {
+		font-size: var(--fs-sm);
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.sec-s {
+		color: color-mix(in srgb, var(--c) 60%, var(--text-3));
+		font-size: var(--fs-xs);
+		font-variant-numeric: tabular-nums;
 	}
 	/* The icon font has one weight; a stroke makes the arrow read bolder. */
 	.sec-h > .chev {
 		font-size: 17px;
-		color: var(--text-2);
 		-webkit-text-stroke: 0.6px currentColor;
 	}
-	/* The buttons replace the count on hover or keyboard focus. A mouse
-	   click leaves focus on the header, so plain :focus-within would keep
-	   them up next to the count. */
+	/* The buttons show on hover or keyboard focus. A mouse click leaves
+	   focus on the header, so plain :focus-within would keep them up. */
 	.sec-h .acts {
 		display: none;
 		gap: 2px;
@@ -881,23 +950,9 @@
 	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .acts {
 		display: flex;
 	}
-	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .open {
-		display: none;
-	}
 	.icon-btn.sm {
 		width: 22px;
 		height: 22px;
-	}
-	.open {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-		font-variant-numeric: tabular-nums;
-	}
-	.open .material-symbols-outlined {
-		font-size: 13px;
 	}
 	.tree-empty {
 		padding: 6px 30px;
