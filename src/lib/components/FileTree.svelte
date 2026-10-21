@@ -3,6 +3,7 @@
 	import { activePath, pinnedPaths } from '$lib/stores/vault';
 	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
 	import { drag } from './sidebarDrag';
+	import { isImagePath } from '$lib/attachments';
 	import FileTree from './FileTree.svelte';
 
 	interface Props {
@@ -35,6 +36,14 @@
 		onCancelCreate,
 		onCancelRename
 	}: Props = $props();
+
+	function fileIcon(name: string): string {
+		if (isImagePath(name)) return 'image';
+		if (/\.pdf$/i.test(name)) return 'picture_as_pdf';
+		if (/\.(mp3|m4a|wav|ogg)$/i.test(name)) return 'audio_file';
+		if (/\.(mp4|webm|mov)$/i.test(name)) return 'video_file';
+		return 'draft';
+	}
 
 	// The row being dragged fades in place; the folder a drop would land in is
 	// highlighted with everything under it.
@@ -235,7 +244,7 @@
 					}}
 					onpointerdown={(e) => onDragStart(e, entry)}
 				>
-					<span class="material-symbols-outlined file-icon">{viewable ? 'image' : 'draft'}</span>
+					<span class="material-symbols-outlined file-icon">{fileIcon(entry.name)}</span>
 					<span class="file-label">{entry.name}</span>
 				</div>
 			{/if}
