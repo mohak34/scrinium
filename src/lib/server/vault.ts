@@ -250,7 +250,7 @@ export async function renamePath(
 		book();
 		const changed = new Map<string, string>();
 		try {
-			const text = now.endsWith('.md') ? await fs.readFile(to, 'utf-8').catch(() => null) : null;
+			const text = /\.md$/i.test(now) ? await fs.readFile(to, 'utf-8').catch(() => null) : null;
 			const titled = text === null ? text : retitle(text, was, now);
 			if (titled !== null && titled !== text) {
 				await writeAtomic(to, titled);
