@@ -18,7 +18,12 @@ export const init: ServerInit = async () => {
 	await runMigrations();
 	const dirents = await readdir(safeResolve(''), { withFileTypes: true }).catch(() => []);
 	const roots = dirents.filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name);
-	for (const path of migrateAreasToProjects(roots)) await createFolder(path);
+	// A folder that can't be made (a file holds the name) must not stop the
+	// app: the project still works on the board, and making the folder by
+	// hand later attaches it.
+	for (const path of migrateAreasToProjects(roots)) {
+		await createFolder(path).catch((e) => console.error(`project folder ${path}:`, e));
+	}
 };
 
 const PUBLIC_PATHS =['/login', '/api/auth', '/s', '/api/share'];
