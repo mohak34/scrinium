@@ -512,18 +512,17 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			}
 		},
 		async ({ title, due, remind_at, waiting_since, note_paths, ...rest }) => {
-			// A missing note fails before the task exists, so a retry can't duplicate it.
-			for (const p of note_paths ?? []) await readNote(p);
+			// The route links the notes and refuses the whole task if one is not a live note.
 			const row = (await (
 				await send('POST', '/api/tasks', {
 					title,
 					...rest,
+					note_paths,
 					due_at: ms(due),
 					remind_at: ms(remind_at),
 					waiting_since: ms(waiting_since)
 				})
 			).json()) as TaskRow;
-			for (const p of note_paths ?? []) await send('POST', `/api/tasks/${row.id}/links`, { note_path: p });
 			onWrite('create_task', row.title);
 			return result(taskOut({ ...row, link_count: note_paths?.length ?? 0 }));
 		}
