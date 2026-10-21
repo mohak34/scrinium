@@ -86,8 +86,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	});
 	// Notes whose links or title the move rewrote; the editor fixes its
 	// copy of the open one the same way (relinkNote, retitle). Archived ones stay
-	// searchable but have no metadata, like every binned note.
+	// searchable but have no metadata, like every binned note; trashed ones
+	// stay out of the index.
 	for (const n of relinked) {
+		if (n.path.startsWith('.trash/')) continue;
 		const title = effectiveTitle(n.content, n.path);
 		if (!isHiddenPath(n.path)) upsertNoteMeta(n.path, title, Date.now());
 		indexNote(n.path, title, n.content);
