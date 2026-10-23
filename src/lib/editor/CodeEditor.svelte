@@ -28,7 +28,7 @@ import { perDoc } from './docRanges';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
 	import { attachmentMarkdown, resolveAssetUrl } from '$lib/attachments';
-	import { tree, archiveEntries } from '$lib/stores/vault';
+	import { tree, archiveEntries, flushSave, insertIntoNote, openTab, shownNote } from '$lib/stores/vault';
 	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
 	import { syncCell, tableBlockField, tableCommands, tableVim } from './tableBlock';
@@ -311,10 +311,10 @@ import { perDoc } from './docRanges';
 			.catch(() => {});
 	});
 
-	async function uploadFile(file: File): Promise<string | null> {
+	async function uploadFile(file: File, note: string | null): Promise<string | null> {
 		// The server re-validates the folder.
 		const projectSet = new Set(get(projects).map((p) => p.path));
-		const folder = attachmentDirFor(notePath ?? null, get(settings).attachments, projectSet);
+		const folder = attachmentDirFor(note, get(settings).attachments, projectSet);
 		const query = new URLSearchParams({ name: file.name });
 		if (folder) query.set('folder', folder);
 		try {
@@ -334,15 +334,21 @@ import { perDoc } from './docRanges';
 	}
 
 	// Upload pasted or dropped files and insert their markdown reference at
-	// `pos`. Failed uploads are skipped silently rather than leaving broken
-	// refs.
+	// `pos` in the note they were dropped on, also when the editor moved to
+	// another note during the upload. Failed uploads are skipped silently
+	// rather than leaving broken refs.
 	async function insertFiles(view: EditorView, files: File[], pos: number) {
+		const note = shownNote();
 		let insert = '';
 		for (const file of files) {
-			const vaultRel = await uploadFile(file);
-			if (vaultRel) insert += attachmentMarkdown(vaultRel, notePath ?? null) + '\n';
+			const vaultRel = await uploadFile(file, note);
+			if (vaultRel) insert += attachmentMarkdown(vaultRel, note) + '\n';
 		}
 		if (!insert) return;
+		if (shownNote() !== note) {
+			if (note) void insertIntoNote(note, pos, insert);
+			return;
+		}
 		pos = Math.min(pos, view.state.doc.length);
 		const line = view.state.doc.lineAt(pos);
 		const needsBreak = pos > line.from;
@@ -545,9 +551,10 @@ import { perDoc } from './docRanges';
 								const href = url && resolveAssetUrl(url, view.state.field(noteDirField));
 								if (href) {
 									e.preventDefault();
-									// Vault PDFs open in the pane beside the editor.
-									const asset = href.startsWith('/api/assets/') ? decodeURIComponent(href.slice(12)) : '';
-									if (asset && isPdfPath(asset)) pdfPath.set(asset);
+									// Vault notes open in the editor, PDFs in the pane beside it.
+									const asset = href.startsWith('/api/assets/') ? decodeURIComponent(href.slice(12).replace(/[?#].*$/, '')) : '';
+									if (asset.toLowerCase().endsWith('.md')) void flushSave().then(() => openTab(asset));
+									else if (asset && isPdfPath(asset)) pdfPath.set(asset);
 									else window.open(href, '_blank', 'noopener,noreferrer');
 									return true;
 								}
@@ -661,8 +668,18 @@ import { perDoc } from './docRanges';
 		if (!view) return;
 		suppressChange = true;
 		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure([]) });
+		// Same-note pushes replace only the part that differs, so the cursor
+		// and scroll around it stay put.
+		const old = view.state.doc.toString();
+		let from = 0;
+		let to = old.length;
+		let end = newValue.length;
+		if (!resetCursor) {
+			while (from < to && from < end && old[from] === newValue[from]) from++;
+			while (to > from && end > from && old[to - 1] === newValue[end - 1]) to--, end--;
+		}
 		view.dispatch({
-			changes: { from: 0, to: view.state.doc.length, insert: newValue },
+			changes: { from, to, insert: newValue.slice(from, end) },
 			// Note switches park the cursor on line 1; same-note pushes
 			// (rename syncs, link conversions) leave it alone.
 			selection: resetCursor ? { anchor: 0 } : undefined,

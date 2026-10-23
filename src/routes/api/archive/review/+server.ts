@@ -5,11 +5,12 @@ import { manifestNotes, safeResolve } from '$lib/server/vault';
 import { linkedNotePaths } from '$lib/server/db';
 import { sharedNotePaths } from '$lib/server/shares';
 import { effectiveTitle, stripFrontmatter } from '$lib/editor/frontmatter';
-import { findWikilinksInText, wikiResolver } from '$lib/editor/wikilinks';
+import { wikiResolver } from '$lib/editor/wikilinks';
+import { noteLinks } from '$lib/relink';
 import type { ReviewNote } from '$lib/archive';
 
 // Notes that look abandoned: not edited in `days` days (default 60), no
-// other note links to them, no task links to them, no share link. Pinning
+// other note links to them (wikilink or markdown link), no task links to them, no share link. Pinning
 // is a browser preference, so the page drops pinned notes itself. A direct
 // scan of the vault files, same as backlinks: nothing to keep in sync.
 export const GET: RequestHandler = async ({ url }) => {
@@ -27,10 +28,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const links = wikiResolver(paths);
 	const linked = new Set<string>();
 	for (const f of files) {
-		for (const w of findWikilinksInText(f.content)) {
-			const to = links.resolve(w.target);
-			if (to && to !== f.path) linked.add(to);
-		}
+		for (const l of noteLinks(f.content, f.path, links)) if (l.target !== f.path) linked.add(l.target);
 	}
 	const tasked = linkedNotePaths();
 	const shared = sharedNotePaths();

@@ -38,3 +38,9 @@ export function parseOutline(text: string): OutlineEntry[] {
 	}
 	return out;
 }
+
+/** Line of the first heading named `heading` (case-insensitive), null when none. */
+export function headingLine(text: string, heading: string): number | null {
+	const want = heading.trim().toLowerCase();
+	return parseOutline(text).find((h) => h.text.toLowerCase() === want)?.line ?? null;
+}

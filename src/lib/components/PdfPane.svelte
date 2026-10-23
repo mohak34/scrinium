@@ -36,12 +36,14 @@
 	const name = $derived(path.split('/').pop() ?? path);
 	const url = $derived('/api/assets/' + path.split('/').map(encodeURIComponent).join('/'));
 
-	// Each save writes the original bytes plus every annotation, so saves can
-	// run as often as needed without stacking copies. Edits made while one is
-	// in flight mark the PDF dirty again and queue the next.
+	// Each save uploads the whole file (original bytes plus every
+	// annotation), so they wait for a 10 s pause, the tab hiding, or the
+	// pane closing. Edits made while one is in flight mark the PDF dirty
+	// again and queue the next.
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let saving: Promise<void> | undefined;
-	function scheduleSave(wait = 1500) {
+	let closed = false;
+	function scheduleSave(wait = 10_000) {
 		clearTimeout(timer);
 		timer = setTimeout(() => void save(), wait);
 	}
@@ -64,7 +66,7 @@
 				if (saveState === 'saving') saveState = 'saved';
 			} catch {
 				saveState = 'failed';
-				scheduleSave(5000);
+				if (!closed) scheduleSave(5000);
 			}
 		})();
 		await saving;
@@ -80,6 +82,10 @@
 			if (saveState !== 'saved') e.preventDefault();
 		};
 		window.addEventListener('beforeunload', unsaved);
+		const hidden = () => {
+			if (document.visibilityState === 'hidden') void save();
+		};
+		document.addEventListener('visibilitychange', hidden);
 
 		void (async () => {
 			try {
@@ -135,9 +141,12 @@
 		return () => {
 			gone = true;
 			window.removeEventListener('beforeunload', unsaved);
+			document.removeEventListener('visibilitychange', hidden);
 			// Closing or switching files still writes pending annotations, then
 			// frees the worker's copy of the document.
+			// No retry after this one: the document is destroyed with the pane.
 			const last = doc;
+			closed = true;
 			void save().finally(() => {
 				viewer?.cleanup();
 				void last?.loadingTask.destroy();

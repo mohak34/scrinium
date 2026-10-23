@@ -33,7 +33,8 @@
 		loading = true;
 		failed = false;
 		let cancelled = false;
-		fetch(`/api/backlinks?note=${encodeURIComponent(current)}`)
+		const abort = new AbortController();
+		fetch(`/api/backlinks?note=${encodeURIComponent(current)}`, { signal: abort.signal })
 			.then((res) => {
 				if (!res.ok) throw new Error('backlinks failed');
 				return res.json();
@@ -55,6 +56,7 @@
 			});
 		return () => {
 			cancelled = true;
+			abort.abort();
 		};
 	});
 

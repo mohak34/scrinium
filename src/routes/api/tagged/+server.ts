@@ -1,7 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import fs from 'node:fs/promises';
-import { safeResolve } from '$lib/server/vault';
+import { readNotesUnder } from '$lib/server/vault';
 import { findTagsInText, matchTag } from '$lib/editor/tags';
 import { parseFrontmatter, frontmatterTags, effectiveTitle } from '$lib/editor/frontmatter';
 
@@ -12,45 +11,23 @@ export const GET: RequestHandler = async ({ url }) => {
 	const tag = (url.searchParams.get('tag') ?? '').trim().replace(/^#+/, '');
 	if (!tag) throw error(400, 'Missing tag');
 
-	const paths: string[] = [];
-	async function walk(relDir = ''): Promise<void> {
-		let dirents;
-		try {
-			dirents = await fs.readdir(safeResolve(relDir), { withFileTypes: true });
-		} catch {
-			return;
-		}
-		for (const d of dirents) {
-			if (d.name.startsWith('.')) continue;
-			const rel = relDir ? `${relDir}/${d.name}` : d.name;
-			if (d.isDirectory()) await walk(rel);
-			else if (d.name.toLowerCase().endsWith('.md')) paths.push(rel);
+	// A note carrying the tag spells it, so the rest are skipped unparsed.
+	const low = tag.toLowerCase();
+	const out: Array<{ path: string; title: string; snippet: string }> = [];
+	for (const { path: p, content } of await readNotesUnder('')) {
+		if (!content.toLowerCase().includes(low)) continue;
+		const tags = findTagsInText(content).map((t) => t.name);
+		const fm = parseFrontmatter(content);
+		if (fm) tags.push(...frontmatterTags(fm.data));
+		const matched = matchTag([...new Set(tags)], tag);
+		if (matched.length) {
+			out.push({
+				path: p,
+				title: effectiveTitle(content, p),
+				snippet: matched.map((t) => `#${t}`).join(' ')
+			});
 		}
 	}
-	await walk();
-
-	const out: Array<{ path: string; title: string; snippet: string }> = [];
-	await Promise.all(
-		paths.map(async (p) => {
-			let content: string;
-			try {
-				content = await fs.readFile(safeResolve(p), 'utf-8');
-			} catch {
-				return;
-			}
-			const tags = findTagsInText(content).map((t) => t.name);
-			const fm = parseFrontmatter(content);
-			if (fm) tags.push(...frontmatterTags(fm.data));
-			const matched = matchTag([...new Set(tags)], tag);
-			if (matched.length) {
-				out.push({
-					path: p,
-					title: effectiveTitle(content, p),
-					snippet: matched.map((t) => `#${t}`).join(' ')
-				});
-			}
-		})
-	);
 	out.sort((a, b) => a.path.localeCompare(b.path));
 	return json(out);
 };

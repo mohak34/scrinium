@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { AREAS, PRIORITIES, STATUSES, onMainBoard } from '$lib/taskModel';
+import { DOING_LIMIT, PRIORITIES, STATUSES, selectTasks } from '$lib/taskModel';
 import { attachmentMarkdown, isImagePath } from '$lib/attachments';
 import type { ProjectRow, TaskRow } from './db';
 import { fromArchivedPath, type ArchiveEntry } from '$lib/archive';
@@ -21,7 +21,6 @@ const keys = <T extends readonly { key: string }[]>(list: T) =>
 	list.map((x) => x.key) as [T[number]['key'], ...T[number]['key'][]];
 
 const Status = z.enum(keys(STATUSES));
-const Area = z.enum(keys(AREAS));
 const Priority = z.enum(keys(PRIORITIES));
 // Offsets are required: the server's clock zone is not the user's.
 const When = z
@@ -37,7 +36,9 @@ const NotePath = z
 
 const INSTRUCTIONS = `Scrinium is a personal notes and tasks app. Notes are markdown files in a vault, addressed by vault-relative path ending in .md. The first "# " heading of a note is its title and should match the filename. Use [[Note name]] to link notes and #tag for tags.
 
-Tasks are separate from notes. Status: ${STATUSES.map((s) => `${s.key} (${s.hint})`).join(', ')}. Areas: ${AREAS.map((a) => a.key).join(', ')}. Priorities: ${PRIORITIES.map((p) => p.key).join(', ')}. A task with parent_id is a subtask. Tasks can link to notes. A project is a folder at the vault root registered with create_project; a task's project is that folder name, and its notes live in the folder. Tasks with no project and notes outside project folders belong to Quotidian, the default. A project task in inbox is project backlog and stays off the main board and agenda.
+Tasks live in the app, not in notes. Statuses: ${STATUSES.map((s) => `${s.key} (${s.hint})`).join(', ')}. Keep doing to ${DOING_LIMIT} or fewer. Priorities: ${PRIORITIES.map((p) => p.key).join(', ')}. A task with parent_id is a subtask and always shares its parent's project. Tasks link to existing notes by path.
+
+Tasks and notes group the same way, by project. A project is a folder at the vault root registered with create_project; list_projects shows them. A task's project is that folder name, and the project's notes live inside the folder. Everything else is Quotidian: tasks with no project and notes outside project folders. When a task is about a note in a project folder, give the task that project and link the note. Create a project only when asked. In a project, an undated inbox task is backlog: it shows only on that project's board until it gets a date or another status. Quotidian inbox tasks show everywhere.
 
 Dates are ISO 8601 with a UTC offset. An all-day due date is midnight in the user's local time, e.g. 2026-10-07T00:00:00-04:00. Timestamps in results are UTC.
 
@@ -54,7 +55,6 @@ function taskOut(t: TaskRow) {
 		detail: t.detail,
 		status: t.status,
 		priority: t.priority,
-		area: t.area,
 		parent_id: t.parent_id,
 		project: t.project,
 		due: iso(t.due_at),
@@ -233,13 +233,11 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		'move_note',
 		{
 			description:
-				'Rename or move a note or folder. Shares and task links follow it. Wikilinks in other notes are not rewritten.',
+				'Rename or move a note or folder. Missing folders on the way are created. Links in other notes (wikilinks and markdown links), shares, task links and projects follow it, and a note whose title was its old filename takes the new name as its title. Project folders stay at the vault root. Calling it again after it succeeded is harmless.',
 			inputSchema: { path: NotePath, new_path: NotePath }
 		},
 		async ({ path, new_path }) => {
 			const to = new_path.replace(/^\/+/, '');
-			const cut = to.lastIndexOf('/');
-			if (cut > 0) await send('POST', `/api/notes/${enc(to.slice(0, cut))}`, { folder: true });
 			await send('PATCH', `/api/notes/${enc(path)}`, { newPath: to });
 			onWrite('move_note', `${path} -> ${to}`);
 			return result(`Moved ${path} to ${new_path}`);
@@ -445,7 +443,6 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			inputSchema: {
 				query: z.string().optional(),
 				status: Status.optional(),
-				area: Area.optional(),
 				note_path: NotePath.optional().describe('Only tasks linked to this note'),
 				parent_id: z.string().optional().describe('Only subtasks of this task'),
 				project: z.string().optional().describe('Only tasks in this project (folder path); "" for Quotidian, tasks with no project'),
@@ -453,7 +450,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			},
 			annotations: readOnly
 		},
-		async ({ query, status, area, note_path, parent_id, project, include_done }) => {
+		async ({ query, status, note_path, parent_id, project, include_done }) => {
 			let rows = note_path
 				? await getJson<TaskRow[]>(`/api/tasks?note=${encodeURIComponent(note_path)}`)
 				: await allTasks();
@@ -461,7 +458,6 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			rows = rows.filter(
 				(t) =>
 					(status ? t.status === status : include_done || t.status !== 'done') &&
-					(!area || t.area === area) &&
 					(!parent_id || t.parent_id === parent_id) &&
 					(project === undefined || t.project === (project || null)) &&
 					(!q || t.title.toLowerCase().includes(q) || t.detail.toLowerCase().includes(q))
@@ -494,7 +490,6 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		detail: z.string().max(4000).optional().describe('Markdown notes for the task'),
 		status: Status.optional(),
 		priority: Priority.optional(),
-		area: Area.nullable().optional(),
 		due: When.nullable().optional(),
 		remind_at: When.nullable().optional().describe('When to show a reminder, independent of due'),
 		waiting_on: z.string().max(120).nullable().optional().describe('Who a waiting task is blocked on'),
@@ -508,7 +503,8 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 	server.registerTool(
 		'create_task',
 		{
-			description: 'Create a task or, with parent_id, a subtask. Status defaults to todo ("This week"); use inbox for unplanned captures.',
+			description:
+				'Create a task or, with parent_id, a subtask. Status defaults to todo ("This week"); use inbox for unplanned captures. Set project when the task belongs to one, leave it out for Quotidian.',
 			inputSchema: {
 				title: z.string().min(1).max(200),
 				...taskFields,
@@ -516,16 +512,17 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			}
 		},
 		async ({ title, due, remind_at, waiting_since, note_paths, ...rest }) => {
+			// The route links the notes and refuses the whole task if one is not a live note.
 			const row = (await (
 				await send('POST', '/api/tasks', {
 					title,
 					...rest,
+					note_paths,
 					due_at: ms(due),
 					remind_at: ms(remind_at),
 					waiting_since: ms(waiting_since)
 				})
 			).json()) as TaskRow;
-			for (const p of note_paths ?? []) await send('POST', `/api/tasks/${row.id}/links`, { note_path: p });
 			onWrite('create_task', row.title);
 			return result(taskOut({ ...row, link_count: note_paths?.length ?? 0 }));
 		}
@@ -534,7 +531,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 	server.registerTool(
 		'update_task',
 		{
-			description: 'Change a task. Only the given fields change; pass null to clear area, due, remind_at, waiting_on or parent_id.',
+			description: 'Change a task. Only the given fields change; pass null to clear due, remind_at, waiting_on, parent_id or project.',
 			inputSchema: { id: z.string(), title: z.string().min(1).max(200).optional(), ...taskFields }
 		},
 		async ({ id, due, remind_at, waiting_since, ...rest }) => {
@@ -590,7 +587,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 	server.registerTool(
 		'list_projects',
 		{
-			description: 'List projects: vault folders with their own task board. default area applies to new tasks on the board.',
+			description: 'List projects: vault-root folders that group tasks and notes, each with its own task board.',
 			annotations: readOnly
 		},
 		async () => result(await getJson<ProjectRow[]>('/api/projects'))
@@ -601,12 +598,11 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		{
 			description: 'Register a vault folder as a project, creating the folder when missing. Put project notes in that folder.',
 			inputSchema: {
-				path: z.string().min(1).describe('Folder name at the vault root, e.g. "Jobs"'),
-				area: Area.nullable().optional().describe('Default area for its tasks')
+				path: z.string().min(1).describe('Folder name at the vault root, e.g. "Jobs"')
 			}
 		},
-		async ({ path, area }) => {
-			const row = (await (await send('POST', '/api/projects', { path, area })).json()) as ProjectRow;
+		async ({ path }) => {
+			const row = (await (await send('POST', '/api/projects', { path })).json()) as ProjectRow;
 			onWrite('create_project', row.path);
 			return result(row);
 		}
@@ -644,19 +640,8 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			const now = Date.now();
 			const today = dayOf(now);
 			const weekEnd = dayOf(now + 7 * 86400000);
-			// Same view as the main board: a project's backlog, and subtasks
-			// under a backlog task, stay on the project board.
-			const all = await allTasks();
-			const byId = new Map(all.map((t) => [t.id, t]));
-			const shown = (t: TaskRow) => {
-				const seen = new Set<string>();
-				for (let a: TaskRow | undefined = t; a && !seen.has(a.id); a = byId.get(a.parent_id ?? '')) {
-					if (!onMainBoard(a)) return false;
-					seen.add(a.id);
-				}
-				return true;
-			};
-			const open = all.filter((t) => t.status !== 'done' && shown(t));
+			// Same tasks as the All board: project backlogs stay off it.
+			const open = selectTasks(await allTasks(), 'all').filter((t) => t.status !== 'done');
 			const dated = open.filter((t) => t.due_at != null).sort((a, b) => a.due_at! - b.due_at!);
 			const day = (t: TaskRow) => dayOf(t.due_at!);
 			return result({
