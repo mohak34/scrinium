@@ -331,7 +331,27 @@ export async function renamePath(
 					}
 				}
 			}
+			// A link the move can change names the moved item or a moved note
+			// (old or new name, maybe percent-encoded); notes inside the move
+			// always relink. A big folder move scans every note.
+			const name = (p: string) => (p.split('/').pop() ?? p).replace(/\.md$/i, '').toLowerCase();
+			const names = new Set([name(was)]);
+			for (const p of live) if (p === now || p.startsWith(now + '/')) names.add(name(p)).add(name(back(p)));
+			const mayLink = (text: string) => {
+				if (names.size > 50) return true;
+				let low = text.toLowerCase();
+				if (low.includes('%')) {
+					try {
+						low += '\n' + decodeURIComponent(low);
+					} catch {
+						return true;
+					}
+				}
+				for (const t of names) if (low.includes(t)) return true;
+				return false;
+			};
 			for (const n of notes) {
+				if (n.from === n.to && !mayLink(n.content)) continue;
 				const out = relinkNote(n.content, n.from, n.to, n.moved, wiki);
 				if (out === n.content) continue;
 				await writeAtomic(safeResolve(n.path), out).then(
