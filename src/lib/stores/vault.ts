@@ -662,25 +662,36 @@ function forget(path: string) {
 	updatePins((p) => (under(p) ? null : p));
 }
 
-export async function deletePath(path: string) {
-	const ok = await putAway(path, () => fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' }));
+// Moves each path out one at a time, then reloads the tree and the bin
+// once. Resolves to the paths that moved.
+async function putAwayAll(
+	paths: string[],
+	send: (path: string) => Promise<Response>,
+	reload: () => Promise<void>
+): Promise<Set<string>> {
+	const done = new Set<string>();
+	for (const p of paths) if (await putAway(p, () => send(p))) done.add(p);
 	await loadTree();
-	if (ok) void loadTrash();
-	return ok;
+	if (done.size) void reload();
+	return done;
 }
 
-export async function archivePath(path: string) {
-	const ok = await putAway(path, () =>
+export function deletePaths(paths: string[]) {
+	return putAwayAll(paths, (p) => fetch(`/api/notes/${encPath(p)}`, { method: 'DELETE' }), loadTrash);
+}
+
+export function archivePaths(paths: string[]) {
+	const send = (path: string) =>
 		fetch('/api/archive', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ path })
-		})
-	);
-	await loadTree();
-	if (ok) void loadArchive();
-	return ok;
+		});
+	return putAwayAll(paths, send, loadArchive);
 }
+
+export const deletePath = async (path: string) => (await deletePaths([path])).has(path);
+export const archivePath = async (path: string) => (await archivePaths([path])).has(path);
 
 // Drag-and-drop move: a rename whose target is a folder (or null for the
 // vault root) with the basename kept.
