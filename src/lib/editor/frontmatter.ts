@@ -126,7 +126,17 @@ export function setEffectiveTitle(content: string, newTitle: string): string | n
 		const fmLines = fm.raw.split('\n');
 		const idx = fmLines.findIndex((l) => /^\s*title\s*:/.test(l));
 		if (idx === -1) return null;
-		fmLines[idx] = `title: ${yamlScalar(newTitle)}`;
+		// A folded or multi-line title continues on the lines indented
+		// deeper than its key; they go with it.
+		const indent = (l: string) => l.length - l.trimStart().length;
+		const key = indent(fmLines[idx]);
+		let end = idx + 1;
+		for (let j = idx + 1; j < fmLines.length; j++) {
+			if (!fmLines[j].trim()) continue;
+			if (indent(fmLines[j]) <= key) break;
+			end = j + 1;
+		}
+		fmLines.splice(idx, end - idx, `${fmLines[idx].slice(0, key)}title: ${yamlScalar(newTitle)}`);
 		return fmLines.join('\n') + content.slice(fm.raw.length);
 	}
 	const h = firstHeading(content, 0);
