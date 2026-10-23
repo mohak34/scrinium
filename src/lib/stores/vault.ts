@@ -486,6 +486,16 @@ export function linkUnlinkedMention(sourcePath: string, targetPath: string): Pro
 	return rewriteNote(sourcePath, (content) => linkFirstMention(content, targetPath, links));
 }
 
+// Insert text at `pos` in a note, on its own line. For an attachment whose
+// upload finished after the user left the note it was dropped on.
+export function insertIntoNote(path: string, pos: number, insert: string): Promise<boolean> {
+	return rewriteNote(path, (content) => {
+		const at = Math.min(pos, content.length);
+		const mid = at > 0 && content[at - 1] !== '\n';
+		return content.slice(0, at) + (mid ? '\n' : '') + insert + content.slice(at);
+	});
+}
+
 // Centralized rename/move that keeps tabs/activePath/pinned and pending
 // saves in sync. Callers still handle filetree collapsed state via renameDir.
 // Runs in the save queue: nothing is renamed while a save fails, and text
