@@ -160,9 +160,14 @@ export async function loadTree() {
 }
 
 export async function loadNote(path: string): Promise<string> {
+	return (await fetchNote(path)).content;
+}
+
+// The server copy of a note with its version (a hash of the text).
+async function fetchNote(path: string): Promise<{ content: string; version: string | null }> {
 	const res = await fetch(`/api/notes/${encPath(path)}`);
 	if (!res.ok) throw new Error('Failed to load note');
-	return res.text();
+	return { content: await res.text(), version: res.headers.get('X-Note-Version') };
 }
 
 // Download the note as a plain `.md` file through the browser. Flushes the
@@ -193,6 +198,11 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 // and a save never runs while a path change is in flight.
 let queue: Promise<unknown> = Promise.resolve();
 let retryMs = 0;
+// The version of each note's server copy this tab last read or wrote.
+// Saves send it as If-Match: the server keeps a copy that changed under
+// it as "<name> (conflict).md" and puts text for a note gone elsewhere in
+// such a copy (saveNote in server/vault.ts). Notes without one overwrite.
+const versions = new Map<string, string>();
 
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 	const run = queue.then(fn);
@@ -223,13 +233,9 @@ async function writePending(keepalive = false): Promise<boolean> {
 		pending.delete(path);
 		let ok = false;
 		try {
-			const res = await fetch(`/api/notes/${encPath(path)}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'text/plain' },
-				body: content,
-				keepalive: keepalive && content.length < 60000
-			});
+			const res = await putNote(path, content, keepalive && content.length < 60000);
 			ok = res.ok;
+			if (ok) await saved(path, res);
 		} catch {}
 		if (!ok) {
 			failed = true;
@@ -246,6 +252,53 @@ async function writePending(keepalive = false): Promise<boolean> {
 	retryMs = 0;
 	if (pending.size === 0) saveStatus.set('saved');
 	return true;
+}
+
+function putNote(path: string, content: string, keepalive = false): Promise<Response> {
+	const version = versions.get(path);
+	return fetch(`/api/notes/${encPath(path)}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'text/plain', ...(version && { 'If-Match': version }) },
+		body: content,
+		keepalive
+	});
+}
+
+// Record a save's version. A version-checked save also says where the text
+// landed: in a conflict copy when the note was gone (the tab follows it
+// there), plus any copy kept of a version it replaced.
+async function saved(path: string, res: Response) {
+	const version = res.headers.get('X-Note-Version');
+	if (res.status === 204) {
+		if (version) versions.set(path, version);
+		return;
+	}
+	const body: { path: string; conflict: string | null } = await res.json();
+	if (version) versions.set(body.path, version);
+	if (body.path !== path) followGone(path, body.path);
+	if (body.path !== path || body.conflict) void loadTree();
+}
+
+// The note went away elsewhere and its unsaved text was saved as `copy`:
+// the editor, tabs and text typed meanwhile move there, titled after it
+// like a rename.
+function followGone(path: string, copy: string) {
+	versions.delete(path);
+	if (pendingTitleSync?.path === path) cancelTitleSync();
+	const typed = pending.get(path);
+	if (typed !== undefined) {
+		pending.delete(path);
+		pending.set(copy, retitle(typed, path, copy));
+	}
+	if (shown === path) {
+		shown = copy;
+		const text = editorHost?.read();
+		if (text !== undefined) {
+			const out = retitle(text, path, copy);
+			if (out !== text) editorHost?.write(out);
+		}
+	}
+	followMove(path, copy);
 }
 
 function doSave(keepalive = false): Promise<boolean> {
@@ -289,6 +342,8 @@ export interface EditorHost {
 	// The editor's live text, and a replacement autosaved like typing.
 	read(): string;
 	write(content: string): void;
+	// Show a change made elsewhere, without saving it.
+	replace(content: string): void;
 	// Move the cursor to a heading of the shown note, if it has one.
 	reveal(heading: string): void;
 }
@@ -337,7 +392,9 @@ export function showNote(path: string): Promise<void> {
 		let content = pending.get(path);
 		if (content === undefined) {
 			try {
-				content = await loadNote(path);
+				const note = await fetchNote(path);
+				content = note.content;
+				if (note.version) versions.set(path, note.version);
 			} catch (e) {
 				console.error(e);
 				if (get(activePath) !== path) return;
@@ -350,6 +407,31 @@ export function showNote(path: string): Promise<void> {
 		shown = path;
 		if (pendingHeading?.path === path) editorHost.reveal(pendingHeading.heading);
 		pendingHeading = null;
+	});
+}
+
+// Pick up a change made to the open note elsewhere (an agent, the phone,
+// another tab); called when the window gets focus. Skipped while the note
+// has unsaved text: that saves over the other change, which is kept as a
+// conflict copy. A note gone elsewhere closes, with nothing unsaved lost.
+export function refreshShown(): Promise<void> {
+	return enqueue(async () => {
+		if (!(await writePending())) return;
+		const path = shown;
+		if (!path || !versions.has(path)) return;
+		const res = await fetch(`/api/notes/${encPath(path)}`).catch(() => null);
+		if (!res || shown !== path || pending.has(path)) return;
+		if (res.status === 404) {
+			forget(path);
+			void loadTree();
+			return;
+		}
+		const version = res.headers.get('X-Note-Version');
+		if (!res.ok || !version || version === versions.get(path)) return;
+		const content = await res.text();
+		if (shown !== path || pending.has(path)) return;
+		versions.set(path, version);
+		editorHost?.replace(content);
 	});
 }
 
@@ -427,6 +509,8 @@ export async function createNote(path: string) {
 		body
 	});
 	if (!res.ok) throw new Error(`create ${path}: ${res.status}`);
+	const version = res.headers.get('X-Note-Version');
+	if (version) versions.set(path, version);
 	await loadTree();
 }
 
@@ -454,20 +538,19 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 			host.write(out);
 			return true;
 		}
-		let content: string;
+		let note: { content: string; version: string | null };
 		try {
-			content = await loadNote(path);
+			note = await fetchNote(path);
 		} catch {
 			return false;
 		}
-		const out = next(content);
-		if (!out || out === content) return false;
-		const res = await fetch(`/api/notes/${encPath(path)}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'text/plain' },
-			body: out
-		}).catch(() => null);
-		return !!res?.ok;
+		const out = next(note.content);
+		if (!out || out === note.content) return false;
+		if (note.version) versions.set(path, note.version);
+		const res = await putNote(path, out).catch(() => null);
+		if (!res?.ok) return false;
+		await saved(path, res).catch(() => {});
+		return true;
 	});
 	if (ok) await loadTree();
 	return !!ok;
@@ -514,6 +597,12 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 			body: JSON.stringify({ newPath })
 		}).catch(() => null);
 		if (!res?.ok) return false;
+		const body: { versions?: Record<string, string> } | null = await res.json().catch(() => null);
+		for (const [p, v] of [...versions]) {
+			versions.delete(p);
+			versions.set(moved(p), v);
+		}
+		for (const [p, v] of Object.entries(body?.versions ?? {})) versions.set(p, v);
 		// A heading-to-filename rename queued for the old path is stale now.
 		if (pendingTitleSync && moved(pendingTitleSync.path) !== pendingTitleSync.path) cancelTitleSync();
 		remapPending(oldPath, newPath, wiki);
@@ -529,26 +618,20 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 			const out = relinkNote(retitle(text, before, shown), before, shown, moved, wiki);
 			if (out !== text) editorHost.write(out);
 		}
-		const current = get(activePath);
-		if (current && (current === oldPath || current.startsWith(oldPath + '/'))) {
-			activePath.set(newPath + current.slice(oldPath.length));
-		}
-		openTabs.update((tabs) =>
-			tabs.map((t) => {
-				if (t === oldPath) return newPath;
-				if (t.startsWith(oldPath + '/')) return newPath + t.slice(oldPath.length);
-				return t;
-			})
-		);
-		updatePins((p) => {
-			if (p === oldPath) return newPath;
-			if (p.startsWith(oldPath + '/')) return newPath + p.slice(oldPath.length);
-			return p;
-		});
+		followMove(oldPath, newPath);
 		return true;
 	});
 	await loadTree();
 	return !!ok;
+}
+
+// The active note, tabs and pins follow a note or folder to its new path.
+function followMove(oldPath: string, newPath: string) {
+	const moved = movedBy(oldPath, newPath);
+	const current = get(activePath);
+	if (current) activePath.set(moved(current));
+	openTabs.update((tabs) => tabs.map(moved));
+	updatePins(moved);
 }
 
 // Move a note or folder out of the vault: to the trash (DELETE) or the
@@ -561,16 +644,22 @@ function putAway(path: string, send: () => Promise<Response>): Promise<boolean> 
 	return afterSaved(async () => {
 		const res = await send().catch(() => null);
 		if (!res?.ok) return false;
-		for (const p of [...pending.keys()]) if (p === path || p.startsWith(path + '/')) pending.delete(p);
-		if (shown && (shown === path || shown.startsWith(path + '/'))) shown = null;
-		const current = get(activePath);
-		if (current && (current === path || current.startsWith(path + '/'))) {
-			activePath.set(null);
-		}
-		openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
-		updatePins((p) => (p === path || p.startsWith(path + '/') ? null : p));
+		forget(path);
 		return true;
 	}).then((ok) => !!ok);
+}
+
+// Drop a note or folder that left the vault from the editor, tabs, pins
+// and the save queue.
+function forget(path: string) {
+	const under = (p: string) => p === path || p.startsWith(path + '/');
+	for (const p of [...pending.keys()]) if (under(p)) pending.delete(p);
+	for (const p of [...versions.keys()]) if (under(p)) versions.delete(p);
+	if (shown && under(shown)) shown = null;
+	const current = get(activePath);
+	if (current && under(current)) activePath.set(null);
+	openTabs.update((tabs) => tabs.filter((t) => !under(t)));
+	updatePins((p) => (under(p) ? null : p));
 }
 
 export async function deletePath(path: string) {

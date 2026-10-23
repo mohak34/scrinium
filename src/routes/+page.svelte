@@ -26,6 +26,7 @@
 		downloadNote,
 		scheduleTitleSync,
 		attachEditor,
+		refreshShown,
 		shownNote,
 		showNote,
 		hideNote
@@ -69,9 +70,21 @@
 				editorRef?.setDoc(content);
 				onChange(content);
 				showInPanels(content);
+			},
+			replace(content) {
+				editorRef?.setDoc(content);
+				currentContent = content;
+				showInPanels(content);
 			}
 		})
 	);
+
+	// The open note may have changed elsewhere while the window was away.
+	onMount(() => {
+		const refresh = () => void refreshShown();
+		window.addEventListener('focus', refresh);
+		return () => window.removeEventListener('focus', refresh);
+	});
 
 	// Loading the active note's content happens here so that ANY activePath
 	// change - opening a note, or closeTab switching to a neighbour - reloads

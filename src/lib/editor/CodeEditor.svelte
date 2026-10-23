@@ -668,8 +668,18 @@ import { perDoc } from './docRanges';
 		if (!view) return;
 		suppressChange = true;
 		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure([]) });
+		// Same-note pushes replace only the part that differs, so the cursor
+		// and scroll around it stay put.
+		const old = view.state.doc.toString();
+		let from = 0;
+		let to = old.length;
+		let end = newValue.length;
+		if (!resetCursor) {
+			while (from < to && from < end && old[from] === newValue[from]) from++;
+			while (to > from && end > from && old[to - 1] === newValue[end - 1]) to--, end--;
+		}
 		view.dispatch({
-			changes: { from: 0, to: view.state.doc.length, insert: newValue },
+			changes: { from, to, insert: newValue.slice(from, end) },
 			// Note switches park the cursor on line 1; same-note pushes
 			// (rename syncs, link conversions) leave it alone.
 			selection: resetCursor ? { anchor: 0 } : undefined,

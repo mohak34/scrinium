@@ -129,6 +129,19 @@ Scrinium is small, but there are a few footguns specific to it.
    load the user already left is skipped; a failed load of the selected
    note sets `activePath` back to `shownNote()` (or none), so the chrome
    never names a note other than the one being typed into.
+   Saves are version-checked: every note read or write answers with
+   `X-Note-Version` (a hash of the text), the browser keeps it per path
+   (`versions` in stores/vault.ts) and sends it back as `If-Match`.
+   `saveNote` in server/vault.ts compares inside the vault lock: a note
+   changed elsewhere (an agent, the phone, another tab) is kept as
+   `<name> (conflict).md` and the tab's text still saves; a note moved or
+   trashed elsewhere gets the text as that copy and the editor follows it,
+   so a stale tab never recreates it. The rename response carries the new
+   versions of the notes it relinked, so this tab's own moves never
+   conflict. On window focus `refreshShown` loads the open note's newer
+   server copy when nothing is unsaved. Writes without `If-Match` (MCP,
+   the phone) overwrite. A client path that PUTs a note goes through
+   `putNote` and `saved`, or it loses track of the version.
 8. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
 9. **Vault mutations go through `withVaultLock`** in `src/lib/server/vault.ts`.

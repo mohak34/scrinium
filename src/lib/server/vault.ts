@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { createReadStream, createWriteStream, statSync, type ReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -199,6 +199,63 @@ async function writeAtomic(fullPath: string, content: string): Promise<void> {
 export async function writeNote(relPath: string, content: string): Promise<void> {
 	const fullPath = safeResolve(relPath);
 	return withVaultLock(() => writeAtomic(fullPath, content));
+}
+
+// A note's version: a hash of its text. Readers get it as X-Note-Version
+// and send it back as If-Match, so a save can tell whether the note changed
+// since the writer read it.
+export function noteVersion(content: string): string {
+	return `"${createHash('sha256').update(content).digest('hex').slice(0, 16)}"`;
+}
+
+export interface SavedNote {
+	path: string;
+	content: string;
+	// The other writer's copy, kept when it changed under this one.
+	conflict?: { path: string; content: string };
+}
+
+// Saves a writer's text over the copy it last read (`version`). When the
+// note changed since, that other copy is kept beside it as
+// "<name> (conflict).md" and the text still saves; when the note is gone
+// (moved or trashed elsewhere) the text lands in that copy instead. A stale
+// tab never overwrites another writer's change or recreates a moved note.
+// Copies take their name as title when the title was the note's name.
+export function saveNote(relPath: string, content: string, version: string): Promise<SavedNote> {
+	const fullPath = safeResolve(relPath);
+	return withVaultLock(async () => {
+		const theirs = await fs.readFile(fullPath, 'utf-8').catch((e: NodeJS.ErrnoException) => {
+			if (e.code === 'ENOENT') return null;
+			throw e;
+		});
+		if (theirs === null) {
+			const copy = await conflictPath(relPath);
+			const text = retitle(content, relPath, copy);
+			await writeAtomic(safeResolve(copy), text);
+			return { path: copy, content: text };
+		}
+		const saved = { path: vaultRel(relPath), content };
+		if (theirs === content) return saved;
+		if (noteVersion(theirs) !== version) {
+			const copy = await conflictPath(relPath);
+			const text = retitle(theirs, relPath, copy);
+			await writeAtomic(safeResolve(copy), text);
+			await writeAtomic(fullPath, content);
+			return { ...saved, conflict: { path: copy, content: text } };
+		}
+		await writeAtomic(fullPath, content);
+		return saved;
+	});
+}
+
+// A free "<name> (conflict).md", then "(conflict 2)", ... beside the note.
+async function conflictPath(relPath: string): Promise<string> {
+	const rel = vaultRel(relPath);
+	const ext = path.extname(rel);
+	const stem = rel.slice(0, rel.length - ext.length);
+	let copy = `${stem} (conflict)${ext}`;
+	for (let i = 2; await exists(safeResolve(copy)); i++) copy = `${stem} (conflict ${i})${ext}`;
+	return copy;
 }
 
 // Writes a new note, failing with a 409 if anything already sits at the path.
