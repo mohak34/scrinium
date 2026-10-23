@@ -189,7 +189,8 @@ export function shareImages(markdown: string, notePath: string): { urls: string[
 		const resolved = resolveAssetUrl(url, dir);
 		if (resolved?.startsWith('/api/assets/') && !urls.includes(url)) {
 			urls.push(url);
-			paths.push(resolved.slice('/api/assets/'.length).split('/').map(decodeURIComponent).join('/'));
+			const file = resolved.slice('/api/assets/'.length).split(/[?#]/)[0];
+			paths.push(file.split('/').map(decodeURIComponent).join('/'));
 		}
 		return null;
 	});
