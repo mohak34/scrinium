@@ -13,7 +13,7 @@
 		openTask,
 		openTaskId,
 		topLevel,
-		childrenOf,
+		subtaskCounts,
 		isOverdue,
 		isDueToday,
 		dueLabel,
@@ -278,11 +278,6 @@
 		return at === -1 ? undefined : key.slice(at + 1) || null;
 	}
 
-	function subCount(t: Task): string | null {
-		const kids = childrenOf($tasks, t.id);
-		if (kids.length === 0) return null;
-		return `${kids.filter((k) => k.status === 'done').length}/${kids.length}`;
-	}
 
 	function since(ts: number | null): string {
 		if (ts == null) return '';
@@ -338,7 +333,7 @@
 				{t.waiting_on ?? 'Someone'}{t.waiting_since ? `, since ${since(t.waiting_since)}` : ''}
 			</div>
 		{/if}
-		{#if t.due_at != null || t.priority !== 'none' || subCount(t) || t.link_count > 0 || t.remind_at != null}
+		{#if t.due_at != null || t.priority !== 'none' || $subtaskCounts.get(t.id) || t.link_count > 0 || t.remind_at != null}
 			<div class="km">
 				{#if t.due_at != null}
 					<span class:over={isOverdue(t)} class:today={isDueToday(t) && t.status !== 'done'}>
@@ -351,8 +346,8 @@
 						<span class="material-symbols-outlined fill">flag</span>{t.priority}
 					</span>
 				{/if}
-				{#if subCount(t)}
-					<span title="Subtasks"><span class="material-symbols-outlined">subdirectory_arrow_right</span>{subCount(t)}</span>
+				{#if $subtaskCounts.get(t.id)}
+					<span title="Subtasks"><span class="material-symbols-outlined">subdirectory_arrow_right</span>{$subtaskCounts.get(t.id)}</span>
 				{/if}
 				{#if t.remind_at != null}
 					<span title="Reminds {stampShort(t.remind_at)}"><span class="material-symbols-outlined">notifications</span></span>

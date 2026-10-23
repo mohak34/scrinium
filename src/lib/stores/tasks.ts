@@ -1,4 +1,4 @@
-import { writable, get } from 'svelte/store';
+import { derived, writable, get } from 'svelte/store';
 import type { TaskPriority, TaskStatus } from '$lib/taskModel';
 import type { ProjectColor, ProjectIcon } from '$lib/projects';
 
@@ -72,6 +72,19 @@ export function closeTask() {
 export function topLevel(all: Task[]): Task[] {
 	return all.filter((t) => t.parent_id == null);
 }
+
+// "done/total" subtasks by parent id, counted once per change of the list.
+export const subtaskCounts = derived(tasks, (all) => {
+	const counts = new Map<string, { done: number; total: number }>();
+	for (const t of all) {
+		if (!t.parent_id) continue;
+		const c = counts.get(t.parent_id) ?? { done: 0, total: 0 };
+		c.total++;
+		if (t.status === 'done') c.done++;
+		counts.set(t.parent_id, c);
+	}
+	return new Map([...counts].map(([id, c]) => [id, `${c.done}/${c.total}`]));
+});
 
 export function childrenOf(all: Task[], id: string): Task[] {
 	return all

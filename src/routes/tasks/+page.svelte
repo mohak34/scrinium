@@ -8,7 +8,7 @@
 		openTask,
 		openTaskId,
 		topLevel,
-		childrenOf,
+		subtaskCounts,
 		startOfToday,
 		startOfTomorrow,
 		isOverdue,
@@ -181,11 +181,6 @@
 		return 'radio_button_unchecked';
 	}
 
-	function subCount(t: Task): string | null {
-		const kids = childrenOf($tasks, t.id);
-		if (kids.length === 0) return null;
-		return `${kids.filter((k) => k.status === 'done').length}/${kids.length}`;
-	}
 </script>
 
 <div class="page" {@attach keyNav}>
@@ -336,9 +331,9 @@
 											<span class="material-symbols-outlined">description</span>{t.link_count}
 										</span>
 									{/if}
-									{#if subCount(t)}
+									{#if $subtaskCounts.get(t.id)}
 										<span class="m" title="Subtasks">
-											<span class="material-symbols-outlined">subdirectory_arrow_right</span>{subCount(t)}
+											<span class="material-symbols-outlined">subdirectory_arrow_right</span>{$subtaskCounts.get(t.id)}
 										</span>
 									{/if}
 									{#if t.remind_at != null}
