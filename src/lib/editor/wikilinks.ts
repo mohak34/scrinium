@@ -213,9 +213,10 @@ export function findUnlinkedMentions(
 	const name = stem(target);
 	if (name.length < 2) return [];
 	const re = new RegExp(`\\b${escapeRegExp(name)}\\b`, 'gi');
+	const low = name.toLowerCase();
 	const out: UnlinkedMention[] = [];
 	for (const f of files) {
-		if (f.path === target) continue;
+		if (f.path === target || !f.content.toLowerCase().includes(low)) continue;
 		for (const line of f.content.split('\n')) {
 			const spans = findWikilinksInText(line);
 			re.lastIndex = 0;

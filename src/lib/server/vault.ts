@@ -479,15 +479,26 @@ export interface Restored {
 // Every .md note (any case, like the wikilink resolver) at or under a vault
 // path ('' is the whole vault), with its text. Dot folders inside are skipped.
 export async function readNotesUnder(rel: string): Promise<{ path: string; content: string }[]> {
-	const full = safeResolve(rel);
-	const st = await fs.stat(full).catch(() => null);
-	if (!st?.isDirectory()) {
-		const content = st && rel.toLowerCase().endsWith('.md') ? await fs.readFile(full, 'utf-8').catch(() => null) : null;
-		return content === null ? [] : [{ path: rel, content }];
-	}
+	const paths: string[] = [];
+	const walk = async (at: string): Promise<void> => {
+		const full = safeResolve(at);
+		const st = await fs.stat(full).catch(() => null);
+		if (!st?.isDirectory()) {
+			if (st && at.toLowerCase().endsWith('.md')) paths.push(at);
+			return;
+		}
+		for (const d of await fs.readdir(full, { withFileTypes: true }).catch(() => [])) {
+			if (!d.name.startsWith('.')) await walk(at ? `${at}/${d.name}` : d.name);
+		}
+	};
+	await walk(rel);
+	// Read in batches: in parallel is twice as fast, unbounded can run out
+	// of file descriptors on a big vault.
 	const out: { path: string; content: string }[] = [];
-	for (const d of await fs.readdir(full, { withFileTypes: true }).catch(() => [])) {
-		if (!d.name.startsWith('.')) out.push(...(await readNotesUnder(rel ? `${rel}/${d.name}` : d.name)));
+	for (let i = 0; i < paths.length; i += 64) {
+		const batch = paths.slice(i, i + 64);
+		const texts = await Promise.all(batch.map((p) => fs.readFile(safeResolve(p), 'utf-8').catch(() => null)));
+		batch.forEach((path, j) => texts[j] !== null && out.push({ path, content: texts[j] }));
 	}
 	return out;
 }

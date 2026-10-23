@@ -21,8 +21,22 @@ export const GET: RequestHandler = async ({ url }) => {
 	const files = await readNotesUnder('');
 	const links = wikiResolver(files.map((f) => f.path));
 	const linked: Backlink[] = [];
+	// Any link to the target spells its name, maybe percent-encoded, so a
+	// note without it is skipped before the full parse.
+	const name = (p: string) => (p.split('/').pop() ?? p).replace(/\.md$/i, '').toLowerCase();
+	const own = name(target);
+	const mayLink = (text: string) => {
+		const low = text.toLowerCase();
+		if (low.includes(own)) return true;
+		if (!low.includes('%')) return false;
+		try {
+			return decodeURIComponent(low).includes(own);
+		} catch {
+			return true;
+		}
+	};
 	for (const f of files) {
-		if (f.path === target) continue;
+		if (f.path === target || !mayLink(f.content)) continue;
 		const hit = noteLinks(f.content, f.path, links).find((l) => l.target === target);
 		if (!hit) continue;
 		const start = f.content.lastIndexOf('\n', hit.from - 1) + 1;
@@ -32,8 +46,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	linked.sort((a, b) => a.path.localeCompare(b.path));
 	// Mentions only from notes that don't link yet, and never a same-named
 	// note's own title.
-	const name = (p: string) => (p.split('/').pop() ?? p).replace(/\.md$/i, '').toLowerCase();
 	const done = new Set(linked.map((l) => l.path));
-	const rest = files.filter((f) => !done.has(f.path) && name(f.path) !== name(target));
+	const rest = files.filter((f) => !done.has(f.path) && name(f.path) !== own);
 	return json({ linked, unlinked: findUnlinkedMentions(target, rest) as Backlink[] });
 };
