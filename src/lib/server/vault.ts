@@ -8,7 +8,7 @@ import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import path from 'node:path';
 import { error } from '@sveltejs/kit';
 import { movedBy, relinkNote } from '$lib/relink';
-import { wikiResolver } from '$lib/editor/wikilinks';
+import { liveOverArchived, wikiResolver } from '$lib/editor/wikilinks';
 import { retitle } from '$lib/editor/frontmatter';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
@@ -317,7 +317,7 @@ export async function renamePath(
 			const back = movedBy(now, was);
 			const notes = (await readNotesUnder('')).map((n) => ({ ...n, from: back(n.path), to: n.path, moved }));
 			const live = notes.map((n) => n.path);
-			const wiki = { before: wikiResolver(live.map(back)), after: wikiResolver(live) };
+			const archived: string[] = [];
 			for (const bin of ['archive', 'trash'] as const) {
 				for (const e of await listBin(bin)) {
 					const at = binPath(bin, e.name);
@@ -328,9 +328,15 @@ export async function renamePath(
 					for (const n of await readNotesUnder(at)) {
 						const original = e.originalPath + n.path.slice(at.length);
 						notes.push({ ...n, from: original, to: original, moved: keep });
+						if (bin === 'archive') archived.push(original);
 					}
 				}
 			}
+			const shelf = wikiResolver(archived);
+			const wiki = {
+				before: liveOverArchived(wikiResolver(live.map(back)), shelf),
+				after: liveOverArchived(wikiResolver(live), shelf)
+			};
 			// A link the move can change names the moved item or a moved note
 			// (old or new name, maybe percent-encoded); notes inside the move
 			// always relink. A big folder move scans every note.

@@ -126,6 +126,18 @@ export function wikiResolver(notePaths: readonly string[]): WikiResolver {
 	};
 }
 
+/**
+ * Live lookups in the order the editor opens links: a link that names an
+ * archived note's full path means that note, not a live one sharing its
+ * basename, so it resolves to nothing live.
+ */
+export function liveOverArchived(live: WikiResolver, archived: WikiResolver): WikiResolver {
+	return {
+		exact: live.exact,
+		resolve: (t) => live.exact(t) ?? (archived.exact(t) ? null : live.resolve(t))
+	};
+}
+
 /** One-off `exact` lookup; build a `wikiResolver` for many links. */
 export function exactWikilink(target: string, notePaths: string[]): string | null {
 	return wikiResolver(notePaths).exact(target);

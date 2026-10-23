@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { movedBy, relinkNote } from '$lib/relink';
-import { linkFirstMention, notePathsFromTree, wikiResolver, type WikiResolver } from '$lib/editor/wikilinks';
+import { linkFirstMention, liveOverArchived, notePathsFromTree, wikiResolver, type WikiResolver } from '$lib/editor/wikilinks';
 import { effectiveTitle, retitle, sanitizeTitleForFilename, updateFrontmatterBlock } from '$lib/editor/frontmatter';
 import type { Document } from 'yaml';
 import type { ArchiveEntry } from '$lib/archive';
@@ -590,7 +590,11 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 		// Wikilinks resolve by name, so the fix needs the notes before and after.
 		const moved = movedBy(oldPath, newPath);
 		const live = notePathsFromTree(get(tree));
-		const wiki = { before: wikiResolver(live), after: wikiResolver(live.map(moved)) };
+		const archived = wikiResolver(get(archiveEntries).flatMap((e) => e.notes));
+		const wiki = {
+			before: liveOverArchived(wikiResolver(live), archived),
+			after: liveOverArchived(wikiResolver(live.map(moved)), archived)
+		};
 		const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
