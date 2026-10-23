@@ -161,10 +161,14 @@ function queued(id: string, req: () => Promise<Response>): Promise<Response | nu
 // Latest edit number per task. Only the newest edit's answer paints, so the
 // screen keeps every edit still waiting in the queue.
 const editSeq = new Map<string, number>();
+// Tasks with a queued edit that moves their subtree on the server (a new
+// project or parent). The newest edit reloads, whichever edit moved it.
+const subtreeMoved = new Set<string>();
 
 export async function updateTask(id: string, patch: TaskUpdate): Promise<Task | null> {
 	const n = (editSeq.get(id) ?? 0) + 1;
 	editSeq.set(id, n);
+	if ('project' in patch || 'parent_id' in patch) subtreeMoved.add(id);
 	tasks.update((all) => all.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 	const res = await queued(id, () =>
 		fetch(`/api/tasks/${encodeURIComponent(id)}`, {
@@ -176,9 +180,9 @@ export async function updateTask(id: string, patch: TaskUpdate): Promise<Task | 
 	);
 	const row = res?.ok ? ((await res.json()) as Task) : null;
 	if (editSeq.get(id) !== n) return row;
-	// A failed edit shows what the server kept, not a guess at it. A new
-	// project or parent moves the whole subtree on the server, so reload.
-	if (!row || 'project' in patch || 'parent_id' in patch) void loadTasks();
+	// A failed edit shows what the server kept, not a guess at it. A moved
+	// subtree changed rows other than this one, so reload.
+	if (subtreeMoved.delete(id) || !row) void loadTasks();
 	else tasks.update((all) => all.map((t) => (t.id === id ? row : t)));
 	return row;
 }
