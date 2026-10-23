@@ -307,8 +307,8 @@ State channels you will touch:
   pdf.js, only when a PDF opens. pdf.js's fonts, CMaps and wasm decoders
   are bundled through `import.meta.glob` and handed over by file name.
   Highlights, ink and text notes are written into the PDF as standard
-  annotations (`saveDocument`) and PUT back over the file, debounced and
-  again on close; there is no sidecar store. The asset route caches for
+  annotations (`saveDocument`) and PUT back over the file after a 10 s
+  pause, when the tab hides and on close; there is no sidecar store. The asset route caches for
   an hour, so the pane always fetches with `no-store`.
 - `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
   renderer (markdown-it plus the editor's math, code, callout, wikilink
