@@ -241,7 +241,7 @@ State channels you will touch:
   in a cell, `syncCell` mounts a small nested EditorView in that td for
   the cell's raw source; its edits are written back to the main doc as
   one transaction each (same userEvent, so undo groups like typing and
-  runs through the main history), and the widget skips repainting for
+  runs through the main history), and the widget skips rendering and repainting for
   its own echo. A column that repeats a value offers the column's
   values as completions in that cell editor (`columnChoices`), so a
   status column edits like a select with nothing declared. Tab/Enter/arrows step cells via the main selection;

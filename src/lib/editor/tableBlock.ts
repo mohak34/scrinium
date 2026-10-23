@@ -90,6 +90,9 @@ function trimCache(noteTables: number) {
 	}
 }
 
+const tableKey = (source: string, refs: string, noteDir: string | null) =>
+	`${noteDir ?? ''}\n${source}\n${refs}`;
+
 /**
  * HTML for a table, null until the renderer has loaded, '' when the render
  * is not exactly one table with `rows` rows. `refs` are the note's link
@@ -102,7 +105,7 @@ function tableHtml(
 	noteDir: string | null
 ): string | null {
 	if (!render) return null;
-	const key = `${noteDir ?? ''}\n${source}\n${refs}`;
+	const key = tableKey(source, refs, noteDir);
 	let html = htmlCache.get(key);
 	if (html === undefined) {
 		html = render(refs ? `${source}\n\n${refs}` : source, '', (url) =>
@@ -124,18 +127,33 @@ function tableHtml(
 // DOM across edits (updateDOM), so listeners read the live widget here.
 const widgets = new WeakMap<HTMLElement, TableWidget>();
 
+// The HTML renders on first paint: typing in a cell builds a widget per
+// keystroke that never paints (see updateDOM).
 class TableWidget extends WidgetType {
-	// html is null while the renderer loads.
+	private rendered: string | null | undefined;
+	readonly ready = render !== null;
 	constructor(
 		readonly source: string,
-		readonly html: string | null,
+		readonly refs: string,
+		readonly rows: number,
 		readonly noteDir: string | null
 	) {
 		super();
 	}
+	// null while the renderer loads, '' when the source is not one table.
+	get html(): string | null {
+		if (this.rendered === undefined) this.rendered = tableHtml(this.source, this.refs, this.rows, this.noteDir);
+		return this.rendered;
+	}
+	get cached(): boolean {
+		return this.rendered !== undefined || htmlCache.has(tableKey(this.source, this.refs, this.noteDir));
+	}
 	eq(other: TableWidget) {
 		return (
-			other.source === this.source && other.html === this.html && other.noteDir === this.noteDir
+			other.source === this.source &&
+			other.refs === this.refs &&
+			other.noteDir === this.noteDir &&
+			other.ready === this.ready
 		);
 	}
 	// Rows minus the delimiter line, so a fresh widget doesn't flap the
@@ -166,9 +184,10 @@ class TableWidget extends WidgetType {
 		widgets.set(div, this);
 		// Repainting drops a mounted cell editor; syncCell mounts it again.
 		if (edit?.host === div && edit.cell.hasFocus) edit.refocus = true;
-		div.classList.toggle('cm-table-pending', this.html === null);
-		if (this.html !== null) {
-			div.innerHTML = this.html;
+		const html = this.html;
+		div.classList.toggle('cm-table-pending', html === null);
+		if (html !== null) {
+			div.innerHTML = html;
 		} else {
 			div.textContent = this.source;
 			void loadRenderer().then(() => {
@@ -869,19 +888,14 @@ function buildTableDecorations(state: EditorState): DecorationSet {
 		const first = state.doc.lineAt(t.from).number;
 		const last = state.doc.lineAt(t.to).number;
 		// Header and body rows; the delimiter line renders no row.
-		const html =
-			state.field(rawTableField) === t.from && !isPreviewMode()
-				? ''
-				: tableHtml(t.source, refs, last - first, noteDir);
-		if (html === '') {
+		const widget = new TableWidget(t.source, refs, last - first, noteDir);
+		// A cell edit keeps the table's shape (cellInputFilter), so the table
+		// being typed in stays a widget without rendering it.
+		const raw = state.field(rawTableField) === t.from && !isPreviewMode();
+		if (raw || ((!echoing || widget.cached) && widget.html === '')) {
 			for (let n = first; n <= last; n++) ranges.push(sourceLine.range(state.doc.line(n).from));
 		} else {
-			ranges.push(
-				Decoration.replace({
-					widget: new TableWidget(t.source, html, noteDir),
-					block: true
-				}).range(t.from, t.to)
-			);
+			ranges.push(Decoration.replace({ widget, block: true }).range(t.from, t.to));
 		}
 	}
 	trimCache(tables.length);
