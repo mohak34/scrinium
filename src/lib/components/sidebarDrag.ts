@@ -5,7 +5,8 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 // file dropped on the top or bottom half of another file lands right before
 // or after it (in that file's folder), notes and folders dropped on Pinned get pinned globally and on their project's pins
 // in that project, pins reorder, move into a folder when dropped on one
-// (staying pinned), and unpin when dropped anywhere else.
+// (staying pinned, unless it is inside a pinned folder), and unpin when
+// dropped anywhere else.
 // Built on pointer events instead of HTML5 drag-and-drop so the lifted row,
 // the target highlight and Esc-to-cancel are drawn by us, and hovering a
 // file or a folder's children still counts as that folder.
