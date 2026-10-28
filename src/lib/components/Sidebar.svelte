@@ -319,8 +319,12 @@
 			// A pin dropped into a pinned folder would stay hidden from that
 			// folder's tree; it unpins and shows there instead.
 			const intoPin = $pinnedPaths.includes(path) && toDir !== null && inPinnedDir(toDir);
-			if (!(await movePath(path, toDir))) return;
-			at = joinPath(toDir, path.split('/').pop()!);
+			const name = path.split('/').pop()!;
+			if (!(await movePath(path, toDir))) {
+				if (findEntry($tree, joinPath(toDir, name))) alert(`${toDir ?? projectLabel(null)} already has "${name}".`);
+				return;
+			}
+			at = joinPath(toDir, name);
 			renameDir(path, at);
 			if (intoPin) togglePin(at);
 			if (toDir) expandDir(toDir);

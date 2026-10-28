@@ -15,7 +15,8 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 //   [data-drop-pins]  a pin list: global, or one project's when it carries
 //                     data-project; [data-pin=path] its rows, with
 //                     data-pin-dir on pinned folders (all but
-//                     their edges move into the folder). The switcher
+//                     their edges move into the folder, and the edges
+//                     too where reordering would change nothing). The switcher
 //                     bar and a project header carry it too, plus
 //                     data-pin-here, while the dragged item can pin there.
 //   [data-tree-entry] a tree row (data-path, data-type)
@@ -127,20 +128,22 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	// folder like the main tree does.
 	const pins = el?.closest('[data-tree-entry], [data-pin-tree]') ? null : el?.closest<HTMLElement>('[data-drop-pins]');
 	if (pins) {
-		// A pinned folder row moves into the folder; only a thin strip at its
-		// top and bottom reorders the pins.
-		const dirRow = el?.closest<HTMLElement>('[data-pin-dir]');
-		const into = dirRow?.dataset.pin;
-		if (dirRow && into) {
-			const b = dirRow.getBoundingClientRect();
-			const middle = y > b.top + PIN_EDGE && y < b.bottom - PIN_EDGE;
-			if (middle) return canMove(source, into) ? { kind: 'move', dir: into } : stay(source, into);
-		}
 		const project = pins.dataset.project;
 		const pinnable =
 			(source.fromPins || source.kind === 'directory' || source.path.endsWith('.md')) &&
 			(project === undefined || project === source.project);
-		return pinnable ? pinTarget(source, pins, y, project === undefined) : null;
+		const reorder = pinnable ? pinTarget(source, pins, y, project === undefined) : null;
+		// A pinned folder row moves into the folder; only a thin strip at its
+		// top and bottom reorders the pins, and only when that changes the
+		// order, so a drop on a neighbouring folder's edge never does nothing.
+		const dirRow = el?.closest<HTMLElement>('[data-pin-dir]');
+		const into = dirRow?.dataset.pin;
+		if (dirRow && into) {
+			const b = dirRow.getBoundingClientRect();
+			const edge = y <= b.top + PIN_EDGE || y >= b.bottom - PIN_EDGE;
+			if (!(edge && reorder)) return canMove(source, into) ? { kind: 'move', dir: into } : stay(source, into);
+		}
+		return reorder;
 	}
 	const dir = treeDir(el);
 	if (dir !== undefined && canMove(source, dir)) return { kind: 'move', dir };
