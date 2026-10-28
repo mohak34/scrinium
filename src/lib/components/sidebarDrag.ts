@@ -4,9 +4,8 @@ import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 // Pointer-driven drag for the notes sidebar. Tree rows move into folders, a
 // file dropped on the top or bottom half of another file lands right before
 // or after it (in that file's folder), notes and folders dropped on Pinned get pinned globally and on their project's pins
-// in that project, pins reorder, move into a folder when dropped on one
-// (staying pinned, unless it is inside a pinned folder), and unpin when
-// dropped anywhere else.
+// in that project, pins reorder, and unpin when dropped anywhere else (into
+// a folder, they also move there and show in its tree).
 // Built on pointer events instead of HTML5 drag-and-drop so the lifted row,
 // the target highlight and Esc-to-cancel are drawn by us, and hovering a
 // file or a folder's children still counts as that folder.

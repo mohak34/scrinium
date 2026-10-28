@@ -316,9 +316,9 @@
 	async function onMove(path: string, toDir: string | null, place?: { path: string; after: boolean }) {
 		let at = path;
 		if (parentDirOf(path) !== toDir) {
-			// A pin dropped into a pinned folder would stay hidden from that
-			// folder's tree; it unpins and shows there instead.
-			const intoPin = $pinnedPaths.includes(path) && toDir !== null && inPinnedDir(toDir);
+			// A pin stays hidden from every tree, so a pin dragged into a folder
+			// unpins and shows in that folder, where it landed.
+			const wasPinned = $pinnedPaths.includes(path);
 			const name = path.split('/').pop()!;
 			if (!(await movePath(path, toDir))) {
 				if (findEntry($tree, joinPath(toDir, name))) alert(`${toDir ?? projectLabel(null)} already has "${name}".`);
@@ -326,7 +326,7 @@
 			}
 			at = joinPath(toDir, name);
 			renameDir(path, at);
-			if (intoPin) togglePin(at);
+			if (wasPinned) togglePin(at);
 			if (toDir) expandDir(toDir);
 		}
 		// A file's spot in its old folder means nothing in the new one.
@@ -428,8 +428,6 @@
 			})
 		)
 	);
-	const inPinnedDir = (dir: string) =>
-		[...pinEntries.values()].some((e) => e.type === 'directory' && (dir === e.path || dir.startsWith(e.path + '/')));
 	const livePins = $derived.by(() => {
 		const pinned = [...pinEntries.values()];
 		return [...pinned.filter((e) => e.type === 'directory'), ...pinned.filter((e) => e.type === 'file')].map(
