@@ -222,3 +222,10 @@ textarea {
 		display: table;
 	}
 }
+
+/* While a table column is dragged wider (tableBlock.ts). */
+html.cm-col-resizing,
+html.cm-col-resizing * {
+	cursor: col-resize !important;
+	user-select: none;
+}

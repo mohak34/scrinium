@@ -1,6 +1,6 @@
 /**
  * Table settings kept in the note: one HTML comment line right above a GFM
- * table holds its column types, sort and filters, so they travel with the
+ * table holds its column types, widths, sort and filters, so they travel with the
  * file. Columns are keyed by index, so renaming a header keeps its type;
  * column commands shift the keys (`shiftCols`). The editor hides the line
  * inside the table widget, the renderer drops it.
@@ -17,6 +17,8 @@ export interface ColumnMeta {
 	type: ColType;
 	// Status choices in sort order; values typed later append after these.
 	options?: string[];
+	// Pixels, set by dragging the header edge; unset columns size to fit.
+	width?: number;
 }
 
 export interface ColFilter {
@@ -25,6 +27,8 @@ export interface ColFilter {
 	date?: DateRange;
 	// Drops rows with this column empty.
 	filled?: boolean;
+	// Keeps rows whose source contains this, ignoring case.
+	text?: string;
 }
 
 export interface TableMeta {
@@ -59,7 +63,12 @@ export function parseMeta(line: string): TableMeta | null {
 		const cols: Record<string, ColumnMeta> = {};
 		for (const [k, c] of Object.entries(raw.cols)) {
 			if (!isRecord(c) || !COL_TYPES.includes(c.type as string)) continue;
-			cols[k] = { type: c.type as ColType, ...(strings(c.options) && { options: strings(c.options) }) };
+			const width = typeof c.width === 'number' && c.width >= 32 && c.width <= 4000 ? Math.round(c.width) : undefined;
+			cols[k] = {
+				type: c.type as ColType,
+				...(strings(c.options) && { options: strings(c.options) }),
+				...(width && { width })
+			};
 		}
 		meta.cols = cols;
 	}
@@ -75,6 +84,7 @@ export function parseMeta(line: string): TableMeta | null {
 			if (hide?.length) out.hide = hide;
 			if (RANGES.includes(f.date as string)) out.date = f.date as DateRange;
 			if (f.filled === true) out.filled = true;
+			if (typeof f.text === 'string' && f.text) out.text = f.text;
 			if (Object.keys(out).length) filter[k] = out;
 		}
 		meta.filter = filter;
@@ -167,12 +177,14 @@ export function tableView(body: string[][], meta: TableMeta | null, keep: number
 	let rows = body.map((_, i) => i);
 	for (const [k, f] of Object.entries(meta?.filter ?? {})) {
 		const col = Number(k);
+		const text = f.text?.toLowerCase();
 		rows = rows.filter((i) => {
 			if (i === keep) return true;
 			const v = body[i][col] ?? '';
 			if (f.filled && !v) return false;
 			if (f.hide?.includes(v)) return false;
 			if (f.date && !inRange(v, f.date, today)) return false;
+			if (text && !v.toLowerCase().includes(text)) return false;
 			return true;
 		});
 	}

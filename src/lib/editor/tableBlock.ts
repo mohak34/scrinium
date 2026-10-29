@@ -33,12 +33,14 @@ import {
 	ViewPlugin,
 	WidgetType,
 	keymap,
+	showTooltip,
 	type DecorationSet
 } from '@codemirror/view';
 import { defaultKeymap, redo, undo } from '@codemirror/commands';
 import {
 	autocompletion,
 	startCompletion,
+	type Completion,
 	type CompletionContext,
 	type CompletionResult
 } from '@codemirror/autocomplete';
@@ -298,6 +300,10 @@ class TableWidget extends WidgetType {
 			th.classList.toggle('cm-th-sorted', !!sorted);
 			th.classList.toggle('cm-th-filtered', !!meta?.filter?.[col]);
 			th.title = 'Column options';
+			const handle = document.createElement('span');
+			handle.className = 'cm-th-rz';
+			handle.title = 'Drag to resize, double-click to fit';
+			th.append(handle);
 		});
 		const body = types.some((t) => t !== 'text') ? this.body() : [];
 		const today = localDay();
@@ -327,6 +333,13 @@ class TableWidget extends WidgetType {
 				}
 			});
 		});
+		// The kept row once the filter would hide it.
+		const out = this.keep !== null && !tableView(this.body(), meta, null).includes(this.keep);
+		if (out) {
+			const tr = table.rows[this.order.indexOf(this.keep) + 1];
+			tr?.classList.add('cm-row-out');
+			tr?.setAttribute('title', 'Hidden by the filter once you leave this row');
+		}
 		const scroll = document.createElement('div');
 		scroll.className = 'cm-table-scroll';
 		table.replaceWith(scroll);
@@ -335,7 +348,7 @@ class TableWidget extends WidgetType {
 		bar.className = 'cm-table-bar';
 		const filters = Object.keys(meta?.filter ?? {}).length;
 		const total = this.source.split('\n').length - 2;
-		const shown = this.order.length;
+		const shown = this.order.length - (out ? 1 : 0);
 		bar.innerHTML =
 			`<button data-act="sort"${meta?.sort ? ' class="on"' : ''}><span class="material-symbols-outlined">swap_vert</span>Sort</button>` +
 			`<button data-act="filter"${filters ? ' class="on"' : ''}><span class="material-symbols-outlined">filter_list</span>Filter${filters ? ` ${filters}` : ''}</button>` +
@@ -413,41 +426,54 @@ function measureColumns(table: HTMLTableElement, types: ColType[]): number[] {
 	return widths;
 }
 
-/** Natural widths fitted to the note: the last text column takes the slack. */
-function fitColumns(natural: number[], types: ColType[], room: number): number[] {
+/**
+ * Widths fitted to the note: `fixed` columns keep their set width, the
+ * last other text column (else the last other column) takes the slack,
+ * and other text columns shrink before the table scrolls. `slack` is -1
+ * when every column is fixed.
+ */
+function fitColumns(natural: number[], types: ColType[], fixed: boolean[], room: number) {
 	const w = [...natural];
 	const sum = w.reduce((a, b) => a + b, 0);
+	const free = w.map((_, i) => i).filter((i) => !fixed[i]);
+	const slack = free.filter((i) => types[i] === 'text').at(-1) ?? free.at(-1) ?? -1;
 	if (sum < room) {
-		const i = types.lastIndexOf('text');
-		w[i < 0 ? w.length - 1 : i] += room - sum;
+		if (slack >= 0) w[slack] += room - sum;
 	} else if (sum > room) {
-		const give = w.map((x, i) => (types[i] === 'text' ? Math.max(0, x - SHRINK_TO) : 0));
+		const give = w.map((x, i) => (types[i] === 'text' && !fixed[i] ? Math.max(0, x - SHRINK_TO) : 0));
 		const spare = give.reduce((a, b) => a + b, 0);
 		const cut = Math.min(sum - room, spare);
 		if (spare) w.forEach((x, i) => (w[i] = x - Math.floor((cut * give[i]) / spare)));
 	}
-	return w;
+	return { w, slack };
 }
 
 function layoutColumns(div: HTMLElement, table: HTMLTableElement, types: ColType[], view: EditorView) {
 	const widget = widgets.get(div);
 	const key = `${types.join()}\n${widget?.source ?? ''}`;
 	const shape = `${types.join()}\n${widget?.order.join() ?? ''}`;
+	const set = types.map((_, i) => widget?.meta?.cols?.[i]?.width);
 	const apply = (natural: number[], room: number) => {
-		const w = fitColumns(natural, types, room);
-		const wide = w.reduce((a, b) => a + b, 0) > room + 1;
+		const { w, slack } = fitColumns(
+			natural.map((x, i) => set[i] ?? x),
+			types,
+			set.map((x) => x !== undefined),
+			room
+		);
+		const sum = w.reduce((a, b) => a + b, 0);
+		const wide = sum > room + 1;
 		// A table that fits leaves its slack column unsized, so it takes
 		// whatever the note width gives it later.
-		const slack = wide ? -1 : types.lastIndexOf('text') < 0 ? w.length - 1 : types.lastIndexOf('text');
+		const fill = !wide && slack >= 0;
 		const group = document.createElement('colgroup');
 		w.forEach((x, i) => {
 			const col = document.createElement('col');
-			if (i !== slack) col.style.width = `${x}px`;
+			if (!fill || i !== slack) col.style.width = `${x}px`;
 			group.append(col);
 		});
 		table.querySelector('colgroup')?.remove();
 		table.prepend(group);
-		table.style.width = wide ? `${w.reduce((a, b) => a + b, 0)}px` : '100%';
+		table.style.width = fill ? '100%' : `${sum}px`;
 		div.classList.toggle('cm-table-wide', wide);
 	};
 	const measure = () => {
@@ -469,11 +495,57 @@ function layoutColumns(div: HTMLElement, table: HTMLTableElement, types: ColType
 	view.requestMeasure({ read: measure });
 }
 
+/**
+ * Drags a column's right edge from a press on its handle. The table is
+ * held at its drawn widths while dragging; the width is written to the
+ * settings line on release. A double-click sets the measured width.
+ */
+function resizeColumn(e: MouseEvent, view: EditorView, div: HTMLElement, t: TableRange, col: number) {
+	const table = div.querySelector('table');
+	const cols = table?.querySelectorAll('col');
+	const handle = e.target as HTMLElement;
+	if (!table || !cols?.[col]) return;
+	const save = (width: number) => {
+		const meta: TableMeta = t.meta ?? { v: 1 };
+		const key = String(col);
+		const cur = meta.cols?.[key] ?? { type: 'text' };
+		metaSetter(view, t)({ ...meta, cols: { ...meta.cols, [key]: { ...cur, width } } })();
+	};
+	if (e.detail === 2) {
+		const fit = domWidths.get(div)?.widths[col];
+		if (fit) save(fit);
+		return;
+	}
+	const start = Array.from(table.rows[0].cells, (c) => c.getBoundingClientRect().width);
+	start.forEach((w, i) => cols[i] && (cols[i].style.width = `${w}px`));
+	const rest = start.reduce((a, b) => a + b, 0) - start[col];
+	const x0 = e.clientX;
+	let width = Math.round(start[col]);
+	const move = (ev: MouseEvent) => {
+		width = Math.max(MIN_COL, Math.round(start[col] + ev.clientX - x0));
+		cols[col].style.width = `${width}px`;
+		table.style.width = `${rest + width}px`;
+		div.classList.toggle('cm-table-wide', rest + width > div.clientWidth + 1);
+	};
+	const up = () => {
+		window.removeEventListener('mousemove', move);
+		window.removeEventListener('mouseup', up);
+		document.documentElement.classList.remove('cm-col-resizing');
+		handle.classList.remove('cm-th-rz-drag');
+		if (width !== Math.round(start[col])) save(width);
+	};
+	window.addEventListener('mousemove', move);
+	window.addEventListener('mouseup', up);
+	document.documentElement.classList.add('cm-col-resizing');
+	handle.classList.add('cm-th-rz-drag');
+}
+
 function filterText(f: ColFilter): string {
 	const parts: string[] = [];
 	if (f.hide?.length) parts.push(`hides ${f.hide.join(', ')}`);
 	if (f.date) parts.push(DATE_RANGE_LABEL[f.date]);
 	if (f.filled) parts.push('not empty');
+	if (f.text) parts.push(`contains "${f.text}"`);
 	return parts.join(', ');
 }
 
@@ -513,6 +585,12 @@ function onTableMouseDown(e: MouseEvent, view: EditorView, div: HTMLElement) {
 			else if (link) openUrl(linkHref(link), widget.noteDir);
 			return;
 		}
+	}
+	if (target.classList.contains('cm-th-rz')) {
+		e.preventDefault();
+		const th = target.closest('th');
+		resizeColumn(e, view, div, t, Array.from(th?.parentElement?.children ?? []).indexOf(th as Element));
+		return;
 	}
 	const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
 	if (act) {
@@ -808,7 +886,11 @@ export function syncCell(view: EditorView) {
 	freshTd.classList.add('cm-cell-editing');
 	const cell = new EditorView({
 		parent: freshTd,
-		state: EditorState.create({ doc: text, selection: local, extensions: cellExtensions })
+		state: EditorState.create({
+			doc: text,
+			selection: local,
+			extensions: [cellExtensions, ref.row > 0 && /^(date|deadline)$/.test(colType(ref.table.meta, ref.col)) ? datePicker : []]
+		})
 	});
 	edit = { main: view, cell, host: freshHost, ref, refocus: false, opened: text };
 	if (click && click !== 'open') {
@@ -831,26 +913,127 @@ function columnChoices(own: boolean): string[] {
 	const t = tableAt(main.state, ref.from);
 	if (!t) return [];
 	const column = readTable(main.state, t).rows.map((r) => r[ref.col]);
-	if (colType(t.meta, ref.col) === 'status') return statusOptions(t.meta, ref.col, column.slice(1));
+	if (colType(t.meta, ref.col) === 'status')
+		return statusOptions(t.meta, ref.col, column.filter((_, i) => i > 0 && (own || i !== ref.row)));
 	const filled = column.slice(1).filter(Boolean);
 	if (new Set(filled).size === filled.length) return [];
 	const others = column.filter((v, i) => v && i > 0 && (own || i !== ref.row));
 	return [...new Set(others)].sort((a, b) => a.localeCompare(b));
 }
 
+// Status colors of the open cell's choices, for the dots in its list.
+let choiceColors = new Map<string, string>();
+
 // A cell lists every choice until it is edited, to show what a filled
-// cell can change to; typing filters them.
+// cell can change to; typing filters them. A status cell is a picker:
+// colored choices, plus one that adds what was typed.
 function cellCompletions(ctx: CompletionContext): CompletionResult | null {
+	const meta = edit && tableAt(edit.main.state, edit.ref.from)?.meta;
+	const type = edit && edit.ref.row > 0 ? colType(meta ?? null, edit.ref.col) : 'text';
+	if (type === 'date' || type === 'deadline') return null;
 	const untouched = ctx.state.doc.toString() === edit?.opened;
 	const choices = columnChoices(untouched);
-	if (!choices.length) return null;
-	return {
-		from: 0,
-		to: ctx.state.doc.length,
-		options: choices.map((label) => ({ label })),
-		filter: !untouched
-	};
+	const typed = ctx.state.doc.toString().trim();
+	const adding = type === 'status' && !untouched && !!typed && !choices.includes(typed);
+	if (type === 'status') {
+		const all = adding ? [...choices, typed] : choices;
+		choiceColors = new Map(all.map((c) => [c, statusColor(all, c)]));
+	} else choiceColors = new Map();
+	if (!choices.length && !adding) return null;
+	const options: Completion[] = choices.map((label) => ({ label }));
+	if (adding) options.push({ label: typed, displayLabel: `Add "${typed}"`, boost: -99 });
+	return { from: 0, to: ctx.state.doc.length, options, filter: !untouched };
 }
+
+const choiceDot = {
+	position: 20,
+	render: (c: Completion) => {
+		const color = choiceColors.get(c.label);
+		if (!color) return null;
+		const dot = document.createElement('span');
+		dot.className = 'cm-choice-dot';
+		dot.style.background = color;
+		return dot;
+	}
+};
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+const dayKey = (d: Date) =>
+	`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * The calendar under an open date cell. A click on a day writes it into
+ * the cell like typing; typing a date moves the calendar to it.
+ */
+const datePicker = showTooltip.of({
+	pos: 0,
+	above: false,
+	create(cell) {
+		const dom = document.createElement('div');
+		dom.className = 'cm-date-pop';
+		// First of the month on screen; null follows the cell's date.
+		let month: Date | null = null;
+		const draw = () => {
+			const v = cell.state.doc.toString().trim();
+			const picked = validDate(v) ? v : null;
+			const today = localDay();
+			const at = picked ?? today;
+			const m = (month ??= new Date(Number(at.slice(0, 4)), Number(at.slice(5, 7)) - 1, 1));
+			const lead = (m.getDay() + 6) % 7;
+			const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+			let grid = WEEKDAYS.map((d) => `<span class="cm-date-wd">${d}</span>`).join('');
+			for (let i = 0; i < Math.ceil((lead + days) / 7) * 7; i++) {
+				const d = new Date(m.getFullYear(), m.getMonth(), 1 - lead + i);
+				const k = dayKey(d);
+				const cls = [
+					d.getMonth() !== m.getMonth() && 'other',
+					k === today && 'today',
+					k === picked && 'on'
+				].filter(Boolean);
+				grid += `<button data-day="${k}"${cls.length ? ` class="${cls.join(' ')}"` : ''}>${d.getDate()}</button>`;
+			}
+			const hint = picked
+				? `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(`${picked}T00:00`).getDay()]}, ${friendlyDate(picked)}`
+				: v
+					? 'Not a date, use YYYY-MM-DD'
+					: 'Type YYYY-MM-DD';
+			dom.innerHTML =
+				`<div class="cm-date-head"><button data-step="-1" title="Previous month"><span class="material-symbols-outlined">chevron_left</span></button>` +
+				`<span>${MONTH_NAMES[m.getMonth()]} ${m.getFullYear()}</span>` +
+				`<button data-step="1" title="Next month"><span class="material-symbols-outlined">chevron_right</span></button></div>` +
+				`<div class="cm-date-grid">${grid}</div>` +
+				`<div class="cm-date-foot"><span class="cm-date-hint${picked || !v ? '' : ' bad'}">${hint}</span>` +
+				`<button data-day="${today}">Today</button>${v ? '<button data-day="">Clear</button>' : ''}</div>`;
+		};
+		// Presses never take focus from the cell.
+		dom.addEventListener('mousedown', (e) => {
+			e.preventDefault();
+			const b = (e.target as Element).closest<HTMLElement>('button');
+			if (!b) return;
+			if (b.dataset.step && month) {
+				month = new Date(month.getFullYear(), month.getMonth() + Number(b.dataset.step), 1);
+				draw();
+			} else if (b.dataset.day !== undefined) {
+				const v = b.dataset.day;
+				cell.dispatch({
+					changes: { from: 0, to: cell.state.doc.length, insert: v },
+					selection: { anchor: v.length },
+					userEvent: 'input.pick'
+				});
+			}
+		});
+		draw();
+		return {
+			dom,
+			update(u) {
+				if (!u.docChanged) return;
+				month = null;
+				draw();
+			}
+		};
+	}
+});
 
 // Copy cell edits and caret moves into the main doc, as one transaction
 // per cell transaction so undo groups typing like the main editor.
@@ -985,7 +1168,7 @@ const cellExtensions = [
 	cellInputFilter,
 	writeBack,
 	cellLinkClick,
-	autocompletion({ override: [cellCompletions], icons: false }),
+	autocompletion({ override: [cellCompletions], icons: false, addToOptions: [choiceDot] }),
 	// The note theme styles the list, but inside the cell editor its own
 	// base styles are more specific for these two.
 	EditorView.theme(
@@ -1175,8 +1358,43 @@ function columnNames(view: EditorView, t: TableRange): string[] {
 // A menu opened from another menu's item waits for that one to close.
 const later = (open: () => void) => () => queueMicrotask(open);
 
-/** Filter choices for one column. */
-function filterItems(view: EditorView, t: TableRange, col: number): ContextMenuItem[] {
+/**
+ * A one-line input at a screen point, for menu items that need text.
+ * Enter or leaving it keeps the text, Esc drops it.
+ */
+function askText(view: EditorView, x: number, y: number, value: string, done: (text: string) => void) {
+	const box = document.createElement('div');
+	box.className = 'cm-table-ask';
+	const input = document.createElement('input');
+	input.placeholder = 'Contains...';
+	input.spellcheck = false;
+	input.value = value;
+	box.append(input);
+	view.dom.append(box);
+	box.style.left = `${Math.max(8, Math.min(x, innerWidth - box.offsetWidth - 8))}px`;
+	box.style.top = `${Math.max(8, Math.min(y, innerHeight - box.offsetHeight - 8))}px`;
+	let open = true;
+	const close = (keep: boolean) => {
+		if (!open) return;
+		open = false;
+		box.remove();
+		if (keep) done(input.value.trim());
+		view.focus();
+	};
+	input.addEventListener('keydown', (e) => {
+		e.stopPropagation();
+		if (e.key === 'Enter' || e.key === 'Escape') {
+			e.preventDefault();
+			close(e.key === 'Enter');
+		}
+	});
+	input.addEventListener('blur', () => close(true));
+	input.focus();
+	input.select();
+}
+
+/** Filter choices for one column; x and y place the Contains input. */
+function filterItems(view: EditorView, t: TableRange, col: number, x: number, y: number): ContextMenuItem[] {
 	const meta: TableMeta = t.meta ?? { v: 1 };
 	const type = colType(meta, col);
 	const key = String(col);
@@ -1211,6 +1429,15 @@ function filterItems(view: EditorView, t: TableRange, col: number): ContextMenuI
 				action: apply(withFilter({ ...filter, date: filter.date === o.range ? undefined : o.range }))
 			});
 		}
+	} else {
+		items.push({
+			label: filter.text ? `Contains "${filter.text}"` : 'Contains...',
+			icon: 'search',
+			current: !!filter.text,
+			action: later(() =>
+				askText(view, x, y, filter.text ?? '', (text) => apply(withFilter({ ...filter, text: text || undefined }))())
+			)
+		});
 	}
 	items.push({
 		label: filter.filled ? 'Show empty rows' : 'Hide empty rows',
@@ -1264,8 +1491,14 @@ function openColumnMenu(view: EditorView, t: TableRange, col: number, x: number,
 			action: () => {
 				if (o.type === type) return;
 				const cols = { ...meta.cols };
-				if (o.type === 'text') delete cols[key];
-				else cols[key] = o.type === 'status' ? { type: o.type, options: statusOptions(null, col, values) } : { type: o.type };
+				const width = cols[key]?.width;
+				if (o.type === 'text' && !width) delete cols[key];
+				else
+					cols[key] = {
+						type: o.type,
+						...(o.type === 'status' && { options: statusOptions(null, col, values) }),
+						...(width && { width })
+					};
 				const all = { ...meta.filter };
 				delete all[key];
 				apply({ ...meta, cols, filter: all })();
@@ -1278,7 +1511,7 @@ function openColumnMenu(view: EditorView, t: TableRange, col: number, x: number,
 			label: 'Filter',
 			icon: 'filter_list',
 			current: !!meta.filter?.[key],
-			action: later(() => show(x, y, filterItems(view, t, col)))
+			action: later(() => show(x, y, filterItems(view, t, col, x, y)))
 		},
 		{ label: 'Insert column left', icon: 'add_column_left', divider: true, action: atColumn(view, t, col, tableCommands.tableColLeft) },
 		{ label: 'Insert column right', icon: 'add_column_right', action: atColumn(view, t, col, tableCommands.tableColRight) },
@@ -1316,7 +1549,7 @@ function openFilterMenu(view: EditorView, t: TableRange, x: number, y: number) {
 			label: f ? `${name}: ${filterText(f)}` : name,
 			icon: TYPE_ICON[colType(meta, col)],
 			current: !!f,
-			action: later(() => show(x, y, filterItems(view, t, col)))
+			action: later(() => show(x, y, filterItems(view, t, col, x, y)))
 		};
 	});
 	if (hasFilter(meta)) {

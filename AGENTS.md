@@ -240,7 +240,10 @@ State channels you will touch:
   renderNote.ts and drawn as a grid (theme in markdownSetup.ts), and
   editing is per cell. Columns are measured once and laid out fixed
   (`layoutColumns`; the last text column takes the slack, a table wider
-  than the note scrolls), so opening a cell never resizes anything. When
+  than the note scrolls), so opening a cell never resizes anything.
+  Dragging a header's right edge sets that column's width and
+  double-click fits it to its content (`resizeColumn`); the width is
+  saved as `cols[i].width` in the settings line. When
   the main selection sits in a cell, `syncCell` mounts a small nested
   EditorView over that td (the rendered content keeps the cell's size)
   for the cell's raw source; its edits are written back to the main doc as
@@ -248,7 +251,10 @@ State channels you will touch:
   runs through the main history), and the widget skips rendering and repainting for
   its own echo. A column that repeats a value offers the column's
   values as completions in that cell editor (`columnChoices`), so a
-  status column edits like a select with nothing declared. Ctrl+click
+  status column edits like a select with nothing declared; status
+  choices carry their color dot and a new value offers `Add "x"`. Date
+  and deadline cells open a month picker (`datePicker`, a CM tooltip on
+  the cell editor) instead of completions. Ctrl+click
   opens links and wikilinks from the rendered cell or the cell editor
   (`followWikilink`/`openUrl` in livePreview.ts). Tab/Enter/arrows step cells via the main selection;
   typed `|` is escaped. In vim normal mode the cell is only outlined
@@ -268,7 +274,9 @@ State channels you will touch:
   filter are a view: `tableView` orders the rendered rows, the markdown
   never moves, and `orders` maps rendered rows back to source rows for
   clicks and row stepping. A filter never hides the row the cursor is
-  in. The toolbar above the table also counts rows, shows the markdown
+  in; that row is dimmed instead. Text and number columns filter by
+  `contains` (`filter[i].text`, typed into `askText`, a small input
+  inside the editor DOM so the editor theme reaches it). The toolbar above the table also counts rows, shows the markdown
   and, below the table, adds a row. Ranges from
   tableRanges.ts so `livePreview.ts` never decorates inside a table),
   docRanges.ts (`perDoc`: a whole-doc scan cached per document and

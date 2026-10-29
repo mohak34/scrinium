@@ -292,7 +292,7 @@ export const baseTheme = EditorView.theme(
 		// into text that splits the table; the wrap resets undo its
 		// overflow-wrap: anywhere so cells wrap at spaces.
 		'.cm-table-block': {
-			padding: '0.25rem 0 0.5rem',
+			padding: '0.75rem 0 0.5rem',
 			cursor: 'default',
 			whiteSpace: 'normal',
 			wordBreak: 'normal',
@@ -314,10 +314,11 @@ export const baseTheme = EditorView.theme(
 			borderRadius: '4px',
 			background: 'none',
 			font: '500 12px var(--font-ui)',
-			color: 'var(--text-4)',
-			cursor: 'pointer'
+			color: 'inherit',
+			cursor: 'pointer',
+			transition: 'background-color 80ms, color 80ms'
 		},
-		'.cm-table-block button:hover': { color: 'var(--text-3)', background: 'var(--raise)' },
+		'.cm-table-block button:hover': { color: 'var(--text-2)', background: 'var(--hover)' },
 		'.cm-table-block button.on': { color: 'var(--accent)' },
 		'.cm-table-block button .material-symbols-outlined': { fontSize: '15px' },
 		'.cm-table-bar': {
@@ -325,16 +326,31 @@ export const baseTheme = EditorView.theme(
 			alignItems: 'center',
 			gap: '2px',
 			height: '28px',
+			margin: '0 0 4px -6px',
 			font: '500 12px var(--font-ui)',
 			color: 'var(--text-4)'
 		},
-		'.cm-table-count': { padding: '0 6px' },
+		'.cm-table-block:hover .cm-table-bar': { color: 'var(--text-3)' },
+		'.cm-table-count': { padding: '0 6px', fontVariantNumeric: 'tabular-nums' },
 		'.cm-table-bar .cm-table-md': { marginLeft: 'auto' },
-		'.cm-table-block .cm-table-addrow': { marginTop: '2px', opacity: '0' },
+		'.cm-table-block .cm-table-addrow': {
+			height: '28px',
+			gap: '6px',
+			padding: '0 10px',
+			marginTop: '2px',
+			color: 'var(--text-3)',
+			opacity: '0',
+			transition: 'opacity 80ms, background-color 80ms, color 80ms'
+		},
 		'.cm-table-block:hover .cm-table-addrow': { opacity: '1' },
+		'.cm-table-block .cm-table-addrow:hover': { color: 'var(--text)' },
 		// Only a table wider than the note scrolls: a scroll box clips the
 		// cell editor, which can be taller than its cell.
-		'.cm-table-wide .cm-table-scroll': { overflowX: 'auto' },
+		'.cm-table-wide .cm-table-scroll': {
+			overflowX: 'auto',
+			scrollbarWidth: 'thin',
+			scrollbarColor: 'var(--line-3) transparent'
+		},
 		'.cm-table-wide :is(th, td):first-child': { position: 'sticky', left: '0', zIndex: '1', background: 'var(--bg)' },
 		'.cm-table-block table': {
 			tableLayout: 'fixed',
@@ -357,14 +373,22 @@ export const baseTheme = EditorView.theme(
 			borderTop: '1px solid var(--line)',
 			font: '500 12px/20px var(--font-ui)',
 			color: 'var(--text-3)',
+			borderBottomColor: 'var(--line-2)',
 			cursor: 'pointer',
-			userSelect: 'none'
+			userSelect: 'none',
+			transition: 'background-color 80ms, color 80ms'
 		},
-		'.cm-table-block th:hover': { background: 'var(--raise)' },
+		'.cm-table-block th:hover': { background: 'var(--raise)', color: 'var(--text-2)' },
+		'.cm-table-block th:hover .cm-th-icon': { color: 'var(--text-3)' },
+		// The drag handle on a header's right edge (resizeColumn).
+		'.cm-th-rz': { position: 'absolute', top: '0', right: '-1px', width: '7px', height: '100%', cursor: 'col-resize', zIndex: '4' },
+		'.cm-th-rz:hover, .cm-th-rz.cm-th-rz-drag': {
+			background: 'linear-gradient(var(--accent), var(--accent)) right / 1px 100% no-repeat'
+		},
 		'.cm-table-block th .cm-cell-v': { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
 		'.cm-th-icon': { fontSize: '15px', verticalAlign: '-3px', marginRight: '6px', color: 'var(--text-4)' },
 		'.cm-th-sorted .cm-th-icon': { color: 'var(--accent)' },
-		'.cm-table-block th.cm-th-filtered': { boxShadow: 'inset 0 -2px 0 var(--accent)' },
+		'.cm-table-block th.cm-th-filtered': { boxShadow: 'inset 0 -1px 0 var(--accent)' },
 		'.cm-table-block tr:hover td': { background: '#0e0e0e' },
 		'.cm-table-block .cm-col-number': { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
 		'.cm-table-block td:is(.cm-col-number, .cm-col-date, .cm-col-deadline, .cm-col-status) .cm-cell-v': {
@@ -385,22 +409,86 @@ export const baseTheme = EditorView.theme(
 		},
 		'.cm-table-block td.cm-cell-over': { color: 'var(--red)' },
 		'.cm-table-block td.cm-cell-near': { color: 'var(--orange)' },
-		'.cm-table-block td.cm-cell-bad .cm-cell-v': { textDecoration: 'underline dotted var(--red)', textUnderlineOffset: '3px' },
+		'.cm-table-block td.cm-cell-bad': { color: 'var(--text-2)', cursor: 'help' },
+		'.cm-table-block td.cm-cell-bad .cm-cell-v': {
+			textDecoration: 'underline dotted var(--red)',
+			textDecorationThickness: '1.5px',
+			textUnderlineOffset: '4px'
+		},
+		// The row the cursor keeps on screen though the filter hides it.
+		'.cm-table-block tr.cm-row-out .cm-cell-v': { opacity: '0.4' },
+		'.cm-table-block tr.cm-row-out td:first-child': { boxShadow: 'inset 2px 0 0 var(--text-4)' },
 		// Natural widths are measured with the table laid out freely.
 		'.cm-table-block table.cm-table-measure': { tableLayout: 'auto !important', width: 'max-content !important' },
 		'.cm-table-measure :is(th, td)': { whiteSpace: 'nowrap' },
-		'.cm-table-block a': { color: 'var(--blue)' },
+		'.cm-table-block a': { color: 'var(--accent)', textDecoration: 'none', textUnderlineOffset: '3px' },
+		'.cm-table-block a:hover': { textDecoration: 'underline' },
 		'.cm-table-block .print-wikilink': { color: 'var(--accent)' },
 		'.cm-table-block .print-tag': { color: 'var(--violet)' },
 		'.cm-table-block .print-inline-code': {
-			fontFamily: 'var(--font-mono)',
-			background: 'var(--raise)',
-			border: '1px solid var(--line-2)',
-			color: 'var(--rose)',
-			padding: '0.05em 0.35em',
-			borderRadius: '4px',
-			fontSize: '0.8em'
+			font: '12.5px/1 var(--font-mono)',
+			background: 'var(--press)',
+			color: 'var(--text-2)',
+			padding: '2px 4px',
+			borderRadius: '3px'
 		},
+		// Status choices in a cell's list (cellCompletions).
+		'.cm-choice-dot': { display: 'inline-block', width: '7px', height: '7px', borderRadius: '2px', marginRight: '8px', verticalAlign: '1px' },
+		// The Contains input (askText) and the date cell's calendar.
+		'.cm-table-ask': { position: 'fixed', zIndex: '1000' },
+		'.cm-table-ask, .cm-tooltip.cm-date-pop': {
+			background: 'var(--raise)',
+			border: '1px solid var(--line-3)',
+			borderRadius: '8px',
+			boxShadow: '0 12px 32px rgba(0,0,0,.6)',
+			padding: '4px',
+			font: '13px/20px var(--font-ui)',
+			color: 'var(--text-2)'
+		},
+		'.cm-table-ask input': {
+			display: 'block',
+			width: '220px',
+			height: '28px',
+			padding: '0 8px',
+			background: 'var(--bg)',
+			border: '1px solid var(--line-2)',
+			borderRadius: '4px',
+			color: 'var(--text)',
+			font: '13px var(--font-ui)',
+			outline: 'none'
+		},
+		'.cm-table-ask input:focus': { borderColor: 'var(--line-3)' },
+		'.cm-table-ask input::placeholder': { color: 'var(--text-4)' },
+		'.cm-tooltip.cm-date-pop': { width: '240px', padding: '8px', cursor: 'default' },
+		'.cm-date-pop button': {
+			border: 'none',
+			background: 'none',
+			borderRadius: '4px',
+			color: 'var(--text-3)',
+			cursor: 'pointer',
+			font: '500 12px var(--font-ui)',
+			transition: 'background-color 80ms, color 80ms'
+		},
+		'.cm-date-pop button:hover': { background: 'var(--press)', color: 'var(--text)' },
+		'.cm-date-head': { display: 'flex', alignItems: 'center', height: '28px', font: '500 13px var(--font-ui)', color: 'var(--text)' },
+		'.cm-date-head span:not(.material-symbols-outlined)': { flex: '1', textAlign: 'center' },
+		'.cm-date-head button': { width: '28px', height: '28px', display: 'grid', placeItems: 'center' },
+		'.cm-date-head .material-symbols-outlined': { fontSize: '18px' },
+		'.cm-date-grid': { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' },
+		'.cm-date-wd': { height: '24px', font: '11px/24px var(--font-ui)', color: 'var(--text-4)', textAlign: 'center' },
+		'.cm-date-grid button': {
+			height: '28px',
+			font: '13px var(--font-read)',
+			fontVariantNumeric: 'tabular-nums',
+			color: 'var(--text-2)'
+		},
+		'.cm-date-grid button.other': { color: 'var(--text-4)' },
+		'.cm-date-grid button.today': { color: 'var(--accent)', fontWeight: '700' },
+		'.cm-date-grid button.on, .cm-date-grid button.on:hover': { background: 'var(--accent-fill)', color: '#fff' },
+		'.cm-date-foot': { display: 'flex', alignItems: 'center', gap: '2px', marginTop: '4px', height: '24px' },
+		'.cm-date-foot button': { height: '24px', padding: '0 6px' },
+		'.cm-date-hint': { flex: '1', font: '12px/20px var(--font-ui)', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+		'.cm-date-hint.bad': { color: 'var(--red)' },
 		// The cell editor lies over its cell (the rendered content keeps the
 		// cell's size), so opening it never moves a column. It is a CodeMirror
 		// view nested in the widget, so the main editor's descendant rules
