@@ -176,7 +176,7 @@ export function relinkNote(
 		if (wiki!.after.resolve(w.target) === now && (!path || wiki!.after.exact(w.target))) continue;
 		// Only the target is rewritten: heading, alias and spacing stay as typed.
 		const inner = content.slice(w.from + 2, w.to - 2);
-		const cut = inner.search(/[#|]/);
+		const cut = inner.search(/\\\||[#|]/);
 		const end = w.from + 2 + (cut < 0 ? inner.length : cut);
 		edits.push({ from: w.from + 2, to: end, text: wikiTargetFor(now, wiki!.after, path) });
 	}

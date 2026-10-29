@@ -26,8 +26,9 @@ export function parseWikilinkText(inner: string): {
 } | null {
 	const m = /^([^\][#|]*)(?:#([^\]|]*))?(?:\|([^\]]*))?$/.exec(inner);
 	if (!m) return null;
-	const target = m[1].trim();
-	const heading = m[2] !== undefined ? m[2].trim() : null;
+	// In a table cell the alias pipe is written `\|` (Obsidian does the same).
+	const target = m[1].trim().replace(/\\$/, '');
+	const heading = m[2] !== undefined ? m[2].trim().replace(/\\$/, '') : null;
 	if (!target && !heading) return null;
 	return { target, heading, alias: m[3] !== undefined ? m[3] : null };
 }
