@@ -326,6 +326,9 @@ export const baseTheme = EditorView.theme(
 		'.cm-table-block .cm-scroller': { fontFamily: 'inherit', lineHeight: 'inherit', overflow: 'visible' },
 		'.cm-table-block .cm-content': { padding: '0', minHeight: '1lh' },
 		'.cm-table-block .cm-line': { padding: '0' },
+		// Vim mode hides the native caret on every line in the main editor,
+		// cell lines included; the cell editor draws no cursor of its own.
+		'.cm-table-block .cm-editor .cm-line': { caretColor: 'var(--accent) !important' },
 		'.cm-table-block :is(td, th):has(.cm-editor)': { boxShadow: 'inset 0 -2px 0 var(--accent)' },
 		// Column menu button in each header, lit while it sorts or filters.
 		'.cm-table-block th .cm-th-menu': {

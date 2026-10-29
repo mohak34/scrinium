@@ -195,8 +195,9 @@ textarea {
 /* Markdown tables, one look for the editor widget (.cm-table-block), the
    share viewer and print (.paper). Rules mix from currentColor so the same
    lines read on the dark editor and the white sheet. Wide tables scroll
-   sideways instead of widening the page; print lays them out normally so
-   no column is clipped off the PDF. */
+   sideways instead of widening the page (in the editor the whole widget
+   scrolls); print lays them out normally so no column is clipped off the
+   PDF. */
 :is(.paper, .cm-table-block) table {
 	display: block;
 	max-width: 100%;
@@ -205,6 +206,14 @@ textarea {
 }
 .paper table {
 	margin: 1em 0;
+}
+/* The editor widget scrolls instead, so its table fills the note width. */
+.cm-table-block {
+	overflow-x: auto;
+}
+.cm-table-block table {
+	display: table;
+	width: 100%;
 }
 :is(.paper, .cm-table-block) :is(th, td) {
 	padding: 0.35em 1.2em 0.35em 0;
