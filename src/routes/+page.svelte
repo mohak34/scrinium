@@ -10,9 +10,10 @@
 	import NoteBar from '$lib/components/NoteBar.svelte';
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import NoteTasks from '$lib/components/NoteTasks.svelte';
-	import CodeEditor from '$lib/editor/CodeEditor.svelte';
+	import type CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import {
 		activePath,
+		tree,
 		loadTree,
 		loadArchive,
 		openTabs,
@@ -37,6 +38,13 @@
 	import { createRequest, focusSearchRequest, renameRequest, startCreate } from '$lib/stores/actions';
 	import { paletteOpen, leaderPending, usePageCommands, isTyping } from '$lib/stores/palette';
 	import { goto } from '$app/navigation';
+	import { projects } from '$lib/stores/tasks';
+
+	let { data } = $props();
+
+	// CodeMirror is most of the page's code, so it loads beside the shell
+	// instead of holding up the sidebar.
+	const editorModule = import('$lib/editor/CodeEditor.svelte');
 
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
@@ -129,7 +137,10 @@
 		if (Number.isFinite(savedWidth) && savedWidth >= 180 && savedWidth <= 480) {
 			sidebarWidth = savedWidth;
 		}
-		loadTree();
+		// The server sent the tree and projects with the page; set them after
+		// hydration so the server-rendered (empty) sidebar still matches.
+		tree.set(data.tree);
+		projects.set(data.projects);
 		void loadArchive();
 		// Saves never change the tree, so it refreshes when the tab comes
 		// back instead: notes an agent or another device added show up then.
@@ -445,12 +456,14 @@
 		{/if}
 		<div class="editor-scroll">
 			{#if $activePath}
-				<CodeEditor
-					bind:this={editorRef}
-					value={currentContent}
-					{onChange}
-					notePath={$activePath}
-				/>
+				{#await editorModule then { default: Editor }}
+					<Editor
+						bind:this={editorRef}
+						value={currentContent}
+						{onChange}
+						notePath={$activePath}
+					/>
+				{/await}
 			{:else}
 				<div class="empty">
 					<span class="material-symbols-outlined">description</span>

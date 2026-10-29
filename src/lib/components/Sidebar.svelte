@@ -100,7 +100,6 @@
 		} catch {
 			// a bad stored view falls back to All
 		}
-		void loadProjects();
 		if ($tasks.length === 0) void loadTasks();
 		const unsubCreate = createRequest.subscribe((req) => {
 			if (req) {

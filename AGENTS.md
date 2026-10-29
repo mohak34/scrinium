@@ -417,7 +417,10 @@ State channels you will touch:
   copy, revoke, set or remove the password), About. While open
   it swallows keydown in the capture phase so app shortcuts never fire
   underneath; Esc closes it.
-- `src/routes/` — `/` (+page.svelte shell), `/login`, `/print`, `/tasks/*`,
+- `src/routes/` — `/` (+page.svelte shell; its server load sends the tree
+  and projects with the page, set into the stores after hydration, and
+  CodeEditor is a dynamic import so CodeMirror never holds up the
+  sidebar), `/login`, `/print`, `/tasks/*`,
   api/{auth,notes,tree,search,assets,attachments,tokens,trash,archive,backlinks,
   tags,tagged,tasks,projects,calendar}.
   `/api/mcp` is the stateless MCP endpoint (streamable HTTP, JSON
