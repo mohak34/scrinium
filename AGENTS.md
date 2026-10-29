@@ -248,9 +248,20 @@ State channels you will touch:
   typed `|` is escaped. In vim normal mode the cell is only outlined
   and j/k move by row (vim's own j/k jump over the widget); `i`/`a`
   open it through `tableVim`, a facet CodeEditor provides. Row/column/
-  align/sort palette commands rewrite the whole table through
+  align palette commands rewrite the whole table through
   `readTable`/`writeTable` in tableRanges.ts; "Table: edit as markdown"
-  shows the raw lines until the cursor leaves. Ranges from
+  shows the raw lines, settings line included, until the cursor leaves.
+  Column types (text, date, deadline, status, number), sort and filters
+  live in one `<!-- scrinium-table: {json} -->` line right above the
+  table (tableMeta.ts), keyed by column index; the widget hides it,
+  renderNote.ts drops it, column commands shift its keys. They are set
+  from each header's menu button (`tableMenu`, a facet CodeEditor
+  provides to open a ContextMenu) and the palette sort commands. Sort and
+  filter are a view: `tableView` orders the rendered rows, the markdown
+  never moves, and `orders` maps rendered rows back to source rows for
+  clicks and row stepping. A filter never hides the row the cursor is
+  in. A bar above a sorted or filtered table lists both with clear
+  buttons. Ranges from
   tableRanges.ts so `livePreview.ts` never decorates inside a table),
   docRanges.ts (`perDoc`: a whole-doc scan cached per document and
   syntax tree, so math, table, callout and frontmatter ranges are found

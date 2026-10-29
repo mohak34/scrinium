@@ -31,7 +31,8 @@ import { perDoc } from './docRanges';
 	import { tree, archiveEntries, flushSave, insertIntoNote, openTab, shownNote } from '$lib/stores/vault';
 	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
-	import { syncCell, tableBlockField, tableCommands, tableVim } from './tableBlock';
+	import { syncCell, tableBlockField, tableCommands, tableMenu, tableVim } from './tableBlock';
+	import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
 	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
@@ -54,6 +55,8 @@ import { perDoc } from './docRanges';
 	// the parent echoing it back costs a reference compare, not a stringify.
 	let docText = '';
 	let vimOn = $state(false);
+	// A table column's menu (tableBlock.ts), open while set.
+	let colMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 	let toasts = $state<{ id: number; text: string }[]>([]);
 	let toastId = 0;
 	let cmdBar = $state<HTMLDivElement>();
@@ -485,6 +488,7 @@ import { perDoc } from './docRanges';
 				livePreview,
 				mathBlockField,
 				tableBlockField,
+				tableMenu.of((x, y, items) => (colMenu = { x, y, items })),
 				tableVim.of({
 					mode: (v) =>
 						!cmOf(v) || !get(settings).editor.vimMotions
@@ -754,6 +758,9 @@ import { perDoc } from './docRanges';
 
 <div class="editor-wrap">
 	<div class="editor-host" bind:this={container}></div>
+	{#if colMenu}
+		<ContextMenu x={colMenu.x} y={colMenu.y} items={colMenu.items} onClose={() => (colMenu = null)} />
+	{/if}
 	{#if vimOn}
 		<div class="toasts" aria-live="polite">
 			{#each toasts as t (t.id)}

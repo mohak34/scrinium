@@ -327,6 +327,53 @@ export const baseTheme = EditorView.theme(
 		'.cm-table-block .cm-content': { padding: '0', minHeight: '1lh' },
 		'.cm-table-block .cm-line': { padding: '0' },
 		'.cm-table-block :is(td, th):has(.cm-editor)': { boxShadow: 'inset 0 -2px 0 var(--accent)' },
+		// Column menu button in each header, lit while it sorts or filters.
+		'.cm-table-block th .cm-th-menu': {
+			fontSize: '16px',
+			verticalAlign: 'middle',
+			marginLeft: '2px',
+			color: 'var(--text-3)',
+			cursor: 'pointer',
+			opacity: '0',
+			userSelect: 'none'
+		},
+		'.cm-table-block tr:hover .cm-th-menu, .cm-table-block .cm-th-menu.on': { opacity: '1' },
+		'.cm-table-block .cm-th-menu.on': { color: 'var(--accent)' },
+		'.cm-table-block .cm-th-menu:hover': { color: 'var(--text)' },
+		// The one-line sort and filter summary above a table.
+		'.cm-table-bar': {
+			display: 'flex',
+			flexWrap: 'wrap',
+			alignItems: 'center',
+			gap: '0.25rem 1rem',
+			fontFamily: 'var(--font-ui)',
+			fontSize: '0.8em',
+			color: 'var(--text-2)',
+			paddingBottom: '0.35rem',
+			cursor: 'default'
+		},
+		'.cm-table-bar b': { color: 'var(--text)', fontWeight: '500' },
+		'.cm-table-chip': { display: 'inline-flex', alignItems: 'center', gap: '0.25rem' },
+		'.cm-table-chip .material-symbols-outlined': {
+			fontSize: '14px',
+			color: 'var(--text-3)',
+			cursor: 'pointer'
+		},
+		'.cm-table-chip .material-symbols-outlined:hover': { color: 'var(--text)' },
+		'.cm-table-count': { marginLeft: 'auto', color: 'var(--text-3)' },
+		'.cm-table-block td.cm-cell-num': { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+		'.cm-table-block td.cm-cell-status::before': {
+			content: '""',
+			display: 'inline-block',
+			width: '0.5em',
+			height: '0.5em',
+			borderRadius: '50%',
+			background: 'var(--status)',
+			marginRight: '0.45em',
+			verticalAlign: '0.1em'
+		},
+		'.cm-table-block td.cm-cell-over': { color: 'var(--red)' },
+		'.cm-table-block td.cm-cell-near': { color: 'var(--yellow)' },
 		'.cm-table-block .cm-table-cursor': {
 			background: 'color-mix(in srgb, var(--accent-fill) 40%, transparent)'
 		},

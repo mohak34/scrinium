@@ -3,7 +3,8 @@
  *
  * Only top-level tables count: a table inside a quote, callout or list
  * would need its `>` / indent prefixes kept, so those stay plain text.
- * Ranges cover whole lines. Tables in frontmatter or overlapping display
+ * Ranges cover whole lines, the settings comment above a table included
+ * (tableMeta.ts). Tables in frontmatter or overlapping display
  * math are skipped so two block replaces never claim the same lines.
  *
  * Used by tableBlock.ts (the rendered widget) and livePreview.ts (inline
@@ -20,11 +21,17 @@ import type { EditorState, Line } from '@codemirror/state';
 import { fmEnd, perDoc, touchesSpan } from './docRanges';
 import { findMathBlockRanges, inlineMathRegex } from './mathRanges';
 import { findWikilinksInText } from './wikilinks';
+import { parseMeta, type TableMeta } from './tableMeta';
 
 export interface TableRange {
+	// The settings line when there is one, else the header line.
 	from: number;
 	to: number;
+	// Start of the header line.
+	start: number;
+	// The table's markdown, header to last row (no settings line).
 	source: string;
+	meta: TableMeta | null;
 }
 
 /** Top-level tables in doc order, cached per document. */
@@ -36,10 +43,18 @@ export const findTableRanges = perDoc((state: EditorState): readonly TableRange[
 		enter: (node) => {
 			if (node.name !== 'Table') return;
 			if (node.node.parent?.name === 'Document') {
-				const from = state.doc.lineAt(node.from).from;
+				const head = state.doc.lineAt(node.from);
 				const to = state.doc.lineAt(node.to).to;
-				if (from >= fm && !touchesSpan(math, from, to)) {
-					out.push({ from, to, source: state.doc.sliceString(from, to) });
+				if (head.from >= fm && !touchesSpan(math, head.from, to)) {
+					const above = head.number > 1 ? state.doc.line(head.number - 1) : null;
+					const meta = above && above.from >= fm ? parseMeta(above.text) : null;
+					out.push({
+						from: meta ? above!.from : head.from,
+						to,
+						start: head.from,
+						source: state.doc.sliceString(head.from, to),
+						meta
+					});
 				}
 			}
 			return false;
@@ -126,7 +141,7 @@ export interface TableModel {
 }
 
 export function readTable(state: EditorState, t: TableRange): TableModel {
-	const first = state.doc.lineAt(t.from).number;
+	const first = state.doc.lineAt(t.start).number;
 	const last = state.doc.lineAt(t.to).number;
 	const cellsOf = (n: number) =>
 		rowCells(state, state.doc.line(n)).map((c) => state.sliceDoc(c.from, c.to));
