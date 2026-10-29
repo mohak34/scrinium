@@ -17,7 +17,6 @@
 
 import {
 	Annotation,
-	ChangeSet,
 	EditorSelection,
 	EditorState,
 	Facet,
@@ -522,31 +521,20 @@ const writeBack = EditorView.updateListener.of((u) => {
 	}
 });
 
-// A typed or pasted `|` would split the cell and a newline the table, so
-// pipes are escaped and newlines become spaces on the way in.
+// A bare `|` would split the cell and a newline the table, so after every
+// edit (a typed pipe, or a deleted backslash in front of one) pipes are
+// escaped and newlines become spaces. The fix-up runs after the edit, so the
+// edit's own selection maps through it.
 const cellInputFilter = EditorState.transactionFilter.of((tr) => {
 	if (!tr.docChanged || tr.annotation(fromMain)) return tr;
-	let changed = false;
-	const specs: { from: number; to: number; insert: string }[] = [];
-	tr.changes.iterChanges((fromA, toA, _fromB, _toB, ins) => {
-		const s = ins.toString();
-		let out = '';
-		for (let i = 0; i < s.length; i++) {
-			const prev = i ? s[i - 1] : tr.startState.sliceDoc(fromA - 1, fromA);
-			if (s[i] === '|' && prev !== '\\') out += '\\|';
-			else if (s[i] === '\n') out += ' ';
-			else out += s[i];
-		}
-		if (out !== s) changed = true;
-		specs.push({ from: fromA, to: toA, insert: out });
-	});
-	if (!changed) return tr;
-	const changes = ChangeSet.of(specs, tr.startState.doc.length);
-	return {
-		changes,
-		selection: tr.startState.selection.map(changes, 1),
-		userEvent: tr.annotation(Transaction.userEvent) ?? 'input'
-	};
+	const text = tr.newDoc.toString();
+	const fixes: { from: number; to?: number; insert: string }[] = [];
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === '\n') fixes.push({ from: i, to: i + 1, insert: ' ' });
+		else if (text[i] === '|' && text[i - 1] !== '\\') fixes.push({ from: i, insert: '\\' });
+	}
+	if (!fixes.length) return tr;
+	return [tr, { changes: fixes, sequential: true }];
 });
 
 /** Moves the main cursor to the end of a cell; syncCell then opens it. */
