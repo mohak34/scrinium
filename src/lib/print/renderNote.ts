@@ -202,10 +202,15 @@ export function renderNoteToHtml(
 			}
 			if (node.name === 'InlineCode') {
 				if (claimed(node.from, node.to)) return;
+				let code = state.doc.sliceString(node.from, node.to).replace(/^`+|`+$/g, '');
+				// GFM unescapes `\|` in table cells, code spans included.
+				for (let p = node.node.parent; p; p = p.parent) {
+					if (p.name === 'Table') code = code.replaceAll('\\|', '|');
+				}
 				spans.push({
 					from: node.from,
 					to: node.to,
-					html: `<code class="print-inline-code">${esc(state.doc.sliceString(node.from, node.to).replace(/^`+|`+$/g, ''))}</code>`,
+					html: `<code class="print-inline-code">${esc(code)}</code>`,
 					block: false
 				});
 			}
