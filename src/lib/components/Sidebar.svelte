@@ -440,22 +440,22 @@
 
 	function pinItems(path: string): ContextMenuItem[] {
 		const here = projectLabel(projectOf(path, projectSet));
-		if (!$pinnedPaths.includes(path))
-			return [
-				{ label: `Pin in ${here}`, action: () => setPinGlobal(path, false) },
-				{ label: 'Pin everywhere', action: () => setPinGlobal(path, true) }
-			];
+		const inHere = { label: `Pin in ${here}`, icon: 'keep', action: () => setPinGlobal(path, false) };
+		const everywhere = { label: 'Pin everywhere', icon: 'keep_public', action: () => setPinGlobal(path, true) };
+		if (!$pinnedPaths.includes(path)) return [inHere, everywhere];
 		return [
-			$globalPins.includes(path)
-				? { label: `Pin in ${here} only`, action: () => setPinGlobal(path, false) }
-				: { label: 'Pin everywhere', action: () => setPinGlobal(path, true) },
-			{ label: 'Unpin', action: () => togglePin(path) }
+			$globalPins.includes(path) ? { ...inHere, label: `Pin in ${here} only` } : everywhere,
+			{ label: 'Unpin', icon: 'keep_off', action: () => togglePin(path) }
 		];
 	}
 
 	const menuItems = $derived.by((): ContextMenuItem[] => {
 		if (!menu) return [];
-		const newProject = { label: 'New project...', action: () => newProjectOpen.set(true) };
+		const newProject = { label: 'New project...', icon: 'add', action: () => newProjectOpen.set(true) };
+		const create = (dir: string | null): ContextMenuItem[] => [
+			{ label: 'New note', icon: 'note_add', action: () => startCreate(dir, 'note') },
+			{ label: 'New folder', icon: 'create_new_folder', action: () => startCreate(dir, 'folder') }
+		];
 		if (menu.kind === 'view') {
 			const pick = (v: ProjectView) => () => setView(v);
 			return [
@@ -470,67 +470,60 @@
 						action: pick({ project: s.key })
 					};
 				}),
-				{ ...newProject, icon: 'add' }
+				{ ...newProject, divider: true }
 			];
 		}
-		if (menu.kind === 'blank') {
-			return [
-				{ label: 'New note', action: () => startCreate(homeDir, 'note') },
-				{ label: 'New folder', action: () => startCreate(homeDir, 'folder') },
-				newProject
-			];
-		}
+		if (menu.kind === 'blank') return [...create(homeDir), newProject];
 		if (menu.kind === 'section') {
 			const key = menu.key;
 			const at = { x: menu.x, y: menu.y };
 			const items: ContextMenuItem[] = [
-				{ label: 'New note', action: () => startCreate(key, 'note') },
-				{ label: 'New folder', action: () => startCreate(key, 'folder') },
-				{ label: 'Open board', action: () => void openBoard({ project: key }) }
+				...create(key),
+				{ label: 'Open board', icon: 'view_kanban', action: () => void openBoard({ project: key }) }
 			];
 			if (key === null) return [...items, newProject];
 			return [
 				...items,
-				{ label: 'Rename project', action: () => (renameTarget = { path: key }) },
-				{ label: 'Icon and color', action: () => (stylePicker = { ...at, path: key }) },
-				{ label: 'Remove project', action: () => void dropProject(key) }
+				{ label: 'Rename project', icon: 'edit', divider: true, action: () => (renameTarget = { path: key }) },
+				{ label: 'Icon and color', icon: 'palette', action: () => (stylePicker = { ...at, path: key }) },
+				{ label: 'Remove project', icon: 'folder_off', action: () => void dropProject(key) }
 			];
 		}
 		const { entry, pinRow } = menu;
-		if (entry.type === 'file') {
-			const items: ContextMenuItem[] = [
-				...(pinRow ? [] : [{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) }]),
-				{ label: 'Archive', action: () => void archivePath(entry.path) },
-				{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
-			];
-			// Notes download as plain text; other assets open in the preview
-			// overlay instead, so only .md entries get a download row.
-			if (entry.path.endsWith('.md')) {
-				items.splice(
-					pinRow ? 0 : 1,
-					0,
-					...pinItems(entry.path),
-					{
-						label: 'Download as .md',
-						action: () => void downloadNote(entry.path).catch(() => {})
-					},
-					{
-						label: 'Print / PDF',
-						action: () => goto(`/print?note=${encodeURIComponent(entry.path)}`)
-					}
-				);
-			}
-			return items;
-		}
-		return [
-			...pinItems(entry.path),
-			{ label: 'New note', action: () => startCreate(entry.path, 'note') },
-			{ label: 'New folder', action: () => startCreate(entry.path, 'folder') },
-			...(pinRow ? [] : [{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) }]),
-			...(entry.path.includes('/') ? [] : [{ label: 'Make project', action: () => void makeProject(entry.path) }]),
-			{ label: 'Archive', action: () => void archivePath(entry.path) },
-			{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
+		const rename: ContextMenuItem[] = pinRow
+			? []
+			: [{ label: 'Rename', icon: 'edit', action: () => (renameTarget = { path: entry.path }) }];
+		const removal: ContextMenuItem[] = [
+			{ label: 'Archive', icon: 'inventory_2', divider: true, action: () => void archivePath(entry.path) },
+			{ label: 'Delete', icon: 'delete', danger: true, action: () => void deletePath(entry.path) }
 		];
+		if (entry.type === 'file') {
+			// Notes download as plain text; other assets open in the preview
+			// overlay instead, so only .md entries get pin and export rows.
+			if (!entry.path.endsWith('.md')) return [...rename, ...removal];
+			return [
+				...rename,
+				...pinItems(entry.path),
+				{
+					label: 'Download as .md',
+					icon: 'download',
+					divider: true,
+					action: () => void downloadNote(entry.path).catch(() => {})
+				},
+				{
+					label: 'Print / PDF',
+					icon: 'print',
+					action: () => goto(`/print?note=${encodeURIComponent(entry.path)}`)
+				},
+				...removal
+			];
+		}
+		const [first, ...rest] = [
+			...rename,
+			...pinItems(entry.path),
+			...(entry.path.includes('/') ? [] : [{ label: 'Make project', icon: 'rocket_launch', action: () => void makeProject(entry.path) }])
+		];
+		return [...create(entry.path), { ...first, divider: true }, ...rest, ...removal];
 	});
 
 	let renameName = $state('');

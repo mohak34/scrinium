@@ -2,9 +2,11 @@
 	export interface ContextMenuItem {
 		label: string;
 		danger?: boolean;
-		// A Material Symbols name drawn before the label, filled in `color`.
+		// A Material Symbols name drawn before the label; a `color` fills it.
 		icon?: string;
 		color?: string;
+		// Draws a line above the item, starting a new group.
+		divider?: boolean;
 		// Marks the option that is in use, for menus that pick one.
 		current?: boolean;
 		action: () => void;
@@ -55,6 +57,7 @@
 
 <div class="ctx-menu" role="menu" style="left: {left}px; top: {top}px" style:width={width ? `${width}px` : undefined} bind:this={menuEl}>
 	{#each items as item (item.label)}
+		{#if item.divider}<div class="ctx-sep" role="separator"></div>{/if}
 		<button
 			class="ctx-item"
 			class:danger={item.danger}
@@ -67,7 +70,7 @@
 			}}
 		>
 			{#if item.icon}
-				<span class="material-symbols-outlined fill" style:color={item.color}>{item.icon}</span>
+				<span class="material-symbols-outlined" class:fill={item.color} style:color={item.color}>{item.icon}</span>
 			{/if}
 			{item.label}
 		</button>
@@ -106,6 +109,14 @@
 		background: var(--surface-container-high);
 		color: var(--on-surface);
 	}
+	.ctx-item:hover .material-symbols-outlined:not(.fill) {
+		color: var(--on-surface);
+	}
+	.ctx-sep {
+		height: 1px;
+		background: var(--line);
+		margin: 4px 6px;
+	}
 	.ctx-item .material-symbols-outlined {
 		font-size: 16px;
 		color: var(--text-3);
@@ -114,7 +125,8 @@
 		background: var(--surface-container-high);
 		color: var(--on-surface);
 	}
-	.ctx-item.danger {
+	.ctx-item.danger,
+	.ctx-item.danger .material-symbols-outlined {
 		color: var(--error);
 	}
 	.ctx-item.danger:hover {
