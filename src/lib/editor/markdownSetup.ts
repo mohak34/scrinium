@@ -285,16 +285,15 @@ export const baseTheme = EditorView.theme(
 			borderLeft: '1px solid var(--line)',
 			borderRight: '1px solid var(--line)'
 		},
-		// Rendered table (tableBlock.ts); table rules live in theme.css.
-		// Padding, not margin, same height-map reason as .cm-math-block.
-		// white-space resets the editor's break-spaces, which would turn the
-		// renderer's newlines between rows into text that splits the table.
-		// The wrap resets undo the editor's overflow-wrap: anywhere, which lets
-		// columns shrink below their longest word and split it mid-word; cells
-		// now wrap at spaces and a wide table scrolls (theme.css).
+		// Rendered table (tableBlock.ts), a grid like a database view. The
+		// print/share look in theme.css is separate. Padding, not margin, same
+		// height-map reason as .cm-math-block. white-space resets the editor's
+		// break-spaces, which would turn the renderer's newlines between rows
+		// into text that splits the table; the wrap resets undo its
+		// overflow-wrap: anywhere so cells wrap at spaces.
 		'.cm-table-block': {
-			padding: '0.5rem 0',
-			cursor: 'text',
+			padding: '0.25rem 0 0.5rem',
+			cursor: 'default',
 			whiteSpace: 'normal',
 			wordBreak: 'normal',
 			overflowWrap: 'normal'
@@ -305,6 +304,91 @@ export const baseTheme = EditorView.theme(
 			fontSize: '0.85em',
 			color: 'var(--text-3)'
 		},
+		'.cm-table-block button': {
+			display: 'inline-flex',
+			alignItems: 'center',
+			gap: '4px',
+			height: '24px',
+			padding: '0 6px',
+			border: 'none',
+			borderRadius: '4px',
+			background: 'none',
+			font: '500 12px var(--font-ui)',
+			color: 'var(--text-4)',
+			cursor: 'pointer'
+		},
+		'.cm-table-block button:hover': { color: 'var(--text-3)', background: 'var(--raise)' },
+		'.cm-table-block button.on': { color: 'var(--accent)' },
+		'.cm-table-block button .material-symbols-outlined': { fontSize: '15px' },
+		'.cm-table-bar': {
+			display: 'flex',
+			alignItems: 'center',
+			gap: '2px',
+			height: '28px',
+			font: '500 12px var(--font-ui)',
+			color: 'var(--text-4)'
+		},
+		'.cm-table-count': { padding: '0 6px' },
+		'.cm-table-bar .cm-table-md': { marginLeft: 'auto' },
+		'.cm-table-block .cm-table-addrow': { marginTop: '2px', opacity: '0' },
+		'.cm-table-block:hover .cm-table-addrow': { opacity: '1' },
+		// Only a table wider than the note scrolls: a scroll box clips the
+		// cell editor, which can be taller than its cell.
+		'.cm-table-wide .cm-table-scroll': { overflowX: 'auto' },
+		'.cm-table-wide :is(th, td):first-child': { position: 'sticky', left: '0', zIndex: '1', background: 'var(--bg)' },
+		'.cm-table-block table': {
+			tableLayout: 'fixed',
+			borderCollapse: 'separate',
+			borderSpacing: '0',
+			borderLeft: '1px solid var(--line)'
+		},
+		'.cm-table-block :is(th, td)': {
+			position: 'relative',
+			height: '32px',
+			padding: '6px 10px 5px',
+			textAlign: 'left',
+			verticalAlign: 'top',
+			borderRight: '1px solid var(--line)',
+			borderBottom: '1px solid var(--line)',
+			font: '14px/20px var(--font-read)',
+			color: 'var(--text)'
+		},
+		'.cm-table-block th': {
+			borderTop: '1px solid var(--line)',
+			font: '500 12px/20px var(--font-ui)',
+			color: 'var(--text-3)',
+			cursor: 'pointer',
+			userSelect: 'none'
+		},
+		'.cm-table-block th:hover': { background: 'var(--raise)' },
+		'.cm-table-block th .cm-cell-v': { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+		'.cm-th-icon': { fontSize: '15px', verticalAlign: '-3px', marginRight: '6px', color: 'var(--text-4)' },
+		'.cm-th-sorted .cm-th-icon': { color: 'var(--accent)' },
+		'.cm-table-block th.cm-th-filtered': { boxShadow: 'inset 0 -2px 0 var(--accent)' },
+		'.cm-table-block tr:hover td': { background: '#0e0e0e' },
+		'.cm-table-block .cm-col-number': { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+		'.cm-table-block td:is(.cm-col-number, .cm-col-date, .cm-col-deadline, .cm-col-status) .cm-cell-v': {
+			whiteSpace: 'nowrap',
+			overflow: 'hidden',
+			textOverflow: 'ellipsis'
+		},
+		'.cm-table-block td.cm-col-status .cm-cell-v': { color: 'var(--status, var(--text))' },
+		'.cm-table-block td.cm-col-status[style] .cm-cell-v::before': {
+			content: '""',
+			display: 'inline-block',
+			width: '7px',
+			height: '7px',
+			borderRadius: '2px',
+			background: 'var(--status)',
+			marginRight: '7px',
+			verticalAlign: '1px'
+		},
+		'.cm-table-block td.cm-cell-over': { color: 'var(--red)' },
+		'.cm-table-block td.cm-cell-near': { color: 'var(--orange)' },
+		'.cm-table-block td.cm-cell-bad .cm-cell-v': { textDecoration: 'underline dotted var(--red)', textUnderlineOffset: '3px' },
+		// Natural widths are measured with the table laid out freely.
+		'.cm-table-block table.cm-table-measure': { tableLayout: 'auto !important', width: 'max-content !important' },
+		'.cm-table-measure :is(th, td)': { whiteSpace: 'nowrap' },
 		'.cm-table-block a': { color: 'var(--blue)' },
 		'.cm-table-block .print-wikilink': { color: 'var(--accent)' },
 		'.cm-table-block .print-tag': { color: 'var(--violet)' },
@@ -317,11 +401,24 @@ export const baseTheme = EditorView.theme(
 			borderRadius: '4px',
 			fontSize: '0.8em'
 		},
-		// The cell editor is a CodeMirror view nested in the widget, so the
-		// main editor's descendant rules (content padding, line padding)
-		// reach it and are undone here. The edited cell gets an accent
-		// underline, the vim normal-mode cell a tint.
-		'.cm-table-block .cm-editor': { background: 'transparent', fontSize: 'inherit' },
+		// The cell editor lies over its cell (the rendered content keeps the
+		// cell's size), so opening it never moves a column. It is a CodeMirror
+		// view nested in the widget, so the main editor's descendant rules
+		// (content and line padding) reach it and are undone here.
+		'.cm-cell-editing > .cm-cell-v': { visibility: 'hidden' },
+		// CodeMirror's base theme pins every editor to relative !important.
+		'.cm-table-block .cm-cell-editing > .cm-editor': {
+			position: 'absolute !important',
+			top: '0',
+			left: '0',
+			right: '0',
+			minHeight: '100%',
+			zIndex: '2',
+			padding: '6px 10px 5px',
+			background: 'var(--raise)',
+			boxShadow: 'inset 0 0 0 2px var(--accent), 0 8px 24px rgba(0,0,0,.5)',
+			fontSize: 'inherit'
+		},
 		'.cm-table-block .cm-editor.cm-focused': { outline: 'none' },
 		'.cm-table-block .cm-scroller': { fontFamily: 'inherit', lineHeight: 'inherit', overflow: 'visible' },
 		'.cm-table-block .cm-content': { padding: '0', minHeight: '1lh' },
@@ -329,57 +426,7 @@ export const baseTheme = EditorView.theme(
 		// Vim mode hides the native caret on every line in the main editor,
 		// cell lines included; the cell editor draws no cursor of its own.
 		'.cm-table-block .cm-editor .cm-line': { caretColor: 'var(--accent) !important' },
-		'.cm-table-block :is(td, th):has(.cm-editor)': { boxShadow: 'inset 0 -2px 0 var(--accent)' },
-		// Column menu button in each header, lit while it sorts or filters.
-		'.cm-table-block th .cm-th-menu': {
-			fontSize: '16px',
-			verticalAlign: 'middle',
-			marginLeft: '2px',
-			color: 'var(--text-3)',
-			cursor: 'pointer',
-			opacity: '0',
-			userSelect: 'none'
-		},
-		'.cm-table-block tr:hover .cm-th-menu, .cm-table-block .cm-th-menu.on': { opacity: '1' },
-		'.cm-table-block .cm-th-menu.on': { color: 'var(--accent)' },
-		'.cm-table-block .cm-th-menu:hover': { color: 'var(--text)' },
-		// The one-line sort and filter summary above a table.
-		'.cm-table-bar': {
-			display: 'flex',
-			flexWrap: 'wrap',
-			alignItems: 'center',
-			gap: '0.25rem 1rem',
-			fontFamily: 'var(--font-ui)',
-			fontSize: '0.8em',
-			color: 'var(--text-2)',
-			paddingBottom: '0.35rem',
-			cursor: 'default'
-		},
-		'.cm-table-bar b': { color: 'var(--text)', fontWeight: '500' },
-		'.cm-table-chip': { display: 'inline-flex', alignItems: 'center', gap: '0.25rem' },
-		'.cm-table-chip .material-symbols-outlined': {
-			fontSize: '14px',
-			color: 'var(--text-3)',
-			cursor: 'pointer'
-		},
-		'.cm-table-chip .material-symbols-outlined:hover': { color: 'var(--text)' },
-		'.cm-table-count': { marginLeft: 'auto', color: 'var(--text-3)' },
-		'.cm-table-block td.cm-cell-num': { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
-		'.cm-table-block td.cm-cell-status::before': {
-			content: '""',
-			display: 'inline-block',
-			width: '0.5em',
-			height: '0.5em',
-			borderRadius: '50%',
-			background: 'var(--status)',
-			marginRight: '0.45em',
-			verticalAlign: '0.1em'
-		},
-		'.cm-table-block td.cm-cell-over': { color: 'var(--red)' },
-		'.cm-table-block td.cm-cell-near': { color: 'var(--yellow)' },
-		'.cm-table-block .cm-table-cursor': {
-			background: 'color-mix(in srgb, var(--accent-fill) 40%, transparent)'
-		},
+		'.cm-table-block .cm-table-cursor': { outline: '2px solid var(--accent)', outlineOffset: '-2px' },
 		'&.cm-in-table :is(.cm-cursorLayer, .cm-vimCursorLayer)': { display: 'none' },
 		// Raw table lines while editing: monospace so the pipes line up.
 		'.cm-table-source': { fontFamily: 'var(--font-mono)', fontSize: '0.85em' },

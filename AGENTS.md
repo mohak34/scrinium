@@ -237,14 +237,20 @@ State channels you will touch:
   mathSnippets.ts (Tab word/subscript and Space fraction triggers),
   tableBlock.ts (top-level GFM tables as a StateField like mathBlock:
   the table is always one block widget rendered by the lazy-loaded
-  renderNote.ts, and editing is per cell. When the main selection sits
-  in a cell, `syncCell` mounts a small nested EditorView in that td for
-  the cell's raw source; its edits are written back to the main doc as
+  renderNote.ts and drawn as a grid (theme in markdownSetup.ts), and
+  editing is per cell. Columns are measured once and laid out fixed
+  (`layoutColumns`; the last text column takes the slack, a table wider
+  than the note scrolls), so opening a cell never resizes anything. When
+  the main selection sits in a cell, `syncCell` mounts a small nested
+  EditorView over that td (the rendered content keeps the cell's size)
+  for the cell's raw source; its edits are written back to the main doc as
   one transaction each (same userEvent, so undo groups like typing and
   runs through the main history), and the widget skips rendering and repainting for
   its own echo. A column that repeats a value offers the column's
   values as completions in that cell editor (`columnChoices`), so a
-  status column edits like a select with nothing declared. Tab/Enter/arrows step cells via the main selection;
+  status column edits like a select with nothing declared. Ctrl+click
+  opens links and wikilinks from the rendered cell or the cell editor
+  (`followWikilink`/`openUrl` in livePreview.ts). Tab/Enter/arrows step cells via the main selection;
   typed `|` is escaped. In vim normal mode the cell is only outlined
   and j/k move by row (vim's own j/k jump over the widget); `i`/`a`
   open it through `tableVim`, a facet CodeEditor provides. Row/column/
@@ -255,13 +261,15 @@ State channels you will touch:
   live in one `<!-- scrinium-table: {json} -->` line right above the
   table (tableMeta.ts), keyed by column index; the widget hides it,
   renderNote.ts drops it, column commands shift its keys. They are set
-  from each header's menu button (`tableMenu`, a facet CodeEditor
-  provides to open a ContextMenu) and the palette sort commands. Sort and
+  from the header menu (a click on the header; Shift+click edits it,
+  Rename does too), the toolbar's Sort and Filter menus (`tableMenu`, a
+  facet CodeEditor provides to open a ContextMenu) and the palette sort
+  commands. Sort and
   filter are a view: `tableView` orders the rendered rows, the markdown
   never moves, and `orders` maps rendered rows back to source rows for
   clicks and row stepping. A filter never hides the row the cursor is
-  in. A bar above a sorted or filtered table lists both with clear
-  buttons. Ranges from
+  in. The toolbar above the table also counts rows, shows the markdown
+  and, below the table, adds a row. Ranges from
   tableRanges.ts so `livePreview.ts` never decorates inside a table),
   docRanges.ts (`perDoc`: a whole-doc scan cached per document and
   syntax tree, so math, table, callout and frontmatter ranges are found
@@ -442,8 +450,8 @@ State channels you will touch:
   The old Material-style names (`--primary`, `--surface-container-*`,
   `--on-surface*`) are aliases kept for components not yet moved over; new
   code uses the tokens. Never fill with `--accent` under text.
-  It also holds the one table look shared by the editor widget
-  (`.cm-table-block`) and the share/print sheet (`.paper`).
+  It also holds the table look of the share/print sheet (`.paper`); the
+  editor's table grid is styled in markdownSetup.ts.
 - App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in
   `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
   `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`

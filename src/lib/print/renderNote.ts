@@ -296,7 +296,8 @@ export function renderNoteToHtml(
 		wikiSpans.push({
 			from: w.from,
 			to: w.to,
-			html: `<span class="print-wikilink">${parser.renderInline(wikilinkDisplay(w))}</span>`,
+			// The target rides along so the editor's tables can open the link.
+			html: `<span class="print-wikilink" data-target="${esc(w.target)}"${w.heading === null ? '' : ` data-heading="${esc(w.heading)}"`}>${parser.renderInline(wikilinkDisplay(w))}</span>`,
 			block: false
 		});
 	}

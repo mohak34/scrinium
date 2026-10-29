@@ -192,40 +192,29 @@ textarea {
 	white-space: nowrap;
 }
 
-/* Markdown tables, one look for the editor widget (.cm-table-block), the
-   share viewer and print (.paper). Rules mix from currentColor so the same
-   lines read on the dark editor and the white sheet. Wide tables scroll
-   sideways instead of widening the page (in the editor the whole widget
-   scrolls); print lays them out normally so no column is clipped off the
-   PDF. */
-:is(.paper, .cm-table-block) table {
+/* Markdown tables in the share viewer and print (.paper; the editor's grid
+   is its own theme in markdownSetup.ts). Rules mix from currentColor so the
+   lines read on the dark viewer and the white sheet. Wide tables scroll
+   sideways instead of widening the page; print lays them out normally so
+   no column is clipped off the PDF. */
+.paper table {
 	display: block;
 	max-width: 100%;
 	overflow-x: auto;
 	border-collapse: collapse;
-}
-.paper table {
 	margin: 1em 0;
 }
-/* The editor widget scrolls instead, so its table fills the note width. */
-.cm-table-block {
-	overflow-x: auto;
-}
-.cm-table-block table {
-	display: table;
-	width: 100%;
-}
-:is(.paper, .cm-table-block) :is(th, td) {
+.paper :is(th, td) {
 	padding: 0.35em 1.2em 0.35em 0;
 	text-align: left;
 	vertical-align: top;
 	border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
-:is(.paper, .cm-table-block) th {
+.paper th {
 	font-weight: 600;
 	border-bottom-color: color-mix(in srgb, currentColor 45%, transparent);
 }
-:is(.paper, .cm-table-block) tr:last-child td {
+.paper tr:last-child td {
 	border-bottom: none;
 }
 @media print {

@@ -25,16 +25,15 @@ import { perDoc } from './docRanges';
 } from '@codemirror/search';
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
 	import { autocompletion, closeCompletion, completionStatus, moveCompletionSelection } from '@codemirror/autocomplete';
-	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
+	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, openUrl, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
-	import { attachmentMarkdown, resolveAssetUrl } from '$lib/attachments';
-	import { tree, archiveEntries, flushSave, insertIntoNote, openTab, shownNote } from '$lib/stores/vault';
+	import { attachmentMarkdown } from '$lib/attachments';
+	import { tree, archiveEntries, insertIntoNote, shownNote } from '$lib/stores/vault';
 	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
 	import { syncCell, tableBlockField, tableCommands, tableMenu, tableVim } from './tableBlock';
 	import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
-	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
@@ -552,14 +551,8 @@ import { perDoc } from './docRanges';
 							if (pos !== null) {
 								// Relative links point into the vault (attachments).
 								const url = urlAtPos(view, pos);
-								const href = url && resolveAssetUrl(url, view.state.field(noteDirField));
-								if (href) {
+								if (url && openUrl(url, view.state.field(noteDirField))) {
 									e.preventDefault();
-									// Vault notes open in the editor, PDFs in the pane beside it.
-									const asset = href.startsWith('/api/assets/') ? decodeURIComponent(href.slice(12).replace(/[?#].*$/, '')) : '';
-									if (asset.toLowerCase().endsWith('.md')) void flushSave().then(() => openTab(asset));
-									else if (asset && isPdfPath(asset)) pdfPath.set(asset);
-									else window.open(href, '_blank', 'noopener,noreferrer');
 									return true;
 								}
 							}
