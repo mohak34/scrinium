@@ -28,7 +28,14 @@
 		newProjectOpen
 	} from '$lib/stores/tasks';
 	import { DOING_LIMIT, projectName, selectTasks } from '$lib/taskModel';
-	import { boardHref, projectLabel, type ProjectKey, type ProjectView } from '$lib/projects';
+	import {
+		boardHref,
+		colorVar,
+		projectLabel,
+		projectStyle,
+		type ProjectKey,
+		type ProjectView
+	} from '$lib/projects';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 
@@ -116,6 +123,9 @@
 	}
 
 	const doneTotal = $derived(pool.filter((t) => t.status === 'done').length);
+	// Open tasks on each tab's board, Inbox backlog included.
+	const openOn = (v: ProjectView) => topLevel(selectTasks($tasks, v)).filter((t) => t.status !== 'done').length;
+	const styleOf = (key: ProjectKey) => projectStyle(key, $projects.find((p) => p.path === key));
 	const openCount = $derived(pool.filter((t) => t.status !== 'done').length);
 	const overdueCount = $derived(pool.filter(isOverdue).length);
 	const todayCount = $derived(pool.filter((t) => t.status !== 'done' && isDueToday(t)).length);
@@ -130,12 +140,12 @@
 		return `${f(monday)} to ${f(sunday)}`;
 	}
 
-	function subLabel(key: TaskStatus): string {
-		if (key === 'todo') return `Committed for ${weekRange()}`;
-		if (key === 'done') return showAllDone ? 'All time' : 'Last 7 days';
-		if (key === 'inbox' && proj) return 'Backlog, only on this board';
-		return STATUSES.find((s) => s.key === key)!.hint;
-	}
+	const DAY = 86400000;
+	const daysSince = (ts: number) => Math.floor((Date.now() - ts) / DAY);
+	// Doing cards untouched this long say so.
+	const STALE_DAYS = 4;
+	// Waiting this long turns the waiting note orange.
+	const LONG_WAIT_DAYS = 7;
 
 	// Clicking a card opens the detail drawer; drags and controls are exempt.
 	function cardClick(t: Task, e: MouseEvent) {
@@ -279,13 +289,14 @@
 	}
 
 
-	function since(ts: number | null): string {
-		if (ts == null) return '';
-		return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
-	}
+	const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 </script>
 
 {#snippet card(t: Task, key: string, showProject: boolean)}
+	{@const waited = t.status === 'waiting' && t.waiting_since != null ? daysSince(t.waiting_since) : null}
+	{@const idle = t.status === 'doing' ? daysSince(t.updated_at) : 0}
+	{@const subs = $subtaskCounts.get(t.id)}
+	{@const due = t.due_at != null && t.status !== 'done'}
 	<div
 		class="kc"
 		class:done={t.status === 'done'}
@@ -319,26 +330,14 @@
 		}}
 	>
 		{#if overId === t.id && dragId && dragId !== t.id}<div class="ins"></div>{/if}
-		{#if showProject && t.project}
-			<div class="tags">
-				<span class="proj" title={t.project}>
-					<span class="material-symbols-outlined">folder</span>{projectName(t.project)}
-				</span>
-			</div>
-		{/if}
+		{#if t.status === 'done'}<span class="material-symbols-outlined chk">check_circle</span>{/if}
 		<div class="kt">{t.title}</div>
-		{#if t.status === 'waiting' && (t.waiting_on || t.waiting_since)}
-			<div class="wait">
-				<span class="material-symbols-outlined">person</span>
-				{t.waiting_on ?? 'Someone'}{t.waiting_since ? `, since ${since(t.waiting_since)}` : ''}
-			</div>
-		{/if}
-		{#if t.due_at != null || t.priority !== 'none' || $subtaskCounts.get(t.id) || t.link_count > 0 || t.remind_at != null}
+		{#if (showProject && t.project) || t.priority !== 'none' || due || (t.status === 'waiting' && (t.waiting_on || waited != null)) || idle >= STALE_DAYS || subs || t.remind_at != null || t.link_count > 0}
 			<div class="km">
-				{#if t.due_at != null}
-					<span class:over={isOverdue(t)} class:today={isDueToday(t) && t.status !== 'done'}>
-						<span class="material-symbols-outlined">{t.status === 'done' ? 'check' : 'event'}</span>
-						{isDueToday(t) && t.status !== 'done' ? 'Today' : dueLabel(t.due_at)}
+				{#if showProject && t.project}
+					{@const ps = styleOf(t.project)}
+					<span class="proj" style:color={colorVar(ps.color)} title={t.project}>
+						<span class="material-symbols-outlined">{ps.icon}</span>{projectName(t.project)}
 					</span>
 				{/if}
 				{#if t.priority !== 'none'}
@@ -346,8 +345,25 @@
 						<span class="material-symbols-outlined fill">flag</span>{t.priority}
 					</span>
 				{/if}
-				{#if $subtaskCounts.get(t.id)}
-					<span title="Subtasks"><span class="material-symbols-outlined">subdirectory_arrow_right</span>{$subtaskCounts.get(t.id)}</span>
+				{#if due}
+					<span class:over={isOverdue(t)} class:today={isDueToday(t)}>
+						<span class="material-symbols-outlined">{isOverdue(t) ? 'event_busy' : isDueToday(t) ? 'today' : 'event'}</span>
+						{isDueToday(t) ? 'Today' : dueLabel(t.due_at)}
+					</span>
+				{/if}
+				{#if t.status === 'waiting' && (t.waiting_on || waited != null)}
+					<span class:warn={waited != null && waited >= LONG_WAIT_DAYS} title="Waiting on">
+						<span class="material-symbols-outlined">person</span>
+						{t.waiting_on ?? 'Someone'}{waited != null ? `, ${plural(waited, 'day')}` : ''}
+					</span>
+				{/if}
+				{#if idle >= STALE_DAYS}
+					<span class="warn" title="Untouched for {plural(idle, 'day')}">
+						<span class="material-symbols-outlined">schedule</span>{plural(idle, 'day')}
+					</span>
+				{/if}
+				{#if subs}
+					<span title="Subtasks"><span class="material-symbols-outlined">subdirectory_arrow_right</span>{subs}</span>
 				{/if}
 				{#if t.remind_at != null}
 					<span title="Reminds {stampShort(t.remind_at)}"><span class="material-symbols-outlined">notifications</span></span>
@@ -390,7 +406,7 @@
 		/>
 	{:else}
 		<button class="col-add" onclick={() => startAdd(key)}>
-			<span class="material-symbols-outlined">add</span>{status === 'inbox' ? 'Capture' : 'Add task'}
+			<span class="material-symbols-outlined">add</span>Add task
 		</button>
 	{/if}
 {/snippet}
@@ -421,12 +437,15 @@
 		</button>
 	</header>
 	<nav class="tabs" aria-label="Project">
-		<button class:on={boardView === 'all'} onclick={() => openBoard('all')}>All</button>
-		{#each [null, ...$projects.map((p) => p.path)] as key (key ?? '')}
-			<button
-				class:on={boardView !== 'all' && boardView.project === key}
-				onclick={() => openBoard({ project: key })}>{projectLabel(key)}</button
-			>
+		<button class:on={boardView === 'all'} onclick={() => openBoard('all')}>
+			All<span class="n">{openOn('all')}</span>
+		</button>
+		{#each lanes as key (key ?? '')}
+			{@const ps = styleOf(key)}
+			<button class:on={boardView !== 'all' && boardView.project === key} onclick={() => openBoard({ project: key })}>
+				<span class="material-symbols-outlined" style:color={colorVar(ps.color)}>{ps.icon}</span>
+				{projectLabel(key)}<span class="n">{openOn({ project: key })}</span>
+			</button>
 		{/each}
 		<button class="icon" title="New project" onclick={() => newProjectOpen.set(true)}>
 			<span class="material-symbols-outlined">add</span>
@@ -451,19 +470,26 @@
 					ondrop={(e) => void onDrop(col.key, undefined, e)}
 					aria-label={col.label}
 				>
-					<div class="col-h">
+					<div class="col-h {col.key}">
 						<span class="material-symbols-outlined ci {col.key}">{col.icon}</span>
-						{col.label}<span class="n">{col.key === 'done' ? doneTotal : rows.length}</span>
-						<span class="sp"></span>
+						{col.label}
 						{#if col.key === 'doing'}
-							<span class="limit" class:over={rows.length > DOING_LIMIT}>limit {DOING_LIMIT}</span>
-						{:else if col.key === 'done'}
-							<button class="link" onclick={() => (showAllDone = !showAllDone)}>
-								{showAllDone ? 'Last week' : 'Show all'}
-							</button>
+							<span class="aside" class:warn={rows.length > DOING_LIMIT} title="Doing limit">
+								{rows.length} of {DOING_LIMIT}
+							</span>
+						{:else}
+							<span class="n">{rows.length}</span>
+							{#if col.key === 'todo'}
+								<span class="aside">{weekRange()}</span>
+							{:else if col.key === 'inbox' && proj}
+								<span class="aside" title="Only on this board">Backlog</span>
+							{:else if col.key === 'done'}
+								<button class="aside link" title="Toggle older done tasks" onclick={() => (showAllDone = !showAllDone)}>
+									{showAllDone ? 'All time' : 'Last 7 days'}
+								</button>
+							{/if}
 						{/if}
 					</div>
-					<div class="col-sub">{subLabel(col.key)}</div>
 					<div class="cards">
 						{#each rows as t (t.id)}
 							{@render card(t, key, boardView === 'all')}
@@ -471,6 +497,10 @@
 						{#if overCell === key && dragId && !overId}<div class="ins end"></div>{/if}
 						{#if col.key !== 'done'}
 							{@render adder(col.key)}
+						{:else if !showAllDone && doneTotal > rows.length}
+							<button class="col-add" onclick={() => (showAllDone = true)}>
+								<span class="material-symbols-outlined">history</span>Show {doneTotal - rows.length} older
+							</button>
 						{/if}
 					</div>
 				</section>
@@ -483,13 +513,15 @@
 				{#each LANE_STATUSES as st (st.key)}
 					<div class="lh">
 						<span class="material-symbols-outlined ci {st.key}">{st.icon}</span>{st.label}
-						<span class="n">{st.key === 'done' ? doneTotal : cellRows(st.key).length}</span>
+						<span class="n">{cellRows(st.key).length}</span>
 					</div>
 				{/each}
 				{#each lanes as lane (lane ?? '')}
 					<div class="ln">
 						<span class="ln-name"
-							><span class="material-symbols-outlined">{lane ? 'folder' : 'home'}</span>{projectLabel(lane)}</span
+							><span class="material-symbols-outlined" style:color={colorVar(styleOf(lane).color)}
+								>{styleOf(lane).icon}</span
+							>{projectLabel(lane)}</span
 						>
 						<small>{pool.filter((t) => t.project === lane && t.status !== 'done' && t.status !== 'inbox').length} open</small>
 					</div>
@@ -559,6 +591,9 @@
 		scrollbar-width: none;
 	}
 	.tabs > button:not(.icon) {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		height: 40px;
 		padding: 0 10px;
 		border: none;
@@ -571,6 +606,12 @@
 	}
 	.tabs > button:not(.icon):hover {
 		color: var(--text);
+	}
+	.tabs > button .material-symbols-outlined {
+		font-size: 16px;
+	}
+	.tabs .n {
+		font-size: var(--fs-xs);
 	}
 	.tabs > button.on {
 		color: var(--text);
@@ -651,31 +692,47 @@
 		min-height: 0;
 		overflow: auto;
 		display: grid;
-		grid-template-columns: repeat(5, minmax(240px, 1fr));
-		gap: 10px;
-		padding: 14px 16px 16px;
+		grid-template-columns: repeat(5, minmax(220px, 1fr));
+		gap: 20px;
+		padding: 6px 20px 16px;
 		align-items: start;
+		background: #000;
 	}
 	.col {
-		background: var(--panel);
-		border: 1px solid var(--line);
-		border-radius: var(--r-lg);
 		display: flex;
 		flex-direction: column;
 		max-height: 100%;
 		min-height: 120px;
 	}
-	.col.drop {
-		border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-	}
 	.col-h {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 42px;
-		padding: 0 10px 0 14px;
+		height: 44px;
+		padding: 0 2px;
+		margin-bottom: 10px;
+		border-bottom: 2px solid var(--line);
 		font-weight: 600;
 		flex-shrink: 0;
+	}
+	.col-h.doing {
+		border-bottom-color: color-mix(in srgb, var(--accent) 35%, transparent);
+	}
+	.col-h.waiting {
+		border-bottom-color: color-mix(in srgb, var(--yellow) 27%, transparent);
+	}
+	.col.drop .col-h {
+		border-bottom-color: var(--accent);
+	}
+	.aside {
+		margin-left: auto;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+		font-weight: 400;
+		white-space: nowrap;
+	}
+	.aside.warn {
+		color: var(--orange);
 	}
 	.ci {
 		font-size: 18px;
@@ -694,14 +751,6 @@
 		color: var(--text-3);
 		font-weight: 400;
 	}
-	.limit {
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-		font-weight: 400;
-	}
-	.limit.over {
-		color: var(--orange);
-	}
 	.link {
 		border: none;
 		background: none;
@@ -713,14 +762,8 @@
 	.link:hover {
 		color: var(--accent);
 	}
-	.col-sub {
-		padding: 0 14px 8px;
-		margin-top: -6px;
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-	}
 	.cards {
-		padding: 0 8px 8px;
+		padding: 0 0 8px;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
@@ -729,8 +772,8 @@
 	}
 	.kc {
 		position: relative;
-		background: var(--raise);
-		border: 1px solid var(--line-2);
+		background: var(--bg);
+		border: 1px solid var(--line);
 		border-radius: var(--r-md);
 		padding: 10px 12px;
 		display: flex;
@@ -747,42 +790,30 @@
 	.kc.dragging {
 		opacity: 0.4;
 	}
+	.kc.done {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		align-items: center;
+		column-gap: 8px;
+		padding: 8px 12px;
+		background: none;
+	}
+	.kc.done .km {
+		grid-column: 2;
+	}
+	.chk {
+		font-size: 16px;
+		color: var(--text-4);
+	}
 	.kc.done .kt {
 		color: var(--text-3);
-		text-decoration: line-through;
-	}
-	.tags {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 12px;
-		padding-right: 18px;
-	}
-	.proj {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		color: var(--text-2);
-		font-size: var(--fs-xs);
-	}
-	.proj .material-symbols-outlined {
-		font-size: 14px;
-		color: var(--text-3);
+		font-size: var(--fs);
 	}
 	.kt {
 		color: var(--text);
 		font-size: var(--fs-md);
 		line-height: 1.4;
 		padding-right: 18px;
-	}
-	.wait {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-	}
-	.wait .material-symbols-outlined {
-		font-size: 15px;
 	}
 	.km {
 		display: flex;
@@ -806,6 +837,9 @@
 	.km .today {
 		color: var(--accent);
 	}
+	.km .warn {
+		color: var(--orange);
+	}
 	.km .r {
 		margin-left: auto;
 	}
@@ -827,7 +861,7 @@
 		right: 6px;
 		display: none;
 		gap: 1px;
-		background: var(--raise);
+		background: var(--bg);
 		border-radius: var(--r);
 	}
 	.kc:hover .ops,
@@ -897,6 +931,7 @@
 		min-height: 0;
 		overflow: auto;
 		padding: 0 16px 16px;
+		background: #000;
 	}
 	.grid {
 		display: grid;
@@ -910,7 +945,7 @@
 		gap: 8px;
 		height: 44px;
 		padding: 0 10px;
-		background: var(--bg);
+		background: #000;
 		border-bottom: 1px solid var(--line);
 		font-weight: 600;
 	}
