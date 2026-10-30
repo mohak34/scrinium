@@ -59,6 +59,9 @@
 		else panelContent = content;
 	}
 	let lastLoadedPath = $state<string | null>('');
+	// The right panel fills in once the first note's text is in, so the
+	// Outline never lands late on top of sections that already drew.
+	let panelReady = $state(false);
 
 	onMount(() =>
 		attachEditor({
@@ -66,6 +69,7 @@
 				if (get(activePath) !== path) return false;
 				currentContent = content;
 				showInPanels(content);
+				panelReady = true;
 				editorRef?.setDoc(content, true);
 				return true;
 			},
@@ -487,11 +491,13 @@
 				</button>
 			</div>
 			<div class="rscroll">
-				<Outline content={panelContent} onJump={(line) => editorRef?.gotoLine(line)} />
-				<Backlinks onSelect={openNote} />
-				<NoteTasks />
-				<Tags content={panelContent} />
-				<FileInfo content={panelContent} />
+				{#if panelReady}
+					<Outline content={panelContent} onJump={(line) => editorRef?.gotoLine(line)} />
+					<Backlinks onSelect={openNote} />
+					<NoteTasks />
+					<Tags content={panelContent} />
+					<FileInfo content={panelContent} />
+				{/if}
 			</div>
 		</aside>
 	{/if}

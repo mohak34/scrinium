@@ -15,12 +15,13 @@
 
 	let links = $state<Backlink[]>([]);
 	let unlinked = $state<Backlink[]>([]);
-	let loading = $state(false);
+	let loaded = $state(false);
 	let failed = $state(false);
 	let linking = $state<string | null>(null);
 
 	// Backlinks depend on other files, so refetch when the tree changes
-	// (create/rename/delete/save) as well as when switching notes.
+	// (create/rename/delete/save) as well as when switching notes. The last
+	// results stay up until new ones land, so a refetch never collapses the panel.
 	$effect(() => {
 		const current = $activePath;
 		$tree;
@@ -28,10 +29,9 @@
 			links = [];
 			unlinked = [];
 			failed = false;
+			loaded = false;
 			return;
 		}
-		loading = true;
-		failed = false;
 		let cancelled = false;
 		const abort = new AbortController();
 		fetch(`/api/backlinks?note=${encodeURIComponent(current)}`, { signal: abort.signal })
@@ -43,16 +43,15 @@
 				if (cancelled) return;
 				links = Array.isArray(data.linked) ? data.linked : [];
 				unlinked = Array.isArray(data.unlinked) ? data.unlinked : [];
+				failed = false;
+				loaded = true;
 			})
 			.catch(() => {
-				if (!cancelled) {
-					links = [];
-					unlinked = [];
-					failed = true;
-				}
-			})
-			.finally(() => {
-				if (!cancelled) loading = false;
+				if (cancelled) return;
+				links = [];
+				unlinked = [];
+				failed = true;
+				loaded = true;
 			});
 		return () => {
 			cancelled = true;
@@ -109,15 +108,15 @@
 
 {#if $activePath}
 	<PanelSection icon="link" title="Linked notes" count={links.length}>
-		{#if !loading && failed}
+		{#if loaded && failed}
 			<p class="empty">Could not load linked notes.</p>
-		{:else if !loading && links.length === 0}
-			<p class="empty">No notes link here yet.</p>
+		{:else if links.length === 0}
+			<p class="empty" class:pending={!loaded}>No notes link here yet.</p>
 		{/if}
 		{#each links as l (l.path)}
 			{@render card(l)}
 		{/each}
-		{#if !loading && !failed && unlinked.length > 0}
+		{#if !failed && unlinked.length > 0}
 			<div class="sub">Mentioned without a link</div>
 			{#each unlinked as u (u.path)}
 				<div class="unlinked">
@@ -232,6 +231,10 @@
 	.link-btn:disabled {
 		opacity: 0.5;
 		cursor: default;
+	}
+	/* Holds the empty line's height until the first fetch answers. */
+	.empty.pending {
+		visibility: hidden;
 	}
 	.empty {
 		margin: 4px 4px 2px;
