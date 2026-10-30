@@ -255,7 +255,10 @@ State channels you will touch:
   status column edits like a select with nothing declared; status
   choices carry their color dot and a new value offers `Add "x"`. Date
   and deadline cells open a month picker (`datePicker`, a CM tooltip on
-  the cell editor) instead of completions. Ctrl+click
+  the cell editor) instead of completions. The cell editor also
+  completes `[[` and `#` (the note's sources, fed copies of its
+  `wikiCtxField`/`tagCtxField`); the note's own completions skip tables
+  (`outsideTables` in markdownSetup.ts), or they open at the widget's edge. Ctrl+click
   opens links and wikilinks from the rendered cell or the cell editor
   (`followWikilink`/`openUrl` in livePreview.ts). Tab/Enter/arrows step cells via the main selection;
   typed `|` is escaped. In vim normal mode the cell is only outlined

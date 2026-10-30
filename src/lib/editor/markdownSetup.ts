@@ -6,6 +6,15 @@ import { EditorView } from '@codemirror/view';
 import { mathCompletionSource } from './mathComplete';
 import { wikiCompletionSource } from './wikiComplete';
 import { tagCompletionSource } from './tagComplete';
+import { findTableRanges } from './tableRanges';
+import type { CompletionSource } from '@codemirror/autocomplete';
+
+// A table cell edits in its own editor with its own completions; the
+// note's would open at the table widget's edge.
+const outsideTables =
+	(source: CompletionSource): CompletionSource =>
+	(ctx) =>
+		findTableRanges(ctx.state).some((t) => ctx.pos >= t.from && ctx.pos <= t.to) ? null : source(ctx);
 
 // Code colors for fenced blocks, tuned to sit on the --panel code surface
 // next to the Palo Alto accent. Replaces defaultHighlightStyle, which is
@@ -632,8 +641,8 @@ export function markdownLanguage() {
 	// one the built-in HTML-tag completion uses) so all four stay active.
 	return [
 		support,
-		support.language.data.of({ autocomplete: mathCompletionSource }),
-		support.language.data.of({ autocomplete: wikiCompletionSource }),
-		support.language.data.of({ autocomplete: tagCompletionSource })
+		support.language.data.of({ autocomplete: outsideTables(mathCompletionSource) }),
+		support.language.data.of({ autocomplete: outsideTables(wikiCompletionSource) }),
+		support.language.data.of({ autocomplete: outsideTables(tagCompletionSource) })
 	];
 }

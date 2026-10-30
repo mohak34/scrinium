@@ -51,8 +51,12 @@ import {
 	noteDirField,
 	openUrl,
 	previewModeEffect,
-	setPreviewMode
+	setPreviewMode,
+	tagCtxField,
+	wikiCtxField
 } from './livePreview';
+import { wikiCompletionSource } from './wikiComplete';
+import { tagCompletionSource } from './tagComplete';
 import { findWikilinksInText } from './wikilinks';
 import { resolveAssetUrl } from '$lib/attachments';
 import {
@@ -902,7 +906,13 @@ export function syncCell(view: EditorView) {
 		state: EditorState.create({
 			doc: text,
 			selection: local,
-			extensions: [cellExtensions, ref.row > 0 && /^(date|deadline)$/.test(colType(ref.table.meta, ref.col)) ? datePicker : []]
+			extensions: [
+				cellExtensions,
+				// The note list and tags for `[[` and `#` completion, as the note has them.
+				wikiCtxField.init(() => view.state.field(wikiCtxField)),
+				tagCtxField.init(() => view.state.field(tagCtxField)),
+				ref.row > 0 && /^(date|deadline)$/.test(colType(ref.table.meta, ref.col)) ? datePicker : []
+			]
 		})
 	});
 	edit = { main: view, cell, host: freshHost, ref, refocus: false, opened: text };
@@ -1181,7 +1191,11 @@ const cellExtensions = [
 	cellInputFilter,
 	writeBack,
 	cellLinkClick,
-	autocompletion({ override: [cellCompletions], icons: false, addToOptions: [choiceDot] }),
+	autocompletion({
+		override: [cellCompletions, wikiCompletionSource, tagCompletionSource],
+		icons: false,
+		addToOptions: [choiceDot]
+	}),
 	// The note theme styles the list, but inside the cell editor its own
 	// base styles are more specific for these two.
 	EditorView.theme(
