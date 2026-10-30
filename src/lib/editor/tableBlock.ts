@@ -419,33 +419,29 @@ const widthCache = new Map<string, number[]>();
 
 function measureColumns(table: HTMLTableElement, types: ColType[]): number[] {
 	table.classList.add('cm-table-measure');
-	const widths = Array.from(table.rows[0].cells, (c, i) =>
-		Math.ceil(Math.min(Math.max(c.getBoundingClientRect().width + 1, MIN_COL), types[i] === 'text' ? MAX_TEXT_COL : MAX_COL))
+	const widths = types.map((type, i) =>
+		Math.ceil(
+			Math.min(Math.max(table.rows[0].cells[i].getBoundingClientRect().width + 1, MIN_COL), type === 'text' ? MAX_TEXT_COL : MAX_COL)
+		)
 	);
 	table.classList.remove('cm-table-measure');
 	return widths;
 }
 
 /**
- * Widths fitted to the note: `fixed` columns keep their set width, the
- * last other text column (else the last other column) takes the slack,
- * and other text columns shrink before the table scrolls. `slack` is -1
- * when every column is fixed.
+ * Widths fitted to the note: columns keep their natural or `fixed` width,
+ * and text columns that aren't fixed shrink before the table scrolls.
  */
 function fitColumns(natural: number[], types: ColType[], fixed: boolean[], room: number) {
 	const w = [...natural];
 	const sum = w.reduce((a, b) => a + b, 0);
-	const free = w.map((_, i) => i).filter((i) => !fixed[i]);
-	const slack = free.filter((i) => types[i] === 'text').at(-1) ?? free.at(-1) ?? -1;
-	if (sum < room) {
-		if (slack >= 0) w[slack] += room - sum;
-	} else if (sum > room) {
+	if (sum > room) {
 		const give = w.map((x, i) => (types[i] === 'text' && !fixed[i] ? Math.max(0, x - SHRINK_TO) : 0));
 		const spare = give.reduce((a, b) => a + b, 0);
 		const cut = Math.min(sum - room, spare);
 		if (spare) w.forEach((x, i) => (w[i] = x - Math.floor((cut * give[i]) / spare)));
 	}
-	return { w, slack };
+	return w;
 }
 
 function layoutColumns(div: HTMLElement, table: HTMLTableElement, types: ColType[], view: EditorView) {
@@ -454,7 +450,7 @@ function layoutColumns(div: HTMLElement, table: HTMLTableElement, types: ColType
 	const shape = `${types.join()}\n${widget?.order.join() ?? ''}`;
 	const set = types.map((_, i) => widget?.meta?.cols?.[i]?.width);
 	const apply = (natural: number[], room: number) => {
-		const { w, slack } = fitColumns(
+		const w = fitColumns(
 			natural.map((x, i) => set[i] ?? x),
 			types,
 			set.map((x) => x !== undefined),
@@ -462,18 +458,25 @@ function layoutColumns(div: HTMLElement, table: HTMLTableElement, types: ColType
 		);
 		const sum = w.reduce((a, b) => a + b, 0);
 		const wide = sum > room + 1;
-		// A table that fits leaves its slack column unsized, so it takes
-		// whatever the note width gives it later.
-		const fill = !wide && slack >= 0;
+		// A table that fits ends in an empty, unsized filler column that
+		// takes whatever the note width gives it, so no real cell stretches.
 		const group = document.createElement('colgroup');
-		w.forEach((x, i) => {
+		w.forEach((x) => {
 			const col = document.createElement('col');
-			if (!fill || i !== slack) col.style.width = `${x}px`;
+			col.style.width = `${x}px`;
 			group.append(col);
 		});
+		if (!wide) group.append(document.createElement('col'));
 		table.querySelector('colgroup')?.remove();
 		table.prepend(group);
-		table.style.width = fill ? '100%' : `${sum}px`;
+		table.querySelectorAll('.cm-cell-fill').forEach((c) => c.remove());
+		if (!wide)
+			for (const tr of table.rows) {
+				const c = document.createElement(tr.parentElement?.tagName === 'THEAD' ? 'th' : 'td');
+				c.className = 'cm-cell-fill';
+				tr.append(c);
+			}
+		table.style.width = wide ? `${sum}px` : '100%';
 		div.classList.toggle('cm-table-wide', wide);
 	};
 	const measure = () => {
@@ -516,7 +519,7 @@ function resizeColumn(e: MouseEvent, view: EditorView, div: HTMLElement, t: Tabl
 		if (fit) save(fit);
 		return;
 	}
-	const start = Array.from(table.rows[0].cells, (c) => c.getBoundingClientRect().width);
+	const start = Array.from(table.rows[0].querySelectorAll(':scope > :not(.cm-cell-fill)'), (c) => c.getBoundingClientRect().width);
 	start.forEach((w, i) => cols[i] && (cols[i].style.width = `${w}px`));
 	const rest = start.reduce((a, b) => a + b, 0) - start[col];
 	const x0 = e.clientX;
@@ -524,7 +527,8 @@ function resizeColumn(e: MouseEvent, view: EditorView, div: HTMLElement, t: Tabl
 	const move = (ev: MouseEvent) => {
 		width = Math.max(MIN_COL, Math.round(start[col] + ev.clientX - x0));
 		cols[col].style.width = `${width}px`;
-		table.style.width = `${rest + width}px`;
+		// The filler, while there, keeps a narrowed table at the note width.
+		table.style.width = `${Math.max(rest + width, cols.length > start.length ? div.clientWidth : 0)}px`;
 		div.classList.toggle('cm-table-wide', rest + width > div.clientWidth + 1);
 	};
 	const up = () => {
@@ -617,7 +621,7 @@ function onTableMouseDown(e: MouseEvent, view: EditorView, div: HTMLElement) {
 		return;
 	e.preventDefault();
 	const cellEl = target.closest('td, th');
-	if (!cellEl) return;
+	if (!cellEl || cellEl.classList.contains('cm-cell-fill')) return;
 	const col = Math.max(0, Array.from(cellEl.parentElement?.children ?? []).indexOf(cellEl));
 	if (cellEl.tagName === 'TH' && !e.shiftKey) {
 		const r = cellEl.getBoundingClientRect();

@@ -239,8 +239,8 @@ State channels you will touch:
   the table is always one block widget rendered by the lazy-loaded
   renderNote.ts and drawn as a grid (theme in markdownSetup.ts), and
   editing is per cell. Columns are measured once and laid out fixed
-  (`layoutColumns`; the last text column takes the slack, a table wider
-  than the note scrolls), so opening a cell never resizes anything.
+  (`layoutColumns`; columns keep their own width and an empty filler
+  column takes the spare room, a table wider than the note scrolls), so opening a cell never resizes anything.
   Dragging a header's right edge sets that column's width and
   double-click fits it to its content (`resizeColumn`); the width is
   saved as `cols[i].width` in the settings line. When
