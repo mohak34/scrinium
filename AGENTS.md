@@ -240,7 +240,8 @@ State channels you will touch:
   renderNote.ts and drawn as a grid (theme in markdownSetup.ts), and
   editing is per cell. Columns are measured once and laid out fixed
   (`layoutColumns`; columns keep their own width and an empty filler
-  column takes the spare room, a table wider than the note scrolls), so opening a cell never resizes anything.
+  column takes the spare room and holds the `+` new-column button, a
+  table wider than the note scrolls), so opening a cell never resizes anything.
   Dragging a header's right edge sets that column's width and
   double-click fits it to its content (`resizeColumn`); the width is
   saved as `cols[i].width` in the settings line. When

@@ -380,8 +380,11 @@ export const baseTheme = EditorView.theme(
 		},
 		'.cm-table-block th:hover': { background: 'var(--raise)', color: 'var(--text-2)' },
 		// The empty column that takes a fitting table's spare width (layoutColumns).
-		'.cm-table-block .cm-cell-fill': { borderRight: 'none', padding: '0', cursor: 'default' },
+		'.cm-table-block .cm-cell-fill': { borderRight: 'none', padding: '6px 4px 5px', cursor: 'default' },
 		'.cm-table-block th.cm-cell-fill:hover': { background: 'none' },
+		'.cm-cell-fill [data-act=col]': { opacity: '0', padding: '0 4px', height: '20px' },
+		'.cm-table-block:hover .cm-cell-fill [data-act=col]': { opacity: '1' },
+		'.cm-cell-fill [data-act=col] .material-symbols-outlined': { fontSize: '17px' },
 		'.cm-table-block th:hover .cm-th-icon': { color: 'var(--text-3)' },
 		// The drag handle on a header's right edge (resizeColumn).
 		'.cm-th-rz': { position: 'absolute', top: '0', right: '-1px', width: '7px', height: '100%', cursor: 'col-resize', zIndex: '4' },

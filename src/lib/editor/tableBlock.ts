@@ -414,6 +414,8 @@ const MAX_TEXT_COL = 320;
 const MAX_COL = 220;
 // Text columns give up width down to this before the table scrolls.
 const SHRINK_TO = 120;
+// The filler column's width when the table scrolls.
+const FILL_COL = 36;
 const domWidths = new WeakMap<HTMLElement, { shape: string; widths: number[] }>();
 const widthCache = new Map<string, number[]>();
 
@@ -457,26 +459,29 @@ function layoutColumns(div: HTMLElement, table: HTMLTableElement, types: ColType
 			room
 		);
 		const sum = w.reduce((a, b) => a + b, 0);
-		const wide = sum > room + 1;
-		// A table that fits ends in an empty, unsized filler column that
-		// takes whatever the note width gives it, so no real cell stretches.
+		const wide = sum + FILL_COL > room + 1;
+		// The table ends in an empty filler column holding the new-column
+		// button. It takes whatever the note width gives a table that fits,
+		// so no real cell stretches.
 		const group = document.createElement('colgroup');
-		w.forEach((x) => {
+		[...w, FILL_COL].forEach((x, i) => {
 			const col = document.createElement('col');
-			col.style.width = `${x}px`;
+			if (wide || i < w.length) col.style.width = `${x}px`;
 			group.append(col);
 		});
-		if (!wide) group.append(document.createElement('col'));
 		table.querySelector('colgroup')?.remove();
 		table.prepend(group);
 		table.querySelectorAll('.cm-cell-fill').forEach((c) => c.remove());
-		if (!wide)
-			for (const tr of table.rows) {
-				const c = document.createElement(tr.parentElement?.tagName === 'THEAD' ? 'th' : 'td');
-				c.className = 'cm-cell-fill';
-				tr.append(c);
-			}
-		table.style.width = wide ? `${sum}px` : '100%';
+		for (const tr of table.rows) {
+			const head = tr.parentElement?.tagName === 'THEAD';
+			const c = document.createElement(head ? 'th' : 'td');
+			c.className = 'cm-cell-fill';
+			if (head)
+				c.innerHTML =
+					'<button data-act="col" title="New column"><span class="material-symbols-outlined">add</span></button>';
+			tr.append(c);
+		}
+		table.style.width = wide ? `${sum + FILL_COL}px` : '100%';
 		div.classList.toggle('cm-table-wide', wide);
 	};
 	const measure = () => {
@@ -528,8 +533,8 @@ function resizeColumn(e: MouseEvent, view: EditorView, div: HTMLElement, t: Tabl
 		width = Math.max(MIN_COL, Math.round(start[col] + ev.clientX - x0));
 		cols[col].style.width = `${width}px`;
 		// The filler, while there, keeps a narrowed table at the note width.
-		table.style.width = `${Math.max(rest + width, cols.length > start.length ? div.clientWidth : 0)}px`;
-		div.classList.toggle('cm-table-wide', rest + width > div.clientWidth + 1);
+		table.style.width = `${Math.max(rest + width + FILL_COL, div.clientWidth)}px`;
+		div.classList.toggle('cm-table-wide', rest + width + FILL_COL > div.clientWidth + 1);
 	};
 	const up = () => {
 		window.removeEventListener('mousemove', move);
@@ -604,6 +609,10 @@ function onTableMouseDown(e: MouseEvent, view: EditorView, div: HTMLElement) {
 		else if (act === 'filter') openFilterMenu(view, t, r.left, r.bottom + 4);
 		else if (act === 'source') {
 			view.dispatch({ selection: { anchor: t.start }, effects: rawTableEffect.of(t.from) });
+			view.focus();
+		} else if (act === 'col') {
+			pendingClick = 'open';
+			atColumn(view, t, readTable(view.state, t).rows[0].length - 1, tableCommands.tableColRight)();
 			view.focus();
 		} else if (act === 'row') {
 			pendingClick = 'open';
