@@ -337,6 +337,13 @@ export function isDueToday(t: Task): boolean {
 	return t.due_at >= startOfToday() && t.due_at < startOfTomorrow();
 }
 
+const DAY = 86400000;
+export const daysSince = (ts: number) => Math.floor((Date.now() - ts) / DAY);
+// Doing tasks untouched this long say so.
+export const STALE_DAYS = 4;
+// Waiting this long turns the waiting note orange.
+export const LONG_WAIT_DAYS = 7;
+
 export function dueLabel(dueAt: number | null): string {
 	if (dueAt == null) return 'No date';
 	try {

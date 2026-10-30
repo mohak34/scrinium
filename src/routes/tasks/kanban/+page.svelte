@@ -18,6 +18,9 @@
 		isDueToday,
 		dueLabel,
 		stampShort,
+		daysSince,
+		STALE_DAYS,
+		LONG_WAIT_DAYS,
 		STATUSES,
 		type Task,
 		type TaskStatus,
@@ -140,12 +143,6 @@
 		return `${f(monday)} to ${f(sunday)}`;
 	}
 
-	const DAY = 86400000;
-	const daysSince = (ts: number) => Math.floor((Date.now() - ts) / DAY);
-	// Doing cards untouched this long say so.
-	const STALE_DAYS = 4;
-	// Waiting this long turns the waiting note orange.
-	const LONG_WAIT_DAYS = 7;
 
 	// Clicking a card opens the detail drawer; drags and controls are exempt.
 	function cardClick(t: Task, e: MouseEvent) {

@@ -16,12 +16,15 @@
 		dueLabel,
 		parseDueInput,
 		stampShort,
+		daysSince,
+		STALE_DAYS,
+		LONG_WAIT_DAYS,
 		projects,
 		type Task,
 		type TaskStatus
 	} from '$lib/stores/tasks';
 	import { projectName, selectTasks } from '$lib/taskModel';
-	import { projectLabel, type ProjectKey, type ProjectView } from '$lib/projects';
+	import { colorVar, projectLabel, projectStyle, type ProjectKey, type ProjectView } from '$lib/projects';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 	import AppActions from '$lib/components/AppActions.svelte';
@@ -86,6 +89,8 @@
 	const listed = $derived(topLevel(selectTasks($tasks, scope)));
 	const scopes = $derived<ProjectKey[]>([null, ...$projects.map((p) => p.path)]);
 	const inScope = (key: ProjectKey) => scope !== 'all' && scope.project === key;
+	const styleOf = (key: ProjectKey) => projectStyle(key, $projects.find((p) => p.path === key));
+	const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 	const visible = $derived.by(() => {
 		const q = query.trim().toLowerCase();
@@ -201,16 +206,17 @@
 				</button>
 			{/each}
 		</nav>
-		<div class="grp">Projects</div>
+		<div class="sep"></div>
 		<nav class="filters">
 			{#each scopes as key (key ?? '')}
+				{@const ps = styleOf(key)}
 				<button
 					class="filt"
 					class:on={inScope(key)}
 					onclick={() => (scope = inScope(key) ? 'all' : { project: key })}
 					aria-pressed={inScope(key)}
 				>
-					<span class="material-symbols-outlined" class:fill={inScope(key)}>{key ? 'folder' : 'home'}</span>
+					<span class="material-symbols-outlined" style:color={colorVar(ps.color)}>{ps.icon}</span>
 					<span class="fl">{projectLabel(key)}</span>
 					<span class="n">{openIn(key)}</span>
 				</button>
@@ -259,9 +265,9 @@
 				}}
 			/>
 			<input class="ctl" type="date" bind:value={newDue} aria-label="Due date" />
-			<button class="add-btn" disabled={!newTitle.trim() || adding} onclick={() => void handleAdd()}>
-				Add
-			</button>
+			{#if newTitle.trim()}
+				<button class="add-btn" disabled={adding} onclick={() => void handleAdd()}>Add</button>
+			{/if}
 		</div>
 
 		<div class="list">
@@ -281,6 +287,10 @@
 							{group.label}<span class="n">{group.rows.length}</span>
 						</h2>
 						{#each group.rows as t (t.id)}
+							{@const waited = t.status === 'waiting' && t.waiting_since != null ? daysSince(t.waiting_since) : null}
+							{@const idle = t.status === 'doing' ? daysSince(t.updated_at) : 0}
+							{@const subs = $subtaskCounts.get(t.id)}
+							{@const today = isDueToday(t) && t.status !== 'done'}
 							<div
 								class="tr"
 								class:done={t.status === 'done'}
@@ -305,54 +315,64 @@
 										>{statusIcon(t.status)}</span
 									>
 								</button>
-								<input
-									class="ttl"
-									value={t.title}
-									aria-label="Task title"
-									onchange={(e) => {
-										const v = (e.target as HTMLInputElement).value.trim();
-										if (v && v !== t.title) void updateTask(t.id, { title: v });
-										else (e.target as HTMLInputElement).value = t.title;
-									}}
-								/>
-								<span class="meta">
-									{#if t.status === 'waiting' && t.waiting_on}
-										<span class="m" title="Waiting on">
-											<span class="material-symbols-outlined">person</span>{t.waiting_on}
-										</span>
-									{/if}
-									{#if t.project && scope === 'all'}
-										<span class="m" title={t.project}>
-											<span class="material-symbols-outlined">folder</span>{projectName(t.project)}
-										</span>
-									{/if}
-									{#if t.link_count > 0}
-										<span class="m" title="Linked notes">
-											<span class="material-symbols-outlined">description</span>{t.link_count}
-										</span>
-									{/if}
-									{#if $subtaskCounts.get(t.id)}
-										<span class="m" title="Subtasks">
-											<span class="material-symbols-outlined">subdirectory_arrow_right</span>{$subtaskCounts.get(t.id)}
-										</span>
-									{/if}
-									{#if t.remind_at != null}
-										<span class="m" title="Reminds {stampShort(t.remind_at)}">
-											<span class="material-symbols-outlined">notifications</span>
-										</span>
-									{/if}
-									{#if t.priority !== 'none'}
-										<span class="m pri-{t.priority}" title="{t.priority} priority">
-											<span class="material-symbols-outlined fill">flag</span>
-										</span>
-									{/if}
-								</span>
-								<span
-									class="due"
-									class:over={isOverdue(t)}
-									class:today={isDueToday(t) && t.status !== 'done'}
-								>
-									{t.due_at == null ? '' : isDueToday(t) && t.status !== 'done' ? 'Today' : dueLabel(t.due_at)}
+								<span class="tx">
+									<input
+										class="ttl"
+										value={t.title}
+										aria-label="Task title"
+										onchange={(e) => {
+											const v = (e.target as HTMLInputElement).value.trim();
+											if (v && v !== t.title) void updateTask(t.id, { title: v });
+											else (e.target as HTMLInputElement).value = t.title;
+										}}
+									/>
+									<span class="meta">
+										{#if t.due_at != null}
+											<span class="m due" class:over={isOverdue(t)} class:today>
+												<span class="material-symbols-outlined"
+													>{isOverdue(t) ? 'event_busy' : today ? 'today' : 'event'}</span
+												>{today ? 'Today' : dueLabel(t.due_at)}
+											</span>
+										{/if}
+										{#if t.project && scope === 'all'}
+											{@const ps = styleOf(t.project)}
+											<span class="m" style:color={colorVar(ps.color)} title={t.project}>
+												<span class="material-symbols-outlined">{ps.icon}</span>{projectName(t.project)}
+											</span>
+										{/if}
+										{#if t.priority !== 'none'}
+											<span class="m pri-{t.priority}" title="{t.priority} priority">
+												<span class="material-symbols-outlined fill">flag</span>{t.priority}
+											</span>
+										{/if}
+										{#if t.status === 'waiting' && (t.waiting_on || waited != null)}
+											<span class="m" class:warn={waited != null && waited >= LONG_WAIT_DAYS} title="Waiting on">
+												<span class="material-symbols-outlined">person</span>{t.waiting_on ?? 'Someone'}{waited != null
+													? `, ${plural(waited, 'day')}`
+													: ''}
+											</span>
+										{/if}
+										{#if idle >= STALE_DAYS}
+											<span class="m warn" title="Untouched for {plural(idle, 'day')}">
+												<span class="material-symbols-outlined">schedule</span>{plural(idle, 'day')}
+											</span>
+										{/if}
+										{#if subs}
+											<span class="m" title="Subtasks">
+												<span class="material-symbols-outlined">subdirectory_arrow_right</span>{subs}
+											</span>
+										{/if}
+										{#if t.remind_at != null}
+											<span class="m" title="Reminds {stampShort(t.remind_at)}">
+												<span class="material-symbols-outlined">notifications</span>
+											</span>
+										{/if}
+										{#if t.link_count > 0}
+											<span class="m" title="Linked notes">
+												<span class="material-symbols-outlined">description</span>{t.link_count}
+											</span>
+										{/if}
+									</span>
 								</span>
 								<button class="del" title="Delete" onclick={() => void deleteTask(t.id)}>
 									<span class="material-symbols-outlined">delete</span>
@@ -451,11 +471,10 @@
 	.filt.red .n {
 		color: var(--red);
 	}
-	.grp {
-		padding: 20px 18px 6px;
-		color: var(--text-3);
-		font-size: var(--fs-sm);
-		font-weight: 500;
+	.sep {
+		height: 1px;
+		margin: 12px 12px;
+		background: var(--line);
 	}
 	.main {
 		flex: 1;
@@ -514,16 +533,15 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 48px;
-		margin: 18px 24px 4px;
-		padding: 0 8px 0 14px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-lg);
+		height: 42px;
+		margin: 14px 24px 0;
+		padding: 0 6px 0 8px;
+		border-bottom: 1px solid var(--line-2);
 		color: var(--text-3);
 		flex-shrink: 0;
 	}
 	.adder:focus-within {
-		border-color: var(--line-3);
+		border-bottom-color: var(--line-3);
 	}
 	.title-in {
 		flex: 1;
@@ -555,8 +573,8 @@
 		color: var(--text);
 	}
 	.add-btn {
-		height: 32px;
-		padding: 0 14px;
+		height: 28px;
+		padding: 0 12px;
 		border: none;
 		border-radius: var(--r-md);
 		background: var(--accent-fill);
@@ -582,26 +600,26 @@
 		align-items: center;
 		gap: 8px;
 		margin: 0;
-		padding: 22px 6px 8px;
-		border-bottom: 1px solid var(--line);
+		padding: 22px 2px 8px;
+		border-bottom: 2px solid var(--line);
 		font-size: var(--fs);
 		font-weight: 600;
 	}
 	.lg.over {
 		color: var(--red);
+		border-bottom-color: color-mix(in srgb, var(--red) 27%, transparent);
 	}
 	.tr {
 		display: grid;
-		grid-template-columns: 28px minmax(0, 1fr) auto 96px 28px;
-		align-items: center;
-		gap: 12px;
-		min-height: 44px;
-		padding: 0 4px 0 8px;
-		border-bottom: 1px solid var(--line);
+		grid-template-columns: 28px minmax(0, 1fr) 28px;
+		align-items: start;
+		gap: 10px;
+		padding: 7px 4px;
+		border-bottom: 1px solid var(--raise);
 		cursor: pointer;
 	}
 	.tr:hover {
-		background: var(--raise);
+		background: var(--bg);
 	}
 	.tr.on {
 		background: var(--accent-dim);
@@ -609,6 +627,7 @@
 	.st {
 		display: grid;
 		place-items: center;
+		height: 24px;
 		border: none;
 		background: none;
 		padding: 0;
@@ -621,6 +640,9 @@
 	.st:hover {
 		color: var(--accent);
 	}
+	.st.todo {
+		color: var(--text-2);
+	}
 	.st.doing {
 		color: var(--accent);
 	}
@@ -628,14 +650,20 @@
 		color: var(--yellow);
 	}
 	.st.done {
-		color: var(--green);
+		color: var(--text-4);
+	}
+	.tx {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
 	}
 	.ttl {
 		min-width: 0;
 		border: none;
 		outline: none;
 		background: none;
-		padding: 4px 0;
+		padding: 2px 0;
 		color: var(--text);
 		font: var(--fs-md) var(--font-ui);
 		text-overflow: ellipsis;
@@ -650,11 +678,15 @@
 	}
 	.meta {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 14px;
+		gap: 4px 14px;
 		color: var(--text-3);
 		font-size: var(--fs-sm);
 		white-space: nowrap;
+	}
+	.meta:empty {
+		display: none;
 	}
 	.m {
 		display: inline-flex;
@@ -663,6 +695,18 @@
 	}
 	.m .material-symbols-outlined {
 		font-size: 15px;
+	}
+	.due {
+		color: var(--text-2);
+	}
+	.due.over {
+		color: var(--red);
+	}
+	.due.today {
+		color: var(--accent);
+	}
+	.warn {
+		color: var(--orange);
 	}
 	.pri-urgent {
 		color: var(--red);
@@ -675,18 +719,6 @@
 	}
 	.pri-low {
 		color: var(--blue);
-	}
-	.due {
-		text-align: right;
-		color: var(--text-2);
-		font-size: var(--fs-sm);
-		white-space: nowrap;
-	}
-	.due.over {
-		color: var(--red);
-	}
-	.due.today {
-		color: var(--accent);
 	}
 	.del {
 		display: grid;
