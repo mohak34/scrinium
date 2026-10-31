@@ -471,8 +471,9 @@
 						<span class="material-symbols-outlined ci {col.key}">{col.icon}</span>
 						{col.label}
 						{#if col.key === 'doing'}
-							<span class="aside" class:warn={rows.length > DOING_LIMIT} title="Doing limit">
-								{rows.length} of {DOING_LIMIT}
+							<span class="n">{rows.length}</span>
+							<span class="aside" class:warn={rows.length > DOING_LIMIT}>
+								{rows.length > DOING_LIMIT ? `${rows.length - DOING_LIMIT} over limit` : `limit ${DOING_LIMIT}`}
 							</span>
 						{:else}
 							<span class="n">{rows.length}</span>
