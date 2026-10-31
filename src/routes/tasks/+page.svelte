@@ -13,6 +13,7 @@
 		startOfTomorrow,
 		isOverdue,
 		isDueToday,
+		dueTimeValue,
 		dueLabel,
 		stampShort,
 		daysSince,
@@ -101,9 +102,12 @@
 		);
 	});
 
+	const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
 	interface Group {
 		key: string;
 		label: string;
+		date?: string;
 		rows: Task[];
 	}
 
@@ -111,14 +115,24 @@
 		const open = visible.filter((t) => t.status !== 'done');
 		const done = visible.filter((t) => t.status === 'done');
 		const byDue = [...open].sort((a, b) => (a.due_at ?? Infinity) - (b.due_at ?? Infinity));
+		// One group per day for the coming week, then the rest as Upcoming.
+		const now = new Date();
+		const day = (i: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+		const week = Array.from({ length: 7 }, (_, i) => {
+			const from = day(i).getTime();
+			const to = day(i + 1).getTime();
+			return {
+				key: `day${i}`,
+				label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : day(i).toLocaleDateString([], { weekday: 'long' }),
+				date: day(i).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+				rows: byDue.filter((t) => t.due_at != null && t.due_at >= from && t.due_at < to)
+			};
+		});
+		const later = day(7).getTime();
 		const out: Group[] = [
 			{ key: 'overdue', label: 'Overdue', rows: byDue.filter(isOverdue) },
-			{ key: 'today', label: 'Today', rows: byDue.filter((t) => !isOverdue(t) && isDueToday(t)) },
-			{
-				key: 'upcoming',
-				label: 'Upcoming',
-				rows: byDue.filter((t) => t.due_at != null && t.due_at >= startOfTomorrow())
-			},
+			...week,
+			{ key: 'upcoming', label: 'Upcoming', rows: byDue.filter((t) => t.due_at != null && t.due_at >= later) },
 			{ key: 'nodate', label: 'No date', rows: byDue.filter((t) => t.due_at == null) }
 		].filter((g) => g.rows.length > 0);
 		if (done.length > 0) {
@@ -284,7 +298,9 @@
 				{#each groups as group (group.key)}
 					<section>
 						<h2 class="lg" class:over={group.key === 'overdue'}>
-							{group.label}<span class="n">{group.rows.length}</span>
+							{group.label}{#if group.date}<span class="dt">{group.date}</span>{/if}<span class="n"
+								>{group.rows.length}</span
+							>
 						</h2>
 						{#each group.rows as t (t.id)}
 							{@const waited = t.status === 'waiting' && t.waiting_since != null ? daysSince(t.waiting_since) : null}
@@ -327,11 +343,12 @@
 										}}
 									/>
 									<span class="meta">
-										{#if t.due_at != null}
+										{#if t.due_at != null && (!group.date || dueTimeValue(t.due_at))}
+											<!-- Under a day's header only the time is news. -->
 											<span class="m due" class:over={isOverdue(t)} class:today>
 												<span class="material-symbols-outlined"
-													>{isOverdue(t) ? 'event_busy' : today ? 'today' : 'event'}</span
-												>{today ? 'Today' : dueLabel(t.due_at)}
+													>{group.date ? 'schedule' : isOverdue(t) ? 'event_busy' : today ? 'today' : 'event'}</span
+												>{group.date ? clock(t.due_at!) : today ? 'Today' : dueLabel(t.due_at)}
 											</span>
 										{/if}
 										{#if t.project && scope === 'all'}
@@ -587,6 +604,10 @@
 		border-bottom: 2px solid var(--line);
 		font-size: var(--fs);
 		font-weight: 600;
+	}
+	.lg .dt {
+		color: var(--text-2);
+		font-weight: 400;
 	}
 	.lg.over {
 		color: var(--red);
