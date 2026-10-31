@@ -2,25 +2,46 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { env } from '$env/dynamic/private';
-import { indexNote, indexedMtime } from './db';
+import { deleteNoteIndexByPrefix, indexNote, indexedMtime, indexedPaths } from './db';
 import { effectiveTitle } from '$lib/editor/frontmatter';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
 
-let done = false;
+let scan: Promise<void> | undefined;
+let scannedAt = 0;
+const RESCAN_AFTER = 30_000;
 
-// One-time scan of the vault so notes that were never saved through the app
-// (or were indexed before this feature existed) still show up in search.
-// Runs lazily on the first search request; afterwards individual writes keep
-// the FTS index up to date. A file whose mtime matches the one it was
-// indexed at is skipped unread, so a restart doesn't reindex the vault. The
-// archive is scanned too, under its ".archive/..." paths, so archive search
-// works; plain search filters it out.
+// Scans the vault so search sees notes edited, added or deleted outside
+// the app (a text editor, sync, git). The first search waits for the
+// first scan; later searches start a fresh one in the background at most
+// every 30 s, so results catch up without slowing the query. A file whose
+// mtime matches the one it was indexed at is skipped unread, so a scan is
+// mostly stats. The archive is scanned too, under its ".archive/..."
+// paths, so archive search works; plain search filters it out.
 export async function ensureIndex() {
-	if (done) return;
-	done = true;
-	await walkAndIndex(VAULT_DIR, '');
-	await walkAndIndex(path.join(VAULT_DIR, '.archive'), '.archive');
+	if (!scan) {
+		scan = run();
+		return scan;
+	}
+	if (scannedAt && Date.now() - scannedAt > RESCAN_AFTER) {
+		scannedAt = 0;
+		scan = run();
+	}
+}
+
+async function run() {
+	try {
+		await walkAndIndex(VAULT_DIR, '');
+		await walkAndIndex(path.join(VAULT_DIR, '.archive'), '.archive');
+		// Rows whose file is gone (deleted or moved outside the app). The
+		// check and delete are synchronous, so an app write can't land
+		// between them.
+		for (const p of indexedPaths()) {
+			if (!existsSync(path.join(VAULT_DIR, p))) deleteNoteIndexByPrefix(p);
+		}
+	} finally {
+		scannedAt = Date.now();
+	}
 }
 
 async function walkAndIndex(dir: string, rel: string) {

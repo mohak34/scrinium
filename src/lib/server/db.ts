@@ -105,7 +105,10 @@ export const indexNote = db.transaction(
 	}
 );
 
-// The mtime the startup scan last indexed this note at, if any.
+export const indexedPaths = () =>
+	(db.prepare(`SELECT path FROM note_docs`).all() as { path: string }[]).map((r) => r.path);
+
+// The mtime the vault scan last indexed this note at, if any.
 export const indexedMtime = (relPath: string) =>
 	(db.prepare(`SELECT mtime FROM note_docs WHERE path = ?`).get(relPath) as { mtime: number | null } | undefined)
 		?.mtime ?? null;
