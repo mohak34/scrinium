@@ -22,6 +22,7 @@ db.exec(`
 		title TEXT,
 		updated_at INTEGER
 	);
+	CREATE INDEX IF NOT EXISTS idx_note_meta_updated ON note_meta(updated_at);
 `);
 
 // Full-text search index over note contents (SQLite FTS5). The path column is
