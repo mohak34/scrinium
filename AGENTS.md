@@ -564,9 +564,11 @@ State channels you will touch:
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
 - Fonts ship as packages (`@fontsource-variable/atkinson-hyperlegible-next`,
-  `space-grotesk`, `jetbrains-mono`) plus `@material-symbols/font-400`, of which
-  only `outlined.css` is imported; that font carries the FILL axis used by
-  the `.fill` icon class.
+  `space-grotesk`, `jetbrains-mono`). Icons are Material Symbols Outlined
+  subset to the names the code uses (`src/lib/design/material-symbols.woff2`,
+  loaded by `icons.css`, FILL axis kept for the `.fill` class). After using
+  a new icon name, run `uv run scripts/subset-icons.py` (it reads the full
+  font from `@material-symbols/font-400`) or the icon shows as its name.
 - The vault and `data/` live OUTSIDE `app/` on the box and are never touched
   by deploys.
 
