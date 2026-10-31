@@ -292,13 +292,19 @@ State channels you will touch:
   "<N> lines yanked" status notice via the facade dialog signal, read off
   live selection state so a stale range can never paint),
   formatting.ts.
-- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus the
-  trash and archive bins: move/list/restore/purge backed by each bin's
-  `.index.json`), bins.ts (the bookkeeping around a bin move that routes
+- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe with
+  symlinks followed - `safeResolve` refuses a link out of the vault and
+  the walkers skip links - plus the trash and archive bins:
+  move/list/restore/purge backed by each bin's `.index.json`, booked
+  before the move so a failed index write moves nothing), bins.ts (the bookkeeping around a bin move that routes
   call), db.ts (sqlite cache
   + api_tokens table), shares.ts (public share links: random id → live vault
-  path, optional scrypt password hash; rename/delete follow the file),
-  auth.ts (better-auth, Google, allowlist), indexer.ts,
+  path, optional scrypt password hash, 10 wrong guesses per share lock it
+  for 10 minutes; rename/delete follow the file),
+  auth.ts (better-auth, Google, allowlist), indexer.ts (the search
+  index scan: the first search waits for it, later ones rescan in the
+  background at most every 30 s and drop rows for files gone outside
+  the app),
   google.ts (read-only Calendar overlay: refreshes the stored Google token,
   reads every calendar ticked in Google's sidebar with pagination; only a
   revoked grant or missing scope means "reconnect", outages are a 502).
