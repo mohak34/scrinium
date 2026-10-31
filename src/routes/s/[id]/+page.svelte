@@ -96,6 +96,10 @@
 				message = 'Wrong password. Try again.';
 				return;
 			}
+			if (res.status === 429) {
+				message = 'Too many wrong passwords. Try again in a few minutes.';
+				return;
+			}
 			if (!res.ok) {
 				message = 'This link is invalid or was revoked.';
 				status = 'error';

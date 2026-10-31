@@ -1,4 +1,6 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
+import { error } from '@sveltejs/kit';
 import { db, under, underArgs } from './db';
 import { vaultRel } from './vault';
 import { renderNoteToHtml } from '$lib/print/renderNote';
@@ -74,18 +76,35 @@ export function hashSharePassword(password: string): string {
 	return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
 }
 
-export function verifySharePassword(password: string, stored: string): boolean {
+const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, len: number) => Promise<Buffer>;
+
+// Wrong passwords per share: after 10 in 10 minutes the share answers 429
+// until the window ends, so guessing stays slow and never ties up the
+// server (the hash also runs off the main thread).
+const FAIL_LIMIT = 10;
+const FAIL_WINDOW = 10 * 60_000;
+const failures = new Map<string, { count: number; since: number }>();
+
+export async function verifySharePassword(shareId: string, password: string, stored: string): Promise<boolean> {
+	const now = Date.now();
+	const f = failures.get(shareId);
+	if (f && now - f.since > FAIL_WINDOW) failures.delete(shareId);
+	else if (f && f.count >= FAIL_LIMIT) throw error(429, 'Too many wrong passwords, try again later');
 	const parts = stored.split('$');
 	if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+	let ok = false;
 	try {
 		const salt = Buffer.from(parts[1], 'hex');
 		const expected = Buffer.from(parts[2], 'hex');
 		if (salt.length !== 16 || expected.length !== 32) return false;
-		const actual = scryptSync(password, salt, 32);
-		return timingSafeEqual(actual, expected);
-	} catch {
-		return false;
-	}
+		ok = timingSafeEqual(await scryptAsync(password, salt, 32), expected);
+	} catch {}
+	if (ok) return true;
+	if (failures.size > 1000) failures.clear();
+	const cur = failures.get(shareId);
+	if (cur) cur.count++;
+	else failures.set(shareId, { count: 1, since: now });
+	return false;
 }
 
 // Hash of the raw password for asset-URL comparison avoidance: asset URLs

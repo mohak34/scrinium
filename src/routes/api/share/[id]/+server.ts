@@ -12,7 +12,7 @@ import { getShareSecret, mintProofToken, shareImages, verifySharePassword } from
 async function payload(id: string, password: string | null) {
 	const secret = getShareSecret(id);
 	if (!secret) throw error(404, 'Share not found');
-	if (secret.password_hash && (!password || !verifySharePassword(password, secret.password_hash))) {
+	if (secret.password_hash && (!password || !(await verifySharePassword(id, password, secret.password_hash)))) {
 		throw error(401, 'Password required');
 	}
 	let markdown: string;
