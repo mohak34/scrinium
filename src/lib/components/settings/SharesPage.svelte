@@ -5,8 +5,9 @@
 	import { flushSave, openTab } from '$lib/stores/vault';
 	import { settingsPage } from '$lib/stores/settingsDialog';
 	import { day } from './tokens';
+	import { expiryLabel } from '$lib/shareExpiry';
 
-	type Share = { id: string; notePath: string; createdAt: number; hasPassword: boolean };
+	type Share = { id: string; notePath: string; createdAt: number; hasPassword: boolean; expiresAt: number | null };
 
 	let shares = $state<Share[]>([]);
 	let loading = $state(true);
@@ -116,7 +117,11 @@
 				</span>
 				<div class="txt">
 					<span class="lbl mono url">{linkFor(s.id)}</span>
-					<span class="hint">Created {day(s.createdAt)}{s.hasPassword ? ', password protected' : ''}</span>
+					<span class="hint">
+						Created {day(s.createdAt)}{s.hasPassword ? ', password protected' : ''}{s.expiresAt === null
+							? ''
+							: `, ${expiryLabel(s.expiresAt)}`}
+					</span>
 				</div>
 				<button class="btn ghost" onclick={() => copy(s.id)}>
 					<span class="material-symbols-outlined">{copied === s.id ? 'check' : 'content_copy'}</span>

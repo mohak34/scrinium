@@ -5,6 +5,7 @@ import { attachmentMarkdown, isImagePath } from '$lib/attachments';
 import type { ProjectRow, TaskRow } from './db';
 import { fromArchivedPath, type ArchiveEntry } from '$lib/archive';
 import { projectOf } from '$lib/projects';
+import { MAX_SHARE_DAYS } from '$lib/shareExpiry';
 
 type TrashRow = { trashName: string; originalPath: string; deletedAt: number };
 
@@ -397,13 +398,23 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		'share_note',
 		{
 			description:
-				'Create a public read-only link to a note. Anyone with the link can read it. Only call this when the user asks to share.',
-			inputSchema: { path: NotePath, password: z.string().min(4).max(200).optional() }
+				'Create a public read-only link to a note. Anyone with the link can read it. Only call this when the user asks to share. Without expires_in_days the link never expires.',
+			inputSchema: {
+				path: NotePath,
+				password: z.string().min(4).max(200).optional(),
+				expires_in_days: z.number().int().min(1).max(MAX_SHARE_DAYS).optional()
+			}
 		},
-		async ({ path, password }) => {
-			const share = (await (await send('POST', '/api/shares', { path, password })).json()) as { id: string };
+		async ({ path, password, expires_in_days }) => {
+			const share = (await (
+				await send('POST', '/api/shares', { path, password, expiresInDays: expires_in_days })
+			).json()) as { id: string; expiresAt: number | null };
 			onWrite('share_note', path);
-			return result({ url: `${origin}/s/${share.id}`, password_protected: !!password });
+			return result({
+				url: `${origin}/s/${share.id}`,
+				password_protected: !!password,
+				expires_at: share.expiresAt === null ? null : new Date(share.expiresAt).toISOString()
+			});
 		}
 	);
 

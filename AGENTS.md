@@ -304,7 +304,8 @@ State channels you will touch:
   call), db.ts (sqlite cache
   + api_tokens table), shares.ts (public share links: random id → live vault
   path, optional scrypt password hash, 10 wrong guesses per share lock it
-  for 10 minutes; rename/delete follow the file),
+  for 10 minutes, optional `expires_at` after which the link and its
+  images answer like a revoked one; rename/delete follow the file),
   auth.ts (better-auth, Google, allowlist), indexer.ts (the search
   index scan: the first search waits for it, later ones rescan in the
   background at most every 30 s and drop rows for files gone outside

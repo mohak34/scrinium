@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { activePath } from '$lib/stores/vault';
+	import { SHARE_LIFETIMES, expiryLabel } from '$lib/shareExpiry';
 
 	interface Props {
 		onClose: () => void;
@@ -11,6 +12,7 @@
 		notePath: string;
 		createdAt: number;
 		hasPassword: boolean;
+		expiresAt: number | null;
 	}
 
 	let shares = $state<Share[]>([]);
@@ -18,6 +20,7 @@
 	let creating = $state(false);
 	let usePassword = $state(false);
 	let password = $state('');
+	let lifetime = $state<number | null>(null);
 	let error = $state('');
 	let copiedId = $state<string | null>(null);
 	let copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -55,7 +58,7 @@
 			const res = await fetch('/api/shares', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ path, password: usePassword ? password : undefined })
+				body: JSON.stringify({ path, password: usePassword ? password : undefined, expiresInDays: lifetime })
 			});
 			if (!res.ok) {
 				error = res.status === 404 ? 'Note has unsaved changes - wait a moment and retry.' : 'Could not create link.';
@@ -63,6 +66,7 @@
 			}
 			password = '';
 			usePassword = false;
+			lifetime = null;
 			await refresh(path);
 		} finally {
 			creating = false;
@@ -97,7 +101,7 @@
 			</button>
 		</header>
 		<p class="note-name">{path}</p>
-		<p class="hint">Anyone with the link can view. Links show the note's current content and stop working when revoked or the note is deleted.</p>
+		<p class="hint">Anyone with the link can view. Links show the note's current content and stop working when revoked, expired or the note is deleted.</p>
 
 		{#if loading}
 			<p class="state">Loading…</p>
@@ -110,7 +114,8 @@
 						<span class="material-symbols-outlined lock" title={s.hasPassword ? 'Password protected' : 'Open link'}>
 							{s.hasPassword ? 'lock' : 'link'}
 						</span>
-						<span class="url">{linkFor(s.id)}</span>
+						<span class="url" class:dead={expiryLabel(s.expiresAt) === 'expired'}>{linkFor(s.id)}</span>
+						{#if s.expiresAt !== null}<span class="exp">{expiryLabel(s.expiresAt)}</span>{/if}
 						<button class="btn" title={copiedId === s.id ? 'Copied' : 'Copy link'} onclick={() => copy(s.id)}>
 							<span class="material-symbols-outlined">{copiedId === s.id ? 'check' : 'content_copy'}</span>
 						</button>
@@ -123,10 +128,15 @@
 		{/if}
 
 		<div class="new">
-			<label class="pwrow">
-				<input type="checkbox" bind:checked={usePassword} />
-				Password protect
-			</label>
+			<div class="opts">
+				<label class="pwrow">
+					<input type="checkbox" bind:checked={usePassword} />
+					Password protect
+				</label>
+				<select class="life" bind:value={lifetime} aria-label="Link lifetime">
+					{#each SHARE_LIFETIMES as l (l.label)}<option value={l.days}>{l.label}</option>{/each}
+				</select>
+			</div>
 			{#if usePassword}
 				<input
 					class="pw"
@@ -236,6 +246,15 @@
 		font-size: var(--font-ui-small);
 		font-family: var(--font-mono);
 	}
+	.url.dead {
+		color: var(--outline);
+		text-decoration: line-through;
+	}
+	.exp {
+		flex-shrink: 0;
+		font-size: var(--font-ui-small);
+		color: var(--outline);
+	}
 	.btn {
 		display: flex;
 		border: none;
@@ -269,6 +288,21 @@
 		font-size: var(--font-ui-small);
 		color: var(--on-surface-variant);
 		cursor: pointer;
+	}
+	.opts {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.life {
+		background: var(--surface);
+		border: 1px solid var(--border-default);
+		border-radius: var(--radius);
+		color: var(--on-surface);
+		font: inherit;
+		font-size: var(--font-ui-small);
+		padding: 4px 6px;
 	}
 	.pw {
 		background: var(--surface);
