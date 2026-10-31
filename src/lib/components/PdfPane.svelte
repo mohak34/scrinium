@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { loadPdfjs } from '$lib/pdf/pdfjs';
 	import { loadTree } from '$lib/stores/vault';
-	import type { PDFDocumentProxy } from 'pdfjs-dist';
+	import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 	import type { PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 
 	// A vault PDF beside the editor. pdf.js renders only the pages near the
@@ -28,6 +28,7 @@
 	let container = $state<HTMLDivElement>();
 	let viewer: PDFViewer | undefined;
 	let doc: PDFDocumentProxy | undefined;
+	let task: PDFDocumentLoadingTask | undefined;
 	let failed = $state('');
 	let page = $state(1);
 	let pages = $state(0);
@@ -126,15 +127,16 @@
 		target = path;
 		void (async () => {
 			try {
+				// Only the version comes first; pdf.js then streams the file and
+				// asks for the byte ranges of the pages on screen. `?v` pins every
+				// range to that version, so saves never replace bytes this pane
+				// did not read.
 				const [{ lib, viewer: v, BinaryDataFactory }, res] = await Promise.all([
 					loadPdfjs(),
-					// The asset route lets browsers cache for an hour; annotations
-					// change the file, so always read the current copy.
-					fetch(assetUrl(path), { cache: 'no-store' })
+					fetch(assetUrl(path), { method: 'HEAD', cache: 'no-store' })
 				]);
 				if (!res.ok) throw new Error(res.status === 404 ? 'File not found' : `Load failed (${res.status})`);
 				version = res.headers.get('X-Asset-Version');
-				const data = new Uint8Array(await res.arrayBuffer());
 				if (gone || !container) return;
 				const eventBus = new v.EventBus();
 				const linkService = new v.PDFLinkService({ eventBus });
@@ -154,12 +156,14 @@
 				eventBus.on('pagechanging', (e: { pageNumber: number }) => (page = e.pageNumber));
 				eventBus.on('annotationeditormodechanged', (e: { mode: number }) => (mode = e.mode));
 
-				const task = lib.getDocument({ data, BinaryDataFactory, enableHWA: true });
+				task = lib.getDocument({
+					url: `${assetUrl(path)}?v=${encodeURIComponent(version ?? '')}`,
+					rangeChunkSize: 256 * 1024,
+					BinaryDataFactory,
+					enableHWA: true
+				});
 				const loaded = await task.promise;
-				if (gone) {
-					void task.destroy();
-					return;
-				}
+				if (gone) return;
 				doc = loaded;
 				pages = loaded.numPages;
 				// Typed as null in pdf.js's declarations; it is a callback slot.
@@ -182,11 +186,13 @@
 			document.removeEventListener('visibilitychange', hidden);
 			// Closing or switching files still writes pending annotations
 			// (saveOnClose), then frees the worker's copy of the document.
-			const last = doc;
+			// A PDF still loading stops downloading right away.
+			const last = task;
 			closed = true;
+			if (!doc) void last?.destroy();
 			void saveOnClose().finally(() => {
 				viewer?.cleanup();
-				void last?.loadingTask.destroy();
+				void last?.destroy();
 			});
 		};
 	});

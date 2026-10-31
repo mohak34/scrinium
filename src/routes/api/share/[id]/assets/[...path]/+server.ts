@@ -9,7 +9,7 @@ import { checkProofToken, getShareSecret, shareImages } from '$lib/server/shares
 // image the note currently references (see shareImages), never an arbitrary
 // vault path. Password shares need the ?proof= token from a successful
 // unlock, so the password itself never lands in <img> URLs or server logs.
-export const GET: RequestHandler = async ({ params, url }) => {
+export const GET: RequestHandler = async ({ params, url, request }) => {
 	const secret = params.id ? getShareSecret(params.id) : undefined;
 	if (!secret) throw error(404, 'Share not found');
 	if (secret.password_hash && !checkProofToken(secret.id, url.searchParams.get('proof'))) {
@@ -24,5 +24,5 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	}
 	const path = shareImages(markdown, secret.note_path).paths[Number(params.path)];
 	if (!path || !isImagePath(path)) throw error(404, 'Not found');
-	return assetResponse(path);
+	return assetResponse(path, request);
 };

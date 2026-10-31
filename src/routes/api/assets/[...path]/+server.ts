@@ -3,9 +3,9 @@ import type { RequestHandler } from './$types';
 import { assetResponse, MAX_UPLOAD_BYTES } from '$lib/server/assets';
 import { replaceAssetStream } from '$lib/server/vault';
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, request }) => {
 	if (!params.path) throw error(400, 'Invalid path');
-	return assetResponse(params.path);
+	return assetResponse(params.path, request);
 };
 
 // Overwrites an existing file with the raw body (the PDF viewer saving

@@ -208,12 +208,20 @@ export async function replaceAssetStream(
 	}
 }
 
-export async function openAsset(relPath: string): Promise<{ stream: ReadStream; size: number; version: string }> {
+// A vault file's size and version, plus a way to stream all of it or a byte
+// range (both ends inclusive).
+export async function openAsset(
+	relPath: string
+): Promise<{ size: number; version: string; open: (start?: number, end?: number) => ReadStream }> {
 	const fullPath = safeResolve(relPath);
 	try {
 		const stat = await fs.stat(fullPath);
 		if (!stat.isFile()) throw error(404, 'Not found');
-		return { stream: createReadStream(fullPath), size: stat.size, version: fileVersion(stat) };
+		return {
+			size: stat.size,
+			version: fileVersion(stat),
+			open: (start, end) => createReadStream(fullPath, { start, end })
+		};
 	} catch (e: unknown) {
 		if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw error(404, 'Not found');
 		throw e;

@@ -350,8 +350,12 @@ State channels you will touch:
   annotations (`saveDocument`) and PUT back over the file after a 10 s
   pause, when the tab hides and on close; there is no sidecar store.
   A failed save on close retries for about a minute, then downloads the
-  annotated PDF so nothing is lost. The asset route caches for
-  an hour, so the pane always fetches with `no-store`.
+  annotated PDF so nothing is lost. The pane reads the version
+  with a HEAD and hands pdf.js the URL with `?v=<version>`: the asset route
+  serves byte ranges (the first pages show before the file is down) and
+  answers 412 once the file changed, so a pane never mixes two versions.
+  Asset reads carry an ETag and `no-cache`, so browsers revalidate (304)
+  instead of showing an overwritten file.
 - `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
   renderer (markdown-it plus the editor's math, code, callout, wikilink
   and tag parsing). Used by `/print` (NoteBar's Print / PDF) and the
