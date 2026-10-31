@@ -251,6 +251,11 @@ class TableWidget extends WidgetType {
 		// already moved the cursor into the cell.
 		div.addEventListener('click', (e) => {
 			if ((e.target as Element).closest('.cm-table-block a')) e.preventDefault();
+			// Enter or Space on a focused toolbar button: a click with no
+			// press before it (detail 0), so mousedown never saw it.
+			const btn = (e.target as Element).closest<HTMLElement>('[data-act]');
+			const t = btn && e.detail === 0 ? tableAt(view.state, view.posAtDOM(div)) : null;
+			if (btn && t) runAct(view, t, btn);
 		});
 		return div;
 	}
@@ -581,6 +586,26 @@ function linkHref(a: Element): string {
 	return href;
 }
 
+// A table toolbar button, pressed with the mouse or the keyboard.
+function runAct(view: EditorView, t: TableRange, btn: HTMLElement) {
+	const act = btn.dataset.act;
+	const r = btn.getBoundingClientRect();
+	if (act === 'sort') openSortMenu(view, t, r.left, r.bottom + 4);
+	else if (act === 'filter') openFilterMenu(view, t, r.left, r.bottom + 4);
+	else if (act === 'source') {
+		view.dispatch({ selection: { anchor: t.start }, effects: rawTableEffect.of(t.from) });
+		view.focus();
+	} else if (act === 'col') {
+		pendingClick = 'open';
+		atColumn(view, t, readTable(view.state, t).rows[0].length - 1, tableCommands.tableColRight)();
+		view.focus();
+	} else if (act === 'row') {
+		pendingClick = 'open';
+		rewriteTable(view, t, withRow(readTable(view.state, t)), Infinity, 0);
+		view.focus();
+	}
+}
+
 function onTableMouseDown(e: MouseEvent, view: EditorView, div: HTMLElement) {
 	if (e.button !== 0) return;
 	const target = e.target as Element;
@@ -605,24 +630,10 @@ function onTableMouseDown(e: MouseEvent, view: EditorView, div: HTMLElement) {
 		resizeColumn(e, view, div, t, Array.from(th?.parentElement?.children ?? []).indexOf(th as Element));
 		return;
 	}
-	const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
-	if (act) {
+	const btn = target.closest<HTMLElement>('[data-act]');
+	if (btn) {
 		e.preventDefault();
-		const r = target.closest('[data-act]')!.getBoundingClientRect();
-		if (act === 'sort') openSortMenu(view, t, r.left, r.bottom + 4);
-		else if (act === 'filter') openFilterMenu(view, t, r.left, r.bottom + 4);
-		else if (act === 'source') {
-			view.dispatch({ selection: { anchor: t.start }, effects: rawTableEffect.of(t.from) });
-			view.focus();
-		} else if (act === 'col') {
-			pendingClick = 'open';
-			atColumn(view, t, readTable(view.state, t).rows[0].length - 1, tableCommands.tableColRight)();
-			view.focus();
-		} else if (act === 'row') {
-			pendingClick = 'open';
-			rewriteTable(view, t, withRow(readTable(view.state, t)), Infinity, 0);
-			view.focus();
-		}
+		runAct(view, t, btn);
 		return;
 	}
 	// A wide table scrolls itself; a press below its client box is on
