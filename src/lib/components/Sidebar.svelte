@@ -26,6 +26,7 @@
 		downloadNote,
 		flushSave,
 		loadTree,
+		folderNoteCount,
 		type VaultEntry
 	} from '$lib/stores/vault';
 	import {
@@ -570,7 +571,9 @@
 		{/if}
 		<span class="pin-name">{pinName(p)}</span>
 		{#if isDir}
+			{@const n = folderNoteCount(entry, $pinnedPaths)}
 			<span class="sp"></span>
+			{#if n > 0}<span class="count">{n}</span>{/if}
 			<span class="material-symbols-outlined chev">{open ? 'expand_more' : 'chevron_right'}</span>
 		{/if}
 	</button>
@@ -943,6 +946,10 @@
 	.pin-row.active {
 		background: var(--accent-dim);
 		color: var(--text);
+	}
+	.pin-row .count {
+		font-size: var(--fs-xs);
+		color: var(--text-3);
 	}
 	.pin-name {
 		overflow: hidden;

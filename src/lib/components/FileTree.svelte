@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { VaultEntry } from '$lib/stores/vault';
-	import { activePath, fileOrder, inFileOrder, pinnedPaths } from '$lib/stores/vault';
+	import { activePath, fileOrder, inFileOrder, folderNoteCount, pinnedPaths } from '$lib/stores/vault';
 	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
 	import { drag } from './sidebarDrag';
 	import { isImagePath } from '$lib/attachments';
@@ -112,15 +112,6 @@
 	}
 	// Pinned notes live in the Pinned list only, so each note shows once.
 	const display = $derived(inFileOrder(entries, $fileOrder).filter((e) => !$pinnedPaths.includes(e.path)));
-
-	// Notes under a folder, shown as a quiet count on the folder row. Pinned
-	// notes are left out, matching what the folder shows when expanded.
-	function noteCount(e: VaultEntry): number {
-		let n = 0;
-		for (const c of e.children ?? [])
-			n += c.type === 'directory' ? noteCount(c) : c.name.endsWith('.md') && !$pinnedPaths.includes(c.path) ? 1 : 0;
-		return n;
-	}
 </script>
 
 <ul style="--depth: {depth}">
@@ -168,7 +159,7 @@
 							>{$collapsedDirs.has(entry.path) ? 'folder' : 'folder_open'}</span
 						>
 						<span class="file-label">{entry.name}</span>
-						{#if noteCount(entry) > 0}<span class="count">{noteCount(entry)}</span>{/if}
+						{#if folderNoteCount(entry, $pinnedPaths) > 0}<span class="count">{folderNoteCount(entry, $pinnedPaths)}</span>{/if}
 					</div>
 				{/if}
 				{#if !$collapsedDirs.has(entry.path)}

@@ -12,6 +12,15 @@ export interface VaultEntry {
 	children?: VaultEntry[];
 }
 
+// Notes under a folder, shown as a quiet count on its sidebar row. Pinned
+// notes are left out, matching what the folder shows when expanded.
+export function folderNoteCount(e: VaultEntry, pins: string[]): number {
+	let n = 0;
+	for (const c of e.children ?? [])
+		n += c.type === 'directory' ? folderNoteCount(c, pins) : c.name.endsWith('.md') && !pins.includes(c.path) ? 1 : 0;
+	return n;
+}
+
 export const tree = writable<VaultEntry[]>([]);
 export const activePath = writable<string | null>(null);
 export const saveStatus = writable<'idle' | 'saving' | 'saved' | 'error'>('idle');
