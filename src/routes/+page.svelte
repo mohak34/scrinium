@@ -69,7 +69,9 @@
 			show(path, content) {
 				if (get(activePath) !== path) return false;
 				currentContent = content;
-				showInPanels(content);
+				// A long note's panels (outline, tags, word count) fill in just
+				// after the editor has drawn it.
+				showInPanels(content, content.length > 100_000 ? 50 : 0);
 				panelReady = true;
 				editorRef?.setDoc(content, true);
 				return true;
@@ -501,7 +503,9 @@
 			</div>
 			<div class="rscroll">
 				{#if panelReady}
-					<Outline content={panelContent} onJump={(line) => editorRef?.gotoLine(line)} />
+					{#key $activePath}
+						<Outline content={panelContent} onJump={(line) => editorRef?.gotoLine(line)} />
+					{/key}
 					<Backlinks onSelect={openNote} />
 					<NoteTasks />
 					<Tags content={panelContent} />
