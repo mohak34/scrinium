@@ -391,10 +391,10 @@
 		}
 	}
 
-	async function openNote(path: string) {
-		// Finish saving the current note before swapping, so the debounce never
-		// drops edits made right before switching.
-		await flushSave();
+	// Unsaved text is kept per note, so the switch starts saving the note
+	// being left without waiting for it.
+	function openNote(path: string) {
+		void flushSave();
 		openTab(path);
 	}
 

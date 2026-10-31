@@ -173,8 +173,8 @@ export async function loadNote(path: string): Promise<string> {
 }
 
 // The server copy of a note with its version (a hash of the text).
-async function fetchNote(path: string): Promise<{ content: string; version: string | null }> {
-	const res = await fetch(`/api/notes/${encPath(path)}`);
+async function fetchNote(path: string, signal?: AbortSignal): Promise<{ content: string; version: string | null }> {
+	const res = await fetch(`/api/notes/${encPath(path)}`, { signal });
 	if (!res.ok) throw new Error('Failed to load note');
 	return { content: await res.text(), version: res.headers.get('X-Note-Version') };
 }
@@ -212,6 +212,15 @@ let retryMs = 0;
 // it as "<name> (conflict).md" and puts text for a note gone elsewhere in
 // such a copy (saveNote in server/vault.ts). Notes without one overwrite.
 const versions = new Map<string, string>();
+// What showNote checks to trust a read made outside the queue: `seq` counts
+// finished writes and changes, `writtenAt` is the count when each note's last
+// write finished, `changedAt` the same for the last queued change (a rename
+// or rewrite can touch any note), `changing` how many are queued or running.
+let seq = 0;
+const writtenAt = new Map<string, number>();
+const writing = new Set<string>();
+let changedAt = -1;
+let changing = 0;
 
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 	const run = queue.then(fn);
@@ -241,11 +250,16 @@ async function writePending(keepalive = false): Promise<boolean> {
 		if (content === undefined) continue;
 		pending.delete(path);
 		let ok = false;
+		writing.add(path);
 		try {
 			const res = await putNote(path, content, keepalive && content.length < 60000);
 			ok = res.ok;
 			if (ok) await saved(path, res);
-		} catch {}
+		} catch {
+		} finally {
+			writing.delete(path);
+			writtenAt.set(path, ++seq);
+		}
 		if (!ok) {
 			failed = true;
 			if (!pending.has(path)) pending.set(path, content);
@@ -328,7 +342,11 @@ export function flushSave(keepalive = false): Promise<boolean> {
 // acts on a stale server copy. fn must not call flushSave (it would wait on
 // itself).
 function afterSaved<T>(fn: () => Promise<T>): Promise<T | null> {
-	return enqueue(async () => ((await writePending()) ? fn() : null));
+	changing++;
+	return enqueue(async () => ((await writePending()) ? fn() : null)).finally(() => {
+		changing--;
+		changedAt = ++seq;
+	});
 }
 
 // Pending text follows a rename so a late save never recreates the old file,
@@ -390,34 +408,60 @@ export function hideNote() {
 }
 
 // Load a note into the editor: its unsaved text when a save failed, else
-// the server copy. Runs in the queue, so no write of the note is in flight
-// and text that failed to save is back in pending before it is read. Skipped
-// when the user moved on before it ran. A failed load of the note still
-// selected switches back to the note the editor holds (or none), so the
-// chrome never names a note whose keystrokes save elsewhere. Never rejects.
-export function showNote(path: string): Promise<void> {
+// the server copy. A note with nothing pending or being written, while no
+// rename/delete/rewrite is queued, is fetched right away, so a switch never
+// waits behind saves of the note being left; anything that touched notes
+// while that read was out sends it through the queue instead, where no
+// write of the note is in flight and text that failed to save is back in
+// pending before it is read. Skipped when the user moved on, and a read the
+// user left is aborted. A failed load of the note still selected switches
+// back to the note the editor holds (or none), so the chrome never names a
+// note whose keystrokes save elsewhere. Never rejects.
+let reading: AbortController | undefined;
+export async function showNote(path: string): Promise<void> {
+	reading?.abort();
+	const ctrl = (reading = new AbortController());
+	const at = seq;
+	const quiet = () => changing === 0 && changedAt <= at && (writtenAt.get(path) ?? -1) <= at;
+	if (!pending.has(path) && !writing.has(path) && quiet()) {
+		try {
+			const note = await fetchNote(path, ctrl.signal);
+			if (get(activePath) !== path) return;
+			if (!pending.has(path) && !writing.has(path) && quiet()) {
+				if (note.version) versions.set(path, note.version);
+				display(path, note.content);
+				return;
+			}
+		} catch (e) {
+			if (ctrl.signal.aborted || get(activePath) !== path) return;
+		}
+	}
 	return enqueue(async () => {
 		if (get(activePath) !== path) return;
 		await writePending();
 		let content = pending.get(path);
 		if (content === undefined) {
 			try {
-				const note = await fetchNote(path);
+				const note = await fetchNote(path, ctrl.signal);
 				content = note.content;
 				if (note.version) versions.set(path, note.version);
 			} catch (e) {
+				if (ctrl.signal.aborted || get(activePath) !== path) return;
 				console.error(e);
-				if (get(activePath) !== path) return;
 				if (shown) openTab(shown);
 				else activePath.set(null);
 				return;
 			}
 		}
-		if (!editorHost?.show(path, content)) return;
-		shown = path;
-		if (pendingHeading?.path === path) editorHost.reveal(pendingHeading.heading);
-		pendingHeading = null;
+		if (get(activePath) === path) display(path, content);
 	});
+}
+
+function display(path: string, content: string) {
+	if (!editorHost?.show(path, content)) return;
+	shown = path;
+	if (pendingHeading?.path === path) editorHost.reveal(pendingHeading.heading);
+	pendingHeading = null;
 }
 
 // Pick up a change made to the open note elsewhere (an agent, the phone,

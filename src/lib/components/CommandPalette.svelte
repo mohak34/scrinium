@@ -40,7 +40,7 @@
 	}
 
 	async function openNote(path: string) {
-		await flushSave();
+		void flushSave();
 		openTab(path);
 		if (page.url.pathname !== '/') await goto('/');
 	}

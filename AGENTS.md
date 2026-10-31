@@ -122,8 +122,12 @@ Scrinium is small, but there are a few footguns specific to it.
    server-derived copy over it. `flushSave()` resolves false on a failed
    write - anything else that reads the server copy must check it. The editor is
    one view for every note: a note switch goes through `showNote`, which
-   loads in the queue and prefers the note's unsaved text over the server
-   copy (so a failed save never reopens stale), then `setDoc(text, true)`,
+   prefers the note's unsaved text over the server copy (so a failed save
+   never reopens stale). A note with nothing pending or being written is
+   read right away, outside the queue, so a switch never waits on saves of
+   the note being left; if any write of it or any queued change finished
+   or is queued meanwhile (`writtenAt`, `changedAt`, `changing`), the read
+   reruns in the queue. Then `setDoc(text, true)`,
    which also drops undo history - never swap docs another way. Keystrokes
    save to `shownNote()`, which lags `activePath` until the load lands. A
    load the user already left is skipped; a failed load of the selected
