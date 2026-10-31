@@ -129,7 +129,7 @@ function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	if (pins) {
 		const project = pins.dataset.project;
 		const pinnable =
-			(source.fromPins || source.kind === 'directory' || source.path.endsWith('.md')) &&
+			(source.fromPins || source.kind === 'directory' || /\.md$/i.test(source.path)) &&
 			(project === undefined || project === source.project);
 		const reorder = pinnable ? pinTarget(source, pins, y, project === undefined) : null;
 		// A pinned folder row moves into the folder; only a thin strip at its

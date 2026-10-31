@@ -11,7 +11,7 @@
 				const sub = count(e.children ?? []);
 				notes += sub.notes;
 				folders += sub.folders;
-			} else if (e.name.endsWith('.md')) notes++;
+			} else if (/\.md$/i.test(e.name)) notes++;
 		}
 		return { notes, folders };
 	}

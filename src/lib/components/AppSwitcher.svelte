@@ -26,7 +26,7 @@
 		let n = 0;
 		for (const e of entries) {
 			if (e.type === 'directory') n += countNotes(e.children ?? []);
-			else if (e.name.endsWith('.md')) n++;
+			else if (/\.md$/i.test(e.name)) n++;
 		}
 		return n;
 	}

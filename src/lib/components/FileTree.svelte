@@ -190,7 +190,7 @@
 					}}
 					onblur={() => commitRename(entry)}
 				/>
-			{:else if entry.name.endsWith('.md')}
+			{:else if /\.md$/i.test(entry.name)}
 				<button
 					class="file"
 					class:active={$activePath === entry.path}

@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	// and delete find it by prefix.
 	const path = typeof body?.path === 'string' ? vaultRel(body.path) : '';
 	const password = body?.password === undefined ? undefined : String(body.password);
-	if (!path || !path.endsWith('.md')) throw error(400, 'Only markdown notes can be shared');
+	if (!path || !/\.md$/i.test(path)) throw error(400, 'Only markdown notes can be shared');
 	// Archived and trashed notes are put away; their links were dropped.
 	if (isHiddenPath(path)) throw error(400, 'Archived and trashed notes cannot be shared');
 	if (password !== undefined && (password.length < 4 || password.length > 200)) {

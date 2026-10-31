@@ -17,7 +17,7 @@ export interface VaultEntry {
 export function folderNoteCount(e: VaultEntry, pins: string[]): number {
 	let n = 0;
 	for (const c of e.children ?? [])
-		n += c.type === 'directory' ? folderNoteCount(c, pins) : c.name.endsWith('.md') && !pins.includes(c.path) ? 1 : 0;
+		n += c.type === 'directory' ? folderNoteCount(c, pins) : /\.md$/i.test(c.name) && !pins.includes(c.path) ? 1 : 0;
 	return n;
 }
 
@@ -459,11 +459,11 @@ let pendingTitleSync: { path: string; title: string } | null = null;
 let titleSyncTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function scheduleTitleSync(path: string, content: string) {
-	if (!path.endsWith('.md')) return;
+	if (!/\.md$/i.test(path)) return;
 	const title = extractTitle(content);
 	// No usable title, or it already matches the filename: drop any rename
 	// queued for an earlier heading so a reverted edit is never applied.
-	const base = path.split('/').pop()!.replace(/\.md$/, '');
+	const base = path.split('/').pop()!.replace(/\.md$/i, '');
 	const sanitized = title && sanitizeTitleForFilename(title);
 	if (!sanitized || sanitized === base) {
 		if (pendingTitleSync?.path === path) cancelTitleSync();
@@ -773,7 +773,7 @@ export async function restoreTrash(trashName: string): Promise<string | null> {
 	const restoredPath = typeof data?.path === 'string' ? data.path : null;
 	await loadTree();
 	await loadTrash();
-	if (restoredPath?.endsWith('.md')) openTab(restoredPath);
+	if (/\.md$/i.test(restoredPath ?? '')) openTab(restoredPath);
 	return restoredPath;
 }
 
@@ -807,7 +807,7 @@ export async function unarchive(name: string): Promise<string | null> {
 	const path: unknown = (await res.json().catch(() => null))?.path;
 	await Promise.all([loadTree(), loadArchive()]);
 	if (typeof path !== 'string') return null;
-	if (path.endsWith('.md')) openTab(path);
+	if (/\.md$/i.test(path)) openTab(path);
 	return path;
 }
 

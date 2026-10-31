@@ -191,7 +191,7 @@
 	function sanitizeName(raw: string, kind: 'note' | 'folder' | 'file'): string | null {
 		let name = raw.trim().replace(/[\\/:*?"<>|]/g, '');
 		if (!name || name === '.' || name === '..' || name.startsWith('.')) return null;
-		if (kind === 'note' && !name.endsWith('.md')) name += '.md';
+		if (kind === 'note' && !/\.md$/i.test(name)) name += '.md';
 		return name;
 	}
 
@@ -210,7 +210,7 @@
 	function uniquePath(parent: string | null, name: string): string {
 		let candidate = joinPath(parent, name);
 		if (!pathExists(candidate, $tree)) return candidate;
-		const ext = name.endsWith('.md') ? '.md' : '';
+		const ext = /\.md$/i.test(name) ? name.slice(-3) : '';
 		const base = ext ? name.slice(0, -3) : name;
 		for (let i = 1; i < 100; i++) {
 			const nextName = `${base} (${i})${ext}`;
@@ -244,7 +244,7 @@
 	async function commitRename(path: string, rawName: string) {
 		// A markdown note keeps its `Path.md` extension even if the user types a
 		// bare name; folders and assets keep whatever they were given.
-		const kind = path.endsWith('.md') ? 'note' : 'file';
+		const kind = /\.md$/i.test(path) ? 'note' : 'file';
 		const name = sanitizeName(rawName, kind);
 		if (name) {
 			const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
@@ -373,7 +373,7 @@
 	// list can be dropped on without anything appearing in the tree.
 	const canPin = (key?: ProjectKey) =>
 		!!$drag &&
-		($drag.source.fromPins || $drag.source.kind === 'directory' || $drag.source.path.endsWith('.md')) &&
+		($drag.source.fromPins || $drag.source.kind === 'directory' || /\.md$/i.test($drag.source.path)) &&
 		(key === undefined || ($drag.source.project || null) === key);
 	// What releasing would do, shown on the lifted row.
 	const dropLabel = $derived.by(() => {
@@ -393,7 +393,7 @@
 			? ''
 			: $drag.source.kind === 'directory'
 				? 'folder'
-				: $drag.source.path.endsWith('.md')
+				: /\.md$/i.test($drag.source.path)
 					? 'description'
 					: 'draft'
 	);
@@ -402,7 +402,7 @@
 		let n = 0;
 		for (const e of entries) {
 			if (e.type === 'directory') n += countNotes(e.children ?? []);
-			else if (e.name.endsWith('.md')) n++;
+			else if (/\.md$/i.test(e.name)) n++;
 		}
 		return n;
 	}
@@ -500,7 +500,7 @@
 		if (entry.type === 'file') {
 			// Notes download as plain text; other assets open in the preview
 			// overlay instead, so only .md entries get pin and export rows.
-			if (!entry.path.endsWith('.md')) return [...rename, ...removal];
+			if (!/\.md$/i.test(entry.path)) return [...rename, ...removal];
 			return [
 				...rename,
 				...pinItems(entry.path),

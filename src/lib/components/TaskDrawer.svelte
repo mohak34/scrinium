@@ -164,7 +164,7 @@
 		const out: string[] = [];
 		const walk = (list: VaultEntry[]) => {
 			for (const e of list) {
-				if (e.type === 'file' && e.path.endsWith('.md')) out.push(e.path);
+				if (e.type === 'file' && /\.md$/i.test(e.path)) out.push(e.path);
 				else if (e.children) walk(e.children);
 			}
 		};

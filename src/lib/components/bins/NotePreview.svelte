@@ -17,7 +17,7 @@
 	$effect(() => {
 		const p = path;
 		const r = renderPath;
-		if (!p.endsWith('.md')) {
+		if (!/\.md$/i.test(p)) {
 			status = 'none';
 			return;
 		}
