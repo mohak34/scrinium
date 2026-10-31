@@ -64,15 +64,24 @@ export function stripFrontmatter(text: string): string {
 	return text.slice(parseFrontmatter(text)?.bodyStart ?? 0);
 }
 
-/** First `# ` heading at or after `from`, with its line index. */
+/** First `# ` heading at or after `from` outside code fences, with its line index. */
 function firstHeading(text: string, from: number): { line: number; title: string } | null {
 	let start = 0;
+	let fence = '';
 	for (let i = 0; start <= text.length; i++) {
 		const nl = text.indexOf('\n', start);
 		const end = nl < 0 ? text.length : nl;
 		if (end >= from) {
-			const m = text.slice(start, end).match(/^#\s+(.+?)\s*$/);
-			if (m && m[1].trim()) return { line: i, title: m[1].trim() };
+			const line = text.slice(start, end);
+			const f = line.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
+			if (fence) {
+				if (f && f[0] === fence[0] && f.length >= fence.length && !line.trim().slice(f.length)) fence = '';
+			} else if (f) {
+				fence = f;
+			} else {
+				const m = line.match(/^#\s+(.+?)\s*$/);
+				if (m && m[1].trim()) return { line: i, title: m[1].trim() };
+			}
 		}
 		if (nl < 0) break;
 		start = nl + 1;
@@ -100,9 +109,9 @@ export function effectiveTitle(content: string, fallback: string): string {
 	return firstHeading(content, fm?.bodyStart ?? 0)?.title.slice(0, 200) ?? fallback;
 }
 
-/** Bare YAML scalar unless quoting is required (`#`, `:`, edges...). */
+/** Bare YAML scalar unless quoting is required (`#`, `:`, edges, or a word YAML reads as a non-string like `true` or `12`). */
 function yamlScalar(s: string): string {
-	if (/^[A-Za-z0-9 _\-/().]+$/.test(s) && !/^\s|\s$/.test(s)) return s;
+	if (/^[A-Za-z0-9 _\-/().]+$/.test(s) && !/^\s|\s$/.test(s) && typeof parseDocument(s).toJS() === 'string') return s;
 	return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
@@ -124,7 +133,8 @@ export function setEffectiveTitle(content: string, newTitle: string): string | n
 			return lines.join('\n');
 		}
 		const fmLines = fm.raw.split('\n');
-		const idx = fmLines.findIndex((l) => /^\s*title\s*:/.test(l));
+		// The top-level key only, never a nested `author.title:`.
+		const idx = fmLines.findIndex((l) => /^title\s*:/.test(l));
 		if (idx === -1) return null;
 		// A folded or multi-line title continues on the lines indented
 		// deeper than its key; they go with it.
