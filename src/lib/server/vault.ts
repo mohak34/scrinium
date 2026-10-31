@@ -468,6 +468,23 @@ async function readBinIndex(bin: Bin): Promise<BinIndex> {
 	}
 }
 
+// Books an item into a bin's index, then moves it there. A failed index
+// write moves nothing, so an item never sits in a bin without its original
+// path; a failed move takes the entry back out (a leftover entry for a
+// missing item is ignored anyway).
+async function moveIntoBin(bin: Bin, src: string, name: string, meta: BinIndex[string]): Promise<void> {
+	const idx = await readBinIndex(bin);
+	idx[name] = meta;
+	await writeBinIndex(bin, idx);
+	try {
+		await fs.rename(src, path.join(BIN_DIRS[bin], name));
+	} catch (e) {
+		delete idx[name];
+		await writeBinIndex(bin, idx).catch(() => {});
+		throw e;
+	}
+}
+
 async function writeBinIndex(bin: Bin, idx: BinIndex): Promise<void> {
 	await fs.mkdir(BIN_DIRS[bin], { recursive: true });
 	const tmp = `${indexFile(bin)}.tmp-${Date.now()}`;
@@ -499,14 +516,8 @@ export function moveToBin(bin: Bin, relPath: string): Promise<BinEntry> {
 		if (!st) throw error(404, 'Not found');
 		await fs.mkdir(BIN_DIRS[bin], { recursive: true });
 		const name = await freeBinName(bin, path.basename(fullPath));
-		await fs.rename(fullPath, path.join(BIN_DIRS[bin], name));
 		const entry = { name, originalPath: rel, movedAt: Date.now(), isDir: st.isDirectory() };
-		// Best-effort: without its entry an item restores to the vault root.
-		try {
-			const idx = await readBinIndex(bin);
-			idx[name] = { originalPath: rel, movedAt: entry.movedAt, isDir: entry.isDir };
-			await writeBinIndex(bin, idx);
-		} catch {}
+		await moveIntoBin(bin, fullPath, name, { originalPath: rel, movedAt: entry.movedAt, isDir: entry.isDir });
 		return entry;
 	});
 }
@@ -634,15 +645,10 @@ export function moveBetweenBins(from: Bin, to: Bin, name: string): Promise<BinEn
 		const originalPath = fromIdx[name]?.originalPath ?? name.replace(/^\d+-/, '');
 		await fs.mkdir(BIN_DIRS[to], { recursive: true });
 		const dest = await freeBinName(to, path.basename(originalPath) || name);
-		await fs.rename(src, path.join(BIN_DIRS[to], dest));
 		const entry = { name: dest, originalPath, movedAt: Date.now(), isDir: st.isDirectory() };
-		try {
-			delete fromIdx[name];
-			await writeBinIndex(from, fromIdx);
-			const toIdx = await readBinIndex(to);
-			toIdx[dest] = { originalPath, movedAt: entry.movedAt, isDir: entry.isDir };
-			await writeBinIndex(to, toIdx);
-		} catch {}
+		await moveIntoBin(to, src, dest, { originalPath, movedAt: entry.movedAt, isDir: entry.isDir });
+		delete fromIdx[name];
+		await writeBinIndex(from, fromIdx).catch(() => {});
 		return entry;
 	});
 }
