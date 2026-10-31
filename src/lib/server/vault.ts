@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
-import { createReadStream, createWriteStream, statSync, type ReadStream, type Stats } from 'node:fs';
+import { createReadStream, createWriteStream, realpathSync, statSync, type ReadStream, type Stats } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
@@ -21,16 +21,30 @@ export interface VaultEntry {
 	children?: VaultEntry[];
 }
 
+const inside = (root: string, p: string) => p === root || p.startsWith(root + path.sep);
+
+// The real location of the deepest part of p that exists, so a symlink
+// anywhere along it is followed (a path being created exists only in part).
+function realExisting(p: string): string {
+	try {
+		return realpathSync(p);
+	} catch {
+		const up = path.dirname(p);
+		return up === p ? p : path.join(realExisting(up), path.basename(p));
+	}
+}
+
 /**
  * Resolves a relative path from the client against the vault root and
- * guarantees the result stays inside VAULT_DIR. Throws a 400 otherwise.
+ * guarantees the result stays inside VAULT_DIR, symlinks followed: a link
+ * in the vault pointing out of it is refused. Throws a 400 otherwise.
  * This is the ONLY function that should turn client-provided paths into
  * real filesystem paths - never build fs paths anywhere else.
  */
 export function safeResolve(relPath: string): string {
 	const cleaned = relPath.replace(/^\/+/, '');
 	const resolved = path.resolve(VAULT_DIR, cleaned);
-	if (resolved !== VAULT_DIR && !resolved.startsWith(VAULT_DIR + path.sep)) {
+	if (!inside(VAULT_DIR, resolved) || !inside(realExisting(VAULT_DIR), realExisting(resolved))) {
 		throw error(400, 'Invalid path');
 	}
 	return resolved;
@@ -539,7 +553,12 @@ export interface Restored {
 export async function readNotesUnder(rel: string): Promise<{ path: string; content: string }[]> {
 	const paths: string[] = [];
 	const walk = async (at: string): Promise<void> => {
-		const full = safeResolve(at);
+		let full: string;
+		try {
+			full = safeResolve(at);
+		} catch {
+			return; // a symlink out of the vault
+		}
 		const st = await fs.stat(full).catch(() => null);
 		if (!st?.isDirectory()) {
 			if (st && at.toLowerCase().endsWith('.md')) paths.push(at);
@@ -676,7 +695,7 @@ export async function manifestNotes(): Promise<NoteManifestEntry[]> {
 			const childRelPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
 			if (dirent.isDirectory()) {
 				await walk(childRelPath);
-			} else if (dirent.name.endsWith('.md')) {
+			} else if (dirent.isFile() && dirent.name.endsWith('.md')) {
 				const st = await fs.stat(path.join(fullPath, dirent.name));
 				entries.push({
 					path: childRelPath,
