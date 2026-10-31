@@ -657,24 +657,26 @@ function followMove(oldPath: string, newPath: string) {
 // Move a note or folder out of the vault: to the trash (DELETE) or the
 // archive. Runs in the save queue, so the moved copy has every keystroke
 // saved first; a failed save keeps the note and its queued text. Text
-// typed while the request is in flight is dropped on success (the note is
-// gone; saving it would recreate the file) and saved to the still-existing
-// note on failure.
+// typed while the request is in flight stays queued with its version: on
+// success the server finds the note gone and keeps that text as a conflict
+// copy (never the note itself), on failure it saves to the note.
 function putAway(path: string, send: () => Promise<Response>): Promise<boolean> {
 	return afterSaved(async () => {
 		const res = await send().catch(() => null);
 		if (!res?.ok) return false;
-		forget(path);
+		forget(path, true);
 		return true;
 	}).then((ok) => !!ok);
 }
 
 // Drop a note or folder that left the vault from the editor, tabs, pins
-// and the save queue.
-function forget(path: string) {
+// and the save queue. keepTyped leaves queued text that has a version, so
+// its save lands in a conflict copy; text without one would recreate the
+// note and is dropped.
+function forget(path: string, keepTyped = false) {
 	const under = (p: string) => p === path || p.startsWith(path + '/');
-	for (const p of [...pending.keys()]) if (under(p)) pending.delete(p);
-	for (const p of [...versions.keys()]) if (under(p)) versions.delete(p);
+	for (const p of [...pending.keys()]) if (under(p) && !(keepTyped && versions.has(p))) pending.delete(p);
+	for (const p of [...versions.keys()]) if (under(p) && !pending.has(p)) versions.delete(p);
 	if (shown && under(shown)) shown = null;
 	const current = get(activePath);
 	if (current && under(current)) activePath.set(null);
