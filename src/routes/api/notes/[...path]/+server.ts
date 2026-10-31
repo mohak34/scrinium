@@ -39,11 +39,15 @@ function writable(path: string | undefined): string {
 }
 
 // Every read and write answers with the note's version (X-Note-Version), a
-// hash of its text; the browser sends it back as If-Match.
-export const GET: RequestHandler = async ({ params }) => {
+// hash of its text; the browser sends it back as If-Match. The version is
+// also the ETag, so reopening an unchanged note is a 304 from the cache.
+export const GET: RequestHandler = async ({ params, request }) => {
 	if (!params.path) throw error(400, 'Invalid path');
 	const content = await readNote(params.path);
-	return text(content, { headers: { 'X-Note-Version': noteVersion(content) } });
+	const version = noteVersion(content);
+	const headers = { 'X-Note-Version': version, ETag: version, 'Cache-Control': 'private, no-cache' };
+	if (request.headers.get('if-none-match') === headers.ETag) return new Response(null, { status: 304, headers });
+	return text(content, { headers });
 };
 
 function indexed(path: string, content: string) {
