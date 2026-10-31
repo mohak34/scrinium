@@ -22,12 +22,13 @@ export const GET: RequestHandler = async ({ url }) => {
 	const links = wikiResolver(files.map((f) => f.path));
 	const linked: Backlink[] = [];
 	// Any link to the target spells its name, maybe percent-encoded, so a
-	// note without it is skipped before the full parse.
+	// note without it is skipped before the full parse. An entity or
+	// backslash escape can hide the name, so those notes are parsed.
 	const name = (p: string) => (p.split('/').pop() ?? p).replace(/\.md$/i, '').toLowerCase();
 	const own = name(target);
 	const mayLink = (text: string) => {
 		const low = text.toLowerCase();
-		if (low.includes(own)) return true;
+		if (low.includes(own) || /[&\\]/.test(low)) return true;
 		if (!low.includes('%')) return false;
 		try {
 			return decodeURIComponent(low).includes(own);

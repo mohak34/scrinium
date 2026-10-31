@@ -392,6 +392,9 @@ export async function renamePath(
 			const mayLink = (text: string) => {
 				if (names.size > 50) return true;
 				let low = text.toLowerCase();
+				// Entities and backslash escapes can spell a name without
+				// its plain text; those notes take the full parse.
+				if (/[&\\]/.test(low)) return true;
 				if (low.includes('%')) {
 					try {
 						low += '\n' + decodeURIComponent(low);
