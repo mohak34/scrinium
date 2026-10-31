@@ -31,3 +31,7 @@ export const searchTagRequest = writable<string | null>(null);
 // owns the inline rename input. The sidebar consumes it and resets it to null.
 export const renameRequest = writable<{ path: string } | null>(null);
 
+// Open the icon and color picker for this project folder (the palette sets
+// it, the sidebar owns the picker and resets it to null).
+export const styleRequest = writable<string | null>(null);
+

@@ -35,7 +35,8 @@
 	import { settings } from '$lib/stores/settings';
 	import { headingLine } from '$lib/editor/outline';
 	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
-	import { createRequest, focusSearchRequest, renameRequest, startCreate } from '$lib/stores/actions';
+	import { createRequest, focusSearchRequest, renameRequest, startCreate, styleRequest } from '$lib/stores/actions';
+	import { projectOf } from '$lib/projects';
 	import { paletteOpen, leaderPending, usePageCommands, isTyping } from '$lib/stores/palette';
 	import { goto } from '$app/navigation';
 	import { projects } from '$lib/stores/tasks';
@@ -291,6 +292,14 @@
 				run: withNote((path) => void navigator.clipboard?.writeText(path).catch(() => {}))
 			},
 			{ label: 'Close tab', hint: 'Close the open note', leader: 'x', run: withNote(closeTab) },
+			{
+				label: 'Project icon and color',
+				hint: "Style the open note's project",
+				run: withNote((path) => {
+					const project = projectOf(path, new Set(get(projects).map((p) => p.path)));
+					if (project) styleRequest.set(project);
+				})
+			},
 			{ label: 'Close PDF', hint: 'Close the PDF beside the editor', run: () => pdfPath.set(null) },
 			{ label: 'Next tab', hint: ']', run: () => stepTab(1) },
 			{ label: 'Previous tab', hint: '[', run: () => stepTab(-1) },

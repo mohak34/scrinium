@@ -57,7 +57,7 @@
 	} from '$lib/projects';
 	import { drag, beginDrag, type DragSource, type DropTarget } from './sidebarDrag';
 	import { goto } from '$app/navigation';
-	import { createRequest, renameRequest } from '$lib/stores/actions';
+	import { createRequest, renameRequest, styleRequest } from '$lib/stores/actions';
 	import AppSwitcher from './AppSwitcher.svelte';
 	import AppActions from './AppActions.svelte';
 
@@ -121,9 +121,17 @@
 			expandDir(projectOf(req.path, projectSet) ?? '');
 			renameTarget = { path: req.path };
 		});
+		// Opens under the project's header when it is on screen.
+		const unsubStyle = styleRequest.subscribe((path) => {
+			if (!path) return;
+			styleRequest.set(null);
+			const r = document.querySelector(`[data-section="${CSS.escape(path)}"]`)?.getBoundingClientRect();
+			stylePicker = { x: r ? r.left + 12 : 60, y: r ? r.bottom + 4 : 80, path };
+		});
 		return () => {
 			unsubCreate();
 			unsubRename();
+			unsubStyle();
 		};
 	});
 
@@ -699,6 +707,7 @@
 						data-drop-pins={canPin(s.key) || undefined}
 						data-pin-here={canPin(s.key) || undefined}
 						data-project={canPin(s.key) ? (s.key ?? '') : undefined}
+						data-section={s.key ?? ''}
 						role="button"
 						tabindex="0"
 						title={folded ? 'Expand' : 'Collapse'}
