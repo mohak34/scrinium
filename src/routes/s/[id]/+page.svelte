@@ -277,6 +277,10 @@
 		color: #f19494 !important;
 	}
 	.bar {
+		position: sticky;
+		top: 0;
+		z-index: 20;
+		background: #000;
 		width: 100%;
 		display: flex;
 		align-items: center;
@@ -446,7 +450,7 @@
 		}
 	}
 	.paper :global(:is(h1, h2, h3, h4, h5, h6)[id]) {
-		scroll-margin-top: 16px;
+		scroll-margin-top: 80px;
 	}
 	.zoom-sep {
 		width: 1px;
