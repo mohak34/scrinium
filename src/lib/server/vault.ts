@@ -293,7 +293,7 @@ export async function renamePath(
 	oldRelPath: string,
 	newRelPath: string,
 	book: () => void
-): Promise<{ path: string; content: string }[]> {
+): Promise<{ path: string; content: string; before: string }[]> {
 	const from = safeResolve(oldRelPath);
 	const to = safeResolve(newRelPath);
 	if (from === to) return [];
@@ -305,13 +305,16 @@ export async function renamePath(
 		await fs.rename(from, to);
 		const [was, now] = [vaultRel(oldRelPath), vaultRel(newRelPath)];
 		book();
-		const changed = new Map<string, string>();
+		// Each rewritten note's text, and its text before the move touched it.
+		const changed = new Map<string, { content: string; before: string }>();
+		const change = (p: string, content: string, before: string) =>
+			changed.set(p, { content, before: changed.get(p)?.before ?? before });
 		try {
 			const text = /\.md$/i.test(now) ? await fs.readFile(to, 'utf-8').catch(() => null) : null;
 			const titled = text === null ? text : retitle(text, was, now);
-			if (titled !== null && titled !== text) {
+			if (text !== null && titled !== null && titled !== text) {
 				await writeAtomic(to, titled);
-				changed.set(now, titled);
+				change(now, titled, text);
 			}
 			const moved = movedBy(was, now);
 			const back = movedBy(now, was);
@@ -361,14 +364,14 @@ export async function renamePath(
 				const out = relinkNote(n.content, n.from, n.to, n.moved, wiki);
 				if (out === n.content) continue;
 				await writeAtomic(safeResolve(n.path), out).then(
-					() => changed.set(n.path, out),
+					() => change(n.path, out, n.content),
 					(e) => console.error(`relink ${n.path}:`, e)
 				);
 			}
 		} catch (e) {
 			console.error('relink after move:', e);
 		}
-		return [...changed].map(([path, content]) => ({ path, content }));
+		return [...changed].map(([path, c]) => ({ path, ...c }));
 	});
 }
 

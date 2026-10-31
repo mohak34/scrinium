@@ -610,12 +610,19 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 			body: JSON.stringify({ newPath })
 		}).catch(() => null);
 		if (!res?.ok) return false;
-		const body: { versions?: Record<string, string> } | null = await res.json().catch(() => null);
+		const body: { versions?: Record<string, string>; previous?: Record<string, string> } | null = await res
+			.json()
+			.catch(() => null);
 		for (const [p, v] of [...versions]) {
 			versions.delete(p);
 			versions.set(moved(p), v);
 		}
-		for (const [p, v] of Object.entries(body?.versions ?? {})) versions.set(p, v);
+		// A note this tab held an older copy of keeps that version, so its
+		// next save is kept beside the other change instead of over it.
+		for (const [p, v] of Object.entries(body?.versions ?? {})) {
+			const held = versions.get(p);
+			if (held === undefined || held === body?.previous?.[p]) versions.set(p, v);
+		}
 		// A heading-to-filename rename queued for the old path is stale now.
 		if (pendingTitleSync && moved(pendingTitleSync.path) !== pendingTitleSync.path) cancelTitleSync();
 		remapPending(oldPath, newPath, wiki);

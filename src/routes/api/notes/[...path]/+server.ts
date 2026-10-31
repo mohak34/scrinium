@@ -113,10 +113,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (!isHiddenPath(n.path)) upsertNoteMeta(n.path, title, Date.now());
 		indexNote(n.path, title, n.content);
 	}
-	// Versions let the browser keep saving the notes the move rewrote.
+	// Versions let the browser keep saving the notes the move rewrote; it
+	// takes one only over the `previous` version it holds, so text it never
+	// saw (changed elsewhere before the move) still ends in a conflict copy.
 	return json({
 		relinked: relinked.map((n) => n.path),
-		versions: Object.fromEntries(relinked.map((n) => [n.path, noteVersion(n.content)]))
+		versions: Object.fromEntries(relinked.map((n) => [n.path, noteVersion(n.content)])),
+		previous: Object.fromEntries(relinked.map((n) => [n.path, noteVersion(n.before)]))
 	});
 };
 
