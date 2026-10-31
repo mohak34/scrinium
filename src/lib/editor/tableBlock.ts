@@ -222,10 +222,7 @@ class TableWidget extends WidgetType {
 		return this.rendered;
 	}
 	get cached(): boolean {
-		return (
-			this.rendered !== undefined ||
-			(!hasView(this.meta) && htmlCache.has(tableKey(this.source, this.refs, this.noteDir)))
-		);
+		return this.rendered !== undefined || htmlCache.has(tableKey(this.shownSource, this.refs, this.noteDir));
 	}
 	eq(other: TableWidget) {
 		return (
@@ -279,9 +276,18 @@ class TableWidget extends WidgetType {
 			});
 			return;
 		}
+		if (!html) {
+			// Not exactly one table to the renderer: the field rebuilds with
+			// this table as source lines (the '' is cached).
+			div.textContent = this.source;
+			void Promise.resolve().then(() => {
+				if (div.isConnected) view.dispatch({ effects: rendererReady.of(null) });
+			});
+			return;
+		}
 		div.innerHTML = html;
 		orders.set(div, this.order);
-		if (html) this.dress(div, view);
+		this.dress(div, view);
 	}
 	/** Toolbar, header icons, typed cells, then column widths. */
 	dress(div: HTMLElement, view: EditorView) {
@@ -1734,10 +1740,10 @@ function buildTableDecorations(state: EditorState): DecorationSet {
 		const widget = new TableWidget(t.source, refs, noteDir, t.meta, keepRow(state, t), () =>
 			readTable(state, t).rows.slice(1)
 		);
-		// A cell edit keeps the table's shape (cellInputFilter), so the table
-		// being typed in stays a widget without rendering it.
+		// Tables render when drawn, so ones off screen cost nothing; a table
+		// the renderer turned down (paint) shows as source lines from then on.
 		const raw = state.field(rawTableField) === t.from && !isPreviewMode();
-		if (raw || ((!echoing || widget.cached) && widget.html === '')) {
+		if (raw || (widget.cached && widget.html === '')) {
 			for (let n = first; n <= last; n++) ranges.push(sourceLine.range(state.doc.line(n).from));
 		} else {
 			ranges.push(Decoration.replace({ widget, block: true }).range(t.from, t.to));
