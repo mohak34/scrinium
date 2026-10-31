@@ -595,10 +595,10 @@ export function restoreFromBin(bin: Bin, name: string): Promise<Restored> {
 		const targetFull = safeResolve(targetRel);
 		await fs.mkdir(path.dirname(targetFull), { recursive: true });
 		await fs.rename(src, targetFull);
-		// Landed under a new name: its own links start one name over. Its
-		// wikilinks resolved against the vault with it back at the original
-		// path, so `[[P/B]]` keeps meaning the restored B, not the note now
-		// living at P/B.
+		// Landed under a new name: its own links start one name over and a
+		// note's title follows its new filename. Its wikilinks resolved
+		// against the vault with it back at the original path, so `[[P/B]]`
+		// keeps meaning the restored B, not the note now living at P/B.
 		if (targetRel !== originalPath) {
 			const moved = movedBy(originalPath, targetRel);
 			const back = movedBy(targetRel, originalPath);
@@ -606,7 +606,7 @@ export function restoreFromBin(bin: Bin, name: string): Promise<Restored> {
 			const wiki = { before: wikiResolver([...new Set(live.map(back))]), after: wikiResolver(live) };
 			for (const n of await readNotesUnder(targetRel)) {
 				const was = back(n.path);
-				const out = relinkNote(n.content, was, n.path, moved, wiki);
+				const out = retitle(relinkNote(n.content, was, n.path, moved, wiki), was, n.path);
 				if (out !== n.content) await writeAtomic(safeResolve(n.path), out).catch((e) => console.error(`relink ${n.path}:`, e));
 			}
 		}
