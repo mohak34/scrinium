@@ -362,12 +362,14 @@ State channels you will touch:
   instead of showing an overwritten file.
 - `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
   renderer (markdown-it plus the editor's math, code, callout, wikilink
-  and tag parsing). Used by `/print` (NoteBar's Print / PDF) and the
-  `/s/[id]` share viewer; a markdown feature that should show up in PDFs
-  and shares goes here as well as in the editor. It builds its own GFM
-  parser from `@lezer/markdown` and must never import `livePreview.ts`,
+  and tag parsing). Used by `/print` (NoteBar's Print / PDF) and, on the
+  server, the `/s/[id]` share viewer (`openShare` in shares.ts, which
+  turns `[[links]]` to notes with their own live link into links); a
+  markdown feature that should show up in PDFs and shares goes here as
+  well as in the editor. It builds its own GFM parser from
+  `@lezer/markdown` and must never import `livePreview.ts`,
   `markdownSetup.ts` or `@codemirror/lang-markdown`: any of them ships the
-  whole editor to share pages.
+  whole editor to the print page and the server.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
   in the root layout except on login and share pages; polls
@@ -471,7 +473,10 @@ State channels you will touch:
   proofs), public
   `GET/POST /api/share/[id]` (+ `/assets/<n>`: the n-th image the note
   references, from `shareImages` in shares.ts - never a vault path) and the `/s/[id]`
-  viewer (ShareModal.svelte manages links from the note bar).
+  viewer (ShareModal.svelte manages links from the note bar). Open links
+  render on the server with the note's title and first line as link
+  preview tags; a password link sends nothing about the note until the
+  unlock POST returns it rendered.
 - `src/lib/design/theme.css` — the only design tokens: surfaces (`--bg`
   reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto
   accent split into `--accent-fill` (solid #175e54 under white text) and

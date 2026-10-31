@@ -1,23 +1,18 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
-	import { renderNoteToHtml } from '$lib/print/renderNote';
+	import { page } from '$app/state';
+	import type { SharePage } from '$lib/server/shares';
 	import 'katex/dist/katex.min.css';
 
-	const id = $derived($page.params.id ?? '');
+	let { data } = $props();
+	const id = $derived(page.params.id ?? '');
 
-	interface SharePayload {
-		title: string;
-		markdown: string;
-		notePath: string;
-		updatedAt: number | null;
-		hasPassword: boolean;
-		proof: string;
-		images: string[];
-	}
-
-	let status = $state<'loading' | 'locked' | 'ready' | 'error'>('loading');
-	let payload = $state<SharePayload | null>(null);
+	// Open links arrive rendered from the server; a locked one fills in here
+	// after the unlock.
+	let unlocked = $state<SharePage | null>(null);
+	const share = $derived(unlocked ?? data.share);
+	let failed = $state('');
+	const status = $derived(failed ? 'error' : share ? 'ready' : data.state);
+	const errorMessage = $derived(failed || data.message || 'This link is invalid or was revoked.');
 	let message = $state('');
 	let password = $state('');
 	let busy = $state(false);
@@ -30,16 +25,6 @@
 	const ZOOM_STEP = 10;
 	let zoom = $state(100);
 
-	// Local images load through this share's asset route by index (the
-	// server lists the ones the note references). Password shares attach the
-	// proof token from the unlock, never the password itself.
-	function shareAsset(p: SharePayload, url: string): string {
-		const i = p.images.indexOf(url);
-		if (i < 0) return '';
-		const proof = p.proof ? `?proof=${encodeURIComponent(p.proof)}` : '';
-		return `/api/share/${encodeURIComponent(id)}/assets/${i}${proof}`;
-	}
-
 	// "just now", "3h ago", "2d ago" - absolute date past a week.
 	function timeAgo(mtimeMs: number): string {
 		const secs = Math.max(0, Math.floor((Date.now() - mtimeMs) / 1000));
@@ -51,36 +36,6 @@
 		const days = Math.floor(hours / 24);
 		if (days < 7) return `${days}d ago`;
 		return new Date(mtimeMs).toLocaleDateString();
-	}
-
-	const html = $derived.by(() => {
-		if (!payload) return '';
-		try {
-			const p = payload;
-			return renderNoteToHtml(p.markdown, p.notePath, (url) => shareAsset(p, url));
-		} catch {
-			return '';
-		}
-	});
-
-	async function load() {
-		const res = await fetch(`/api/share/${encodeURIComponent(id)}`);
-		if (res.status === 401) {
-			status = 'locked';
-			return;
-		}
-		if (res.status === 410) {
-			status = 'error';
-			message = 'This note no longer exists.';
-			return;
-		}
-		if (!res.ok) {
-			status = 'error';
-			message = 'This link is invalid or was revoked.';
-			return;
-		}
-		payload = (await res.json()) as SharePayload;
-		status = 'ready';
 	}
 
 	async function unlock() {
@@ -101,38 +56,32 @@
 				return;
 			}
 			if (!res.ok) {
-				message = 'This link is invalid or was revoked.';
-				status = 'error';
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				failed = body?.message || 'This link is invalid or was revoked.';
 				return;
 			}
 			message = '';
 			password = '';
-			payload = (await res.json()) as SharePayload;
-			status = 'ready';
+			unlocked = (await res.json()) as SharePage;
 		} finally {
 			busy = false;
 		}
 	}
-
-	onMount(() => {
-		if (!id) {
-			status = 'error';
-			message = 'This link is invalid or was revoked.';
-			return;
-		}
-		void load();
-	});
 </script>
 
 <svelte:head>
-	<title>{payload ? `${payload.title} — shared note` : 'Shared note'}</title>
+	<title>{share?.title ?? 'Shared note'}</title>
 	<meta name="robots" content="noindex, nofollow" />
+	<meta property="og:type" content="article" />
+	<meta property="og:title" content={share?.title ?? 'Shared note'} />
+	{#if share?.description}
+		<meta name="description" content={share.description} />
+		<meta property="og:description" content={share.description} />
+	{/if}
 </svelte:head>
 
 <div class="shared">
-	{#if status === 'loading'}
-		<p class="state">Loading shared note…</p>
-	{:else if status === 'locked'}
+	{#if status === 'locked'}
 		<form
 			class="lock"
 			onsubmit={(e) => {
@@ -157,11 +106,11 @@
 		<div class="lock">
 			<span class="material-symbols-outlined">link_off</span>
 			<h1>Link unavailable</h1>
-			<p>{message}</p>
+			<p>{errorMessage}</p>
 		</div>
-	{:else if payload}
+	{:else if share}
 		<header class="bar">
-			<span class="doc">{payload.notePath}</span>
+			<span class="doc">{share.title}</span>
 			<span class="tag">read-only</span>
 			<span class="tools">
 				<button
@@ -192,13 +141,13 @@
 					<span class="material-symbols-outlined">add</span>
 				</button>
 			</span>
-			{#if payload.updatedAt}
-				<span class="time" title={new Date(payload.updatedAt).toLocaleString()}>
-					updated {timeAgo(payload.updatedAt)}
+			{#if share.updatedAt}
+				<span class="time" title={new Date(share.updatedAt).toLocaleString()}>
+					updated {timeAgo(share.updatedAt)}
 				</span>
 			{/if}
 		</header>
-		<article class="paper" style:--zoom={zoom / 100}>{@html html}</article>
+		<article class="paper" style:--zoom={zoom / 100}>{@html share.html}</article>
 	{/if}
 </div>
 
@@ -212,11 +161,6 @@
 		color: #eee;
 		-webkit-text-size-adjust: 100%;
 		text-size-adjust: 100%;
-	}
-	.state {
-		margin: 20vh 0 0;
-		text-align: center;
-		color: #888;
 	}
 	.lock {
 		margin: 16vh auto 0;

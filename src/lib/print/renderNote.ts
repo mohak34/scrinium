@@ -163,10 +163,13 @@ function renderCallouts(html: string): string {
 // assetUrl maps a local image reference (as written in the markdown) to the
 // URL the <img> loads; the default is the auth-gated /api/assets. The share
 // viewer passes its own so a shared note only reaches its own images.
+// linkTo turns a [[link]] into a real link when it returns a URL (the share
+// viewer's links between shared notes); otherwise it renders as a pill.
 export function renderNoteToHtml(
 	src: string,
 	notePath: string,
-	assetUrl?: (url: string) => string | null
+	assetUrl?: (url: string) => string | null,
+	linkTo?: (target: string) => string | null
 ): string {
 	const noteDir = notePath.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/')) : null;
 	const resolve = assetUrl ?? ((url: string) => resolveAssetUrl(url, noteDir));
@@ -312,11 +315,15 @@ export function renderNoteToHtml(
 			cur = cur.parent;
 		}
 		if (inCode) continue;
+		const label = parser.renderInline(wikilinkDisplay(w));
+		const href = w.target ? linkTo?.(w.target) : null;
 		wikiSpans.push({
 			from: w.from,
 			to: w.to,
 			// The target rides along so the editor's tables can open the link.
-			html: `<span class="print-wikilink" data-target="${esc(w.target)}"${w.heading === null ? '' : ` data-heading="${esc(w.heading)}"`}>${parser.renderInline(wikilinkDisplay(w))}</span>`,
+			html: href
+				? `<a class="print-wikilink" href="${esc(href)}">${label}</a>`
+				: `<span class="print-wikilink" data-target="${esc(w.target)}"${w.heading === null ? '' : ` data-heading="${esc(w.heading)}"`}>${label}</span>`,
 			block: false
 		});
 	}

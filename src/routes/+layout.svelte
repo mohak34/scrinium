@@ -155,6 +155,7 @@
 <!-- The app shell scrolls its own panes. Share pages are documents and
 scroll the page, which phones need for native scrolling and pinch zoom. -->
 <svelte:head>
+	<title>Scrinium</title>
 	{#if !page.url.pathname.startsWith('/s/')}
 		<style>
 			html,
