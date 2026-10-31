@@ -4,13 +4,26 @@ import { getMigrations } from 'better-auth/db/migration';
 import { timingSafeEqual } from 'node:crypto';
 import { auth, isAllowedEmail } from '$lib/server/auth';
 import { emailForBearerToken } from '$lib/server/mobileAuth';
+import { migrateAreasToProjects } from '$lib/server/db';
+import { createFolder, safeResolve } from '$lib/server/vault';
+import { readdir } from 'node:fs/promises';
 import { env } from '$env/dynamic/private';
+import { dev } from '$app/environment';
 
 // Bring the better-auth tables up to date once at startup. Idempotent: it
-// only creates missing tables/columns, so deploys need no migrate CLI.
+// only creates missing tables/columns, so deploys need no migrate CLI. Old
+// task areas become projects here, where the vault's folders are known.
 export const init: ServerInit = async () => {
 	const { runMigrations } = await getMigrations(auth.options);
 	await runMigrations();
+	const dirents = await readdir(safeResolve(''), { withFileTypes: true }).catch(() => []);
+	const roots = dirents.filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name);
+	// A folder that can't be made (a file holds the name) must not stop the
+	// app: the project still works on the board, and making the folder by
+	// hand later attaches it.
+	for (const path of migrateAreasToProjects(roots)) {
+		await createFolder(path).catch((e) => console.error(`project folder ${path}:`, e));
+	}
 };
 
 const PUBLIC_PATHS =['/login', '/api/auth', '/s', '/api/share'];
@@ -28,6 +41,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 		sameSecret(event.request.headers.get('x-hub-secret'), env.HUB_SECRET);
 
 	if (isHub) return resolve(event);
+
+	// Local previews with a throwaway vault, where Google sign-in can't
+	// reach: `bun run dev` with DEV_LOGIN_EMAIL set signs every request in
+	// as that email. `dev` is false in builds, so production never does.
+	if (dev && env.DEV_LOGIN_EMAIL) {
+		event.locals.session = null;
+		event.locals.email = env.DEV_LOGIN_EMAIL;
+		return resolve(event);
+	}
 
 	// The allowlist is checked on every request, not only at sign-up, so
 	// removing an email from ALLOWED_EMAILS locks that account out at once

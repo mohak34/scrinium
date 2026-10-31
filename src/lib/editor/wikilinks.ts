@@ -2,7 +2,8 @@
  * Shared `[[wikilink]]` helpers (no editor imports, pure parsing + resolve).
  *
  * Syntax: `[[Note]]`, `[[Note|alias]]`, `[[Note#heading]]`,
- * `[[Note#heading|alias]]`. Image embeds (`![[...]]`) are not wikilinks
+ * `[[Note#heading|alias]]`, and `[[#heading]]` (empty target: the note
+ * the link sits in). Image embeds (`![[...]]`) are not wikilinks
  * and never match. Used by livePreview.ts (decorations + completion),
  * the backlinks API (reference scan) and renderNote.ts (print HTML).
  */
@@ -15,7 +16,7 @@ export interface Wikilink {
 	alias: string | null;
 }
 
-const WIKILINK_RE = /\[\[([^\][#|\n]+)(?:#([^\]|\n]*))?(?:\|([^\]\n]*))?\]\]/g;
+const WIKILINK_RE = /\[\[([^\][#|\n]*)(?:#([^\]|\n]*))?(?:\|([^\]\n]*))?\]\]/g;
 
 /** Parse one `[[...]]` occurrence. Null when malformed or empty. */
 export function parseWikilinkText(inner: string): {
@@ -23,15 +24,13 @@ export function parseWikilinkText(inner: string): {
 	heading: string | null;
 	alias: string | null;
 } | null {
-	const m = /^([^\][#|]+)(?:#([^\]|]*))?(?:\|([^\]]*))?$/.exec(inner);
+	const m = /^([^\][#|]*)(?:#([^\]|]*))?(?:\|([^\]]*))?$/.exec(inner);
 	if (!m) return null;
-	const target = m[1].trim();
-	if (!target) return null;
-	return {
-		target,
-		heading: m[2] !== undefined ? m[2].trim() : null,
-		alias: m[3] !== undefined ? m[3] : null
-	};
+	// In a table cell the alias pipe is written `\|` (Obsidian does the same).
+	const target = m[1].trim().replace(/\\$/, '');
+	const heading = m[2] !== undefined ? m[2].trim().replace(/\\$/, '') : null;
+	if (!target && !heading) return null;
+	return { target, heading, alias: m[3] !== undefined ? m[3] : null };
 }
 
 /** Scan plain text for wikilinks. Positions are offsets into `text`. */
@@ -55,10 +54,20 @@ export function findWikilinksInText(text: string): Wikilink[] {
 	return out;
 }
 
-/** Text shown for the link: alias, else the target as written. */
-export function wikilinkDisplay(w: Pick<Wikilink, 'target' | 'alias'>): string {
+/** Text shown for the link: alias, else the target as written (the heading for `[[#heading]]`). */
+export function wikilinkDisplay(w: Pick<Wikilink, 'target' | 'heading' | 'alias'>): string {
 	if (w.alias !== null && w.alias !== '') return w.alias;
-	return w.target;
+	return w.target || (w.heading ?? '');
+}
+
+/**
+ * The shortest way to write a link to `path`: its bare name when that
+ * resolves back to it, else the vault path without `.md`. A link written
+ * with a folder keeps one, so `[[Uni/Note]]` never collapses to `[[Note]]`.
+ */
+export function wikiTargetFor(path: string, links: WikiResolver, keepFolder = false): string {
+	const name = stem(path);
+	return !keepFolder && links.resolve(name) === path ? name : path.replace(/\.md$/i, '');
 }
 
 function escapeRegExp(s: string): string {
@@ -118,6 +127,18 @@ export function wikiResolver(notePaths: readonly string[]): WikiResolver {
 	};
 }
 
+/**
+ * Live lookups in the order the editor opens links: a link that names an
+ * archived note's full path means that note, not a live one sharing its
+ * basename, so it resolves to nothing live.
+ */
+export function liveOverArchived(live: WikiResolver, archived: WikiResolver): WikiResolver {
+	return {
+		exact: live.exact,
+		resolve: (t) => live.exact(t) ?? (archived.exact(t) ? null : live.resolve(t))
+	};
+}
+
 /** One-off `exact` lookup; build a `wikiResolver` for many links. */
 export function exactWikilink(target: string, notePaths: string[]): string | null {
 	return wikiResolver(notePaths).exact(target);
@@ -149,14 +170,23 @@ export function notePathsFromTree(
 	return out;
 }
 
-/** Sanitize a link target into a same-folder filename, null when unusable. */
-export function wikilinkFilename(target: string): string | null {
-	const name = target
+/**
+ * Where clicking an unresolved link creates its note: `[[Name]]` next to
+ * the note it sits in, `[[Folder/Name]]` at that vault path. Null when a
+ * segment is unusable (empty, a dot name, nothing left after stripping
+ * characters filenames can't hold).
+ */
+export function wikilinkNewPath(target: string, currentPath: string | null): string | null {
+	const segs = target
 		.trim()
 		.replace(/\.md$/i, '')
-		.replace(/[\\/:*?"<>|]/g, '');
-	if (!name || name === '.' || name === '..' || name.startsWith('.')) return null;
-	return `${name}.md`;
+		.split('/')
+		.map((s) => s.trim().replace(/[\\:*?"<>|]/g, ''));
+	if (segs.some((s) => !s || s.startsWith('.'))) return null;
+	const rel = `${segs.join('/')}.md`;
+	if (segs.length > 1) return rel;
+	const dir = currentPath?.includes('/') ? currentPath.slice(0, currentPath.lastIndexOf('/')) : null;
+	return dir ? `${dir}/${rel}` : rel;
 }
 
 export interface BacklinkMatch {
@@ -179,27 +209,6 @@ export function plainExcerpt(line: string): string {
 	return (out + line.slice(last)).trim().slice(0, 160);
 }
 
-/** Notes linking TO target (first matching line as excerpt, one per file). */
-export function findBacklinks(
-	target: string,
-	files: Array<{ path: string; content: string }>
-): BacklinkMatch[] {
-	const links = wikiResolver(files.map((f) => f.path));
-	const out: BacklinkMatch[] = [];
-	for (const f of files) {
-		if (f.path === target) continue;
-		for (const line of f.content.split('\n')) {
-			const hit = findWikilinksInText(line).some((w) => links.resolve(w.target) === target);
-			if (hit) {
-				out.push({ path: f.path, excerpt: plainExcerpt(line) });
-				break;
-			}
-		}
-	}
-	out.sort((a, b) => a.path.localeCompare(b.path));
-	return out;
-}
-
 export interface UnlinkedMention {
 	path: string;
 	excerpt: string;
@@ -217,9 +226,10 @@ export function findUnlinkedMentions(
 	const name = stem(target);
 	if (name.length < 2) return [];
 	const re = new RegExp(`\\b${escapeRegExp(name)}\\b`, 'gi');
+	const low = name.toLowerCase();
 	const out: UnlinkedMention[] = [];
 	for (const f of files) {
-		if (f.path === target) continue;
+		if (f.path === target || !f.content.toLowerCase().includes(low)) continue;
 		for (const line of f.content.split('\n')) {
 			const spans = findWikilinksInText(line);
 			re.lastIndex = 0;
@@ -243,11 +253,13 @@ export function findUnlinkedMentions(
 
 /**
  * Wrap the first bare mention of the target's stem in `[[...]]`, keeping
- * the author's original casing (resolution is case-insensitive). Null when
- * there is nothing convertible.
+ * the author's original casing (resolution is case-insensitive). When the
+ * bare name would resolve to another note it links by path with the
+ * mention as alias. Null when there is nothing convertible.
  */
-export function linkFirstMention(content: string, target: string): string | null {
+export function linkFirstMention(content: string, target: string, links: WikiResolver): string | null {
 	const name = stem(target);
+	const path = wikiTargetFor(target, links);
 	if (name.length < 2) return null;
 	const re = new RegExp(`\\b(${escapeRegExp(name)})\\b`, 'gi');
 	const lines = content.split('\n');
@@ -257,7 +269,8 @@ export function linkFirstMention(content: string, target: string): string | null
 		let m: RegExpExecArray | null;
 		while ((m = re.exec(lines[i])) !== null) {
 			if (spans.some((s) => m!.index >= s.from && m!.index < s.to)) continue;
-			lines[i] = lines[i].slice(0, m.index) + `[[${m[1]}]]` + lines[i].slice(m.index + m[0].length);
+			const link = path === name ? `[[${m[1]}]]` : `[[${path}|${m[1]}]]`;
+			lines[i] = lines[i].slice(0, m.index) + link + lines[i].slice(m.index + m[0].length);
 			return lines.join('\n');
 		}
 	}

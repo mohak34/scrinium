@@ -2,16 +2,25 @@
 	export interface ContextMenuItem {
 		label: string;
 		danger?: boolean;
+		// A Material Symbols name drawn before the label; a `color` fills it.
+		icon?: string;
+		color?: string;
+		// Draws a line above the item, starting a new group.
+		divider?: boolean;
+		// Marks the option that is in use, for menus that pick one.
+		current?: boolean;
 		action: () => void;
 	}
 
 	interface Props {
 		x: number;
 		y: number;
+		// Matches the menu to the control it drops from.
+		width?: number;
 		items: ContextMenuItem[];
 		onClose: () => void;
 	}
-	let { x, y, items, onClose }: Props = $props();
+	let { x, y, width, items, onClose }: Props = $props();
 
 	let menuEl = $state<HTMLDivElement>();
 	let left = $state(0);
@@ -46,17 +55,23 @@
 	});
 </script>
 
-<div class="ctx-menu" role="menu" style="left: {left}px; top: {top}px" bind:this={menuEl}>
+<div class="ctx-menu" role="menu" style="left: {left}px; top: {top}px" style:width={width ? `${width}px` : undefined} bind:this={menuEl}>
 	{#each items as item (item.label)}
+		{#if item.divider}<div class="ctx-sep" role="separator"></div>{/if}
 		<button
 			class="ctx-item"
 			class:danger={item.danger}
+			class:current={item.current}
 			role="menuitem"
+			aria-current={item.current || undefined}
 			onclick={() => {
 				item.action();
 				onClose();
 			}}
 		>
+			{#if item.icon}
+				<span class="material-symbols-outlined" class:fill={item.color} style:color={item.color}>{item.icon}</span>
+			{/if}
 			{item.label}
 		</button>
 	{/each}
@@ -76,7 +91,9 @@
 		flex-direction: column;
 	}
 	.ctx-item {
-		display: block;
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		width: 100%;
 		text-align: left;
 		background: none;
@@ -92,7 +109,24 @@
 		background: var(--surface-container-high);
 		color: var(--on-surface);
 	}
-	.ctx-item.danger {
+	.ctx-item:hover .material-symbols-outlined:not(.fill) {
+		color: var(--on-surface);
+	}
+	.ctx-sep {
+		height: 1px;
+		background: var(--line);
+		margin: 4px 6px;
+	}
+	.ctx-item .material-symbols-outlined {
+		font-size: 16px;
+		color: var(--text-3);
+	}
+	.ctx-item.current {
+		background: var(--surface-container-high);
+		color: var(--on-surface);
+	}
+	.ctx-item.danger,
+	.ctx-item.danger .material-symbols-outlined {
 		color: var(--error);
 	}
 	.ctx-item.danger:hover {

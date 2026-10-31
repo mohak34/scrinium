@@ -31,7 +31,7 @@ export const GET: RequestHandler = async () => {
 	const walk = (entries: VaultEntry[]) => {
 		for (const e of entries) {
 			if (e.type === 'directory') walk(e.children ?? []);
-			else if (!e.path.endsWith('.md') && !raw.includes(e.name) && !plain.includes(e.name)) files.push(e.path);
+			else if (!e.path.toLowerCase().endsWith('.md') && !raw.includes(e.name) && !plain.includes(e.name)) files.push(e.path);
 		}
 	};
 	walk(await listTree());

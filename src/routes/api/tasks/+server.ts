@@ -1,11 +1,14 @@
 import { json, error } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types';
-import { listTasks, listTasksForNote, insertTask, getTask, getProject } from '$lib/server/db';
-import { isArea, isPriority, isStatus } from '$lib/taskModel';
+import { listTasks, listTasksForNote, insertTask, getTask, getProject, addTaskLink } from '$lib/server/db';
+import { isNote, vaultRel } from '$lib/server/vault';
+import { isPriority, isStatus } from '$lib/taskModel';
 import { parseStamp, parseWaitingSince } from '$lib/server/taskInput';
 
 // Auth is already enforced in src/hooks.server.ts for everything under /api.
+// Older phone builds still send `area`; tasks group by project now, so it is
+// ignored here and in PATCH.
 
 function cleanTitle(v: unknown): string | null {
 	if (typeof v !== 'string') return null;
@@ -30,7 +33,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	const title = cleanTitle(body?.title);
 	if (!title) throw error(400, 'Title is required');
 	if (body?.status !== undefined && !isStatus(body.status)) throw error(400, 'Bad status');
-	if (body?.area != null && !isArea(body.area)) throw error(400, 'Bad area');
 	const status = isStatus(body?.status) ? body.status : 'todo';
 	const detail = typeof body?.detail === 'string' ? body.detail.slice(0, 4000) : '';
 	const priority = isPriority(body?.priority) ? body.priority : 'none';
@@ -45,13 +47,22 @@ export const POST: RequestHandler = async ({ request }) => {
 	const badProject =
 		body?.project != null && (typeof body.project !== 'string' || !getProject(body.project));
 	if (!parent_id && badProject) throw error(400, 'Bad project');
+	// Optional notes to link, checked before the task exists so a bad one
+	// never leaves a half-made task behind (same rule as the links route).
+	if (body?.note_paths !== undefined && !Array.isArray(body.note_paths)) throw error(400, 'Bad note_paths');
+	const notes: string[] = [];
+	for (const p of body?.note_paths ?? []) {
+		if (typeof p !== 'string' || !p.trim()) throw error(400, 'Bad note path');
+		const path = vaultRel(p.trim());
+		if (!isNote(path)) throw error(404, `No note at ${path}`);
+		notes.push(path);
+	}
 	const row = insertTask({
 		id: randomUUID(),
 		title,
 		detail,
 		status,
 		priority,
-		area: isArea(body?.area) ? body.area : null,
 		waiting_on: cleanText(body?.waiting_on, 120),
 		waiting_since: parseWaitingSince(body?.waiting_since),
 		parent_id,
@@ -60,5 +71,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		due_at: body?.due_at === undefined ? null : parseStamp(body.due_at, 'due date'),
 		remind_at: body?.remind_at === undefined ? null : parseStamp(body.remind_at, 'reminder')
 	});
+	for (const p of notes) addTaskLink(row.id, p);
 	return json(row, { status: 201 });
 };

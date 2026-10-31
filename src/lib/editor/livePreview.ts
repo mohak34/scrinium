@@ -41,13 +41,14 @@ import {
 	findWikilinksInText,
 	wikiResolver,
 	wikilinkDisplay,
-	wikilinkFilename,
+	wikilinkNewPath,
 	type Wikilink,
 	type WikiResolver
 } from './wikilinks';
 import { findTagsInText } from './tags';
-import { createNote, flushSave, openTab } from '$lib/stores/vault';
+import { createNote, flushSave, openNoteAt, openTab } from '$lib/stores/vault';
 import { openBins } from '$lib/stores/bins';
+import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 
 // Full-preview mode: when on, EVERY line renders (marks hidden, bullets shown)
 // regardless of where the cursor is. Entered with Escape, exited by clicking
@@ -187,24 +188,76 @@ function linkTarget(target: string, ctx: WikiCtx | undefined): { path: string; a
 	return null;
 }
 
+/**
+ * Opens what a wikilink points at: the note (at the heading), the archive
+ * for an archived note, or a new note for an unresolved target. An empty
+ * target is the note the link sits in.
+ */
+export function followWikilink(view: EditorView, target: string, heading: string | null) {
+	const ctx = view.state.field(wikiCtxField, false);
+	const current = ctx?.current ?? null;
+	const hit = target ? linkTarget(target, ctx) : current ? { path: current, archived: false } : null;
+	if (hit?.archived) {
+		openBins('archive', hit.path);
+		return;
+	}
+	if (hit) {
+		const path = hit.path;
+		void flushSave().then(() => openNoteAt(path, heading));
+		return;
+	}
+	const full = target ? wikilinkNewPath(target, current) : null;
+	if (!full) return;
+	void (async () => {
+		try {
+			await flushSave();
+			await createNote(full);
+			openTab(full);
+		} catch {
+			// creation failed - leave the raw link alone
+		}
+	})();
+}
+
+/**
+ * Opens a link's URL: vault notes in the editor, PDFs in the pane beside
+ * it, everything else in a new browser tab. Relative URLs resolve from the
+ * note's folder. False when the URL resolves to nothing.
+ */
+export function openUrl(url: string, noteDir: string | null): boolean {
+	const href = resolveAssetUrl(url, noteDir);
+	if (!href) return false;
+	const asset = href.startsWith('/api/assets/') ? decodeURIComponent(href.slice(12).replace(/[?#].*$/, '')) : '';
+	if (asset.toLowerCase().endsWith('.md')) void flushSave().then(() => openTab(asset));
+	else if (asset && isPdfPath(asset)) pdfPath.set(asset);
+	else window.open(href, '_blank', 'noopener,noreferrer');
+	return true;
+}
+
 // A `[[wikilink]]` rendered as a clickable pill when the cursor is off
-// the line. Click navigates; a link to an archived note opens it in the
+// the line. Click navigates (to the heading, for `[[Note#Heading]]`; within
+// the note for `[[#Heading]]`); a link to an archived note opens it in the
 // archive; clicking an unresolved target creates the note first (same
-// folder as the open note, vault root otherwise).
+// folder as the open note, or the folder the link names).
 class WikilinkWidget extends WidgetType {
 	constructor(
 		readonly target: string,
+		readonly heading: string | null,
 		readonly display: string
 	) {
 		super();
 	}
 	eq(other: WikilinkWidget) {
-		return other.target === this.target && other.display === this.display;
+		return other.target === this.target && other.heading === this.heading && other.display === this.display;
+	}
+	resolve(ctx: WikiCtx | undefined) {
+		if (this.target) return linkTarget(this.target, ctx);
+		return ctx?.current ? { path: ctx.current, archived: false } : null;
 	}
 	toDOM(view: EditorView) {
 		const span = document.createElement('span');
 		const ctx = view.state.field(wikiCtxField, false);
-		const hit = linkTarget(this.target, ctx);
+		const hit = this.resolve(ctx);
 		span.className = !hit
 			? 'cm-wikilink cm-wikilink-unresolved'
 			: hit.archived
@@ -214,31 +267,7 @@ class WikilinkWidget extends WidgetType {
 		span.textContent = this.display;
 		span.onmousedown = (e) => {
 			e.preventDefault();
-			const ctx = view.state.field(wikiCtxField, false);
-			const current = ctx?.current ?? null;
-			const hit = linkTarget(this.target, ctx);
-			if (hit?.archived) {
-				openBins('archive', hit.path);
-				return;
-			}
-			if (hit) {
-				const path = hit.path;
-				void flushSave().then(() => openTab(path));
-				return;
-			}
-			const name = wikilinkFilename(this.target);
-			if (!name) return;
-			const dir = current?.includes('/') ? current.slice(0, current.lastIndexOf('/')) : null;
-			const full = dir ? `${dir}/${name}` : name;
-			void (async () => {
-				try {
-					await flushSave();
-					await createNote(full);
-					openTab(full);
-				} catch {
-					// creation failed - leave the raw link alone
-				}
-			})();
+			followWikilink(view, this.target, this.heading);
 		};
 		return span;
 	}
@@ -748,7 +777,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 				from: w.from,
 				to: w.to,
 				deco: Decoration.replace({
-					widget: new WikilinkWidget(w.target, wikilinkDisplay(w))
+					widget: new WikilinkWidget(w.target, w.heading, wikilinkDisplay(w))
 				})
 			});
 		}

@@ -1,18 +1,25 @@
 import { get, writable } from 'svelte/store';
 import { collapsedDirs, expandDir, parentDirOf } from '$lib/stores/filetree';
 
-// Pointer-driven drag for the notes sidebar. Tree rows move into folders,
-// notes dropped on Pinned get pinned globally and on their project's pins
-// in that project, pins reorder, move into a folder when dropped on one
-// (staying pinned), and unpin when dropped anywhere else.
+// Pointer-driven drag for the notes sidebar. Tree rows move into folders, a
+// file dropped on the top or bottom half of another file lands right before
+// or after it (in that file's folder), notes and folders dropped on Pinned get pinned globally and on their project's pins
+// in that project, pins reorder, and unpin when dropped anywhere else (into
+// a folder, they also move there and show in its tree).
 // Built on pointer events instead of HTML5 drag-and-drop so the lifted row,
 // the target highlight and Esc-to-cancel are drawn by us, and hovering a
 // file or a folder's children still counts as that folder.
 //
 // Targets are found in the DOM under the pointer:
 //   [data-drop-pins]  a pin list: global, or one project's when it carries
-//                     data-project; [data-pin=path] its rows
+//                     data-project; [data-pin=path] its rows, with
+//                     data-pin-dir on pinned folders (all but
+//                     their edges move into the folder, and the edges
+//                     too where reordering would change nothing). The switcher
+//                     bar and a project header carry it too, plus
+//                     data-pin-here, while the dragged item can pin there.
 //   [data-tree-entry] a tree row (data-path, data-type)
+//   [data-pin-tree]   an open pinned folder's tree, moving into that folder
 //   [data-drop-dir]   a project section, moving into its folder ("" is the
 //                     vault root, Quotidian)
 //   [data-drag-scroll] the container that autoscrolls near its edges
@@ -27,7 +34,7 @@ export interface DragSource {
 }
 
 export type DropTarget =
-	| { kind: 'move'; dir: string | null }
+	| { kind: 'move'; dir: string | null; place?: { path: string; after: boolean } }
 	| { kind: 'pin'; before: string | null; global: boolean }
 	| { kind: 'unpin' };
 
@@ -46,19 +53,28 @@ export const drag = writable<DragState | null>(null);
 const THRESHOLD = 4;
 const EXPAND_DELAY = 600;
 const EDGE = 32;
+const PIN_EDGE = 6;
 
 // A move is valid unless it lands where the item already is, or puts a
 // folder inside itself.
 export function canMove(source: DragSource, dir: string | null): boolean {
-	if (parentDirOf(source.path) === dir) return false;
-	if (source.kind === 'directory' && dir !== null) {
-		if (dir === source.path || dir.startsWith(source.path + '/')) return false;
-	}
-	return true;
+	return parentDirOf(source.path) !== dir && !intoItself(source, dir);
+}
+
+function intoItself(source: DragSource, dir: string | null): boolean {
+	return source.kind === 'directory' && dir !== null && (dir === source.path || dir.startsWith(source.path + '/'));
+}
+
+// A drop that moves nothing: a pin leaves the Pinned list (let go anywhere
+// else, or over the folder it already lives in), but a folder dropped over
+// itself goes nowhere.
+function stay(source: DragSource, dir: string | null | undefined): DropTarget | null {
+	return source.fromPins && !(dir !== undefined && intoItself(source, dir)) ? { kind: 'unpin' } : null;
 }
 
 // Insert position from the pointer's height against the pin rows; null when
-// the drop would leave the order unchanged.
+// the drop would leave the order unchanged. Pinned folders list before
+// pinned notes, so each lands within its own group.
 function pinTarget(source: DragSource, pins: HTMLElement, y: number, global: boolean): DropTarget | null {
 	const rows = Array.from(pins.querySelectorAll<HTMLElement>('[data-pin]'));
 	let at = rows.findIndex((r) => {
@@ -66,6 +82,8 @@ function pinTarget(source: DragSource, pins: HTMLElement, y: number, global: boo
 		return y < b.top + b.height / 2;
 	});
 	if (at === -1) at = rows.length;
+	const dirs = rows.filter((r) => r.dataset.pinDir !== undefined).length;
+	at = source.kind === 'directory' ? Math.min(at, dirs) : Math.max(at, dirs);
 	const paths = rows.map((r) => r.dataset.pin ?? '');
 	const from = paths.indexOf(source.path);
 	if (from !== -1 && (at === from || at === from + 1)) return null;
@@ -80,24 +98,55 @@ function treeDir(el: Element | null): string | null | undefined {
 	if (entry?.dataset.path) {
 		return entry.dataset.type === 'directory' ? entry.dataset.path : parentDirOf(entry.dataset.path);
 	}
+	const pinTree = el?.closest<HTMLElement>('[data-pin-tree]');
+	if (pinTree?.dataset.pinTree) return pinTree.dataset.pinTree;
 	const section = el?.closest<HTMLElement>('[data-drop-dir]');
 	return section ? section.dataset.dropDir || null : undefined;
 }
 
+// A file over another file row: the side of that row it would land on, or
+// null when that is where it already sits.
+function placeTarget(source: DragSource, row: HTMLElement, y: number): DropTarget | null {
+	const path = row.dataset.path ?? '';
+	const b = row.getBoundingClientRect();
+	const after = y > b.top + b.height / 2;
+	const li = row.closest('li');
+	const next = after ? li?.nextElementSibling : li?.previousElementSibling;
+	const beside = next?.querySelector<HTMLElement>('[data-tree-entry]')?.dataset.path;
+	if (path === source.path || beside === source.path) return null;
+	return { kind: 'move', dir: parentDirOf(path), place: { path, after } };
+}
+
 function resolve(source: DragSource, x: number, y: number): DropTarget | null {
 	const el = document.elementFromPoint(x, y);
-	const pins = el?.closest<HTMLElement>('[data-drop-pins]');
+	const row = el?.closest<HTMLElement>('[data-tree-entry]');
+	if (row?.dataset.type === 'file' && source.kind === 'file' && !source.fromPins) {
+		return placeTarget(source, row, y);
+	}
+	// A pinned folder's own tree sits inside its pin list; it moves into that
+	// folder like the main tree does.
+	const pins = el?.closest('[data-tree-entry], [data-pin-tree]') ? null : el?.closest<HTMLElement>('[data-drop-pins]');
 	if (pins) {
 		const project = pins.dataset.project;
 		const pinnable =
-			(source.fromPins || (source.kind === 'file' && source.path.endsWith('.md'))) &&
+			(source.fromPins || source.kind === 'directory' || source.path.endsWith('.md')) &&
 			(project === undefined || project === source.project);
-		return pinnable ? pinTarget(source, pins, y, project === undefined) : null;
+		const reorder = pinnable ? pinTarget(source, pins, y, project === undefined) : null;
+		// A pinned folder row moves into the folder; only a thin strip at its
+		// top and bottom reorders the pins, and only when that changes the
+		// order, so a drop on a neighbouring folder's edge never does nothing.
+		const dirRow = el?.closest<HTMLElement>('[data-pin-dir]');
+		const into = dirRow?.dataset.pin;
+		if (dirRow && into) {
+			const b = dirRow.getBoundingClientRect();
+			const edge = y <= b.top + PIN_EDGE || y >= b.bottom - PIN_EDGE;
+			if (!(edge && reorder)) return canMove(source, into) ? { kind: 'move', dir: into } : stay(source, into);
+		}
+		return reorder;
 	}
 	const dir = treeDir(el);
 	if (dir !== undefined && canMove(source, dir)) return { kind: 'move', dir };
-	// A pin let go anywhere else leaves the Pinned list.
-	return source.fromPins ? { kind: 'unpin' } : null;
+	return stay(source, dir);
 }
 
 function swallowClick(e: MouseEvent) {
@@ -147,6 +196,9 @@ export function beginDrag(
 		if (!scroller) return;
 		const b = scroller.getBoundingClientRect();
 		if (x < b.left || x > b.right) return;
+		// The switcher bar and a sticky project header sit in the edge zone;
+		// scrolling under a pin target would swap the header being dropped on.
+		if (document.elementFromPoint(x, y)?.closest('[data-pin-here]')) return;
 		const depth = y < b.top + EDGE ? y - (b.top + EDGE) : y > b.bottom - EDGE ? y - (b.bottom - EDGE) : 0;
 		if (!depth) return;
 		scroller.scrollTop += Math.max(-EDGE, Math.min(EDGE, depth)) / 2;
@@ -185,8 +237,16 @@ export function beginDrag(
 		if (drop && target) onDrop(source, target);
 	}
 
+	// The pin targets only render once the drag has started, so the target is
+	// read again where the pointer is let go.
 	function up(ev: PointerEvent) {
-		if (ev.pointerId === e.pointerId) finish(true);
+		if (ev.pointerId !== e.pointerId) return;
+		if (started) {
+			x = ev.clientX;
+			y = ev.clientY;
+			update();
+		}
+		finish(true);
 	}
 	function cancel(ev: PointerEvent) {
 		if (ev.pointerId === e.pointerId) finish(false);

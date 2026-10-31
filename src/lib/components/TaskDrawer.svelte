@@ -5,7 +5,6 @@
 	import {
 		tasks,
 		projects,
-		loadTasks,
 		openTaskId,
 		closeTask,
 		openTask,
@@ -23,12 +22,12 @@
 		parseDateTimeInput,
 		PRIORITIES,
 		STATUSES,
-		AREAS,
 		type Task,
 		type TaskPriority
 	} from '$lib/stores/tasks';
 	import { tree, loadTree, openTab, type VaultEntry } from '$lib/stores/vault';
 	import { openBins } from '$lib/stores/bins';
+	import { QUOTIDIAN } from '$lib/projects';
 
 	const REMIND_QUICK = [
 		{ label: '15m before due', ms: 15 * 60000 },
@@ -348,21 +347,6 @@
 				</div>
 			{/if}
 			<div class="kv">
-				<span class="k">Area</span>
-				<div class="chips" role="group" aria-label="Area">
-					{#each AREAS as a (a.key)}
-						<button
-							class="chip"
-							class:on={task.area === a.key}
-							style="--c: {a.color}"
-							onclick={() => void updateTask(task.id, { area: task.area === a.key ? null : a.key })}
-						>
-							<i></i>{a.label}
-						</button>
-					{/each}
-				</div>
-			</div>
-			<div class="kv">
 				<span class="k">Priority</span>
 				<div class="v">
 					<span class="material-symbols-outlined fill flag pri-{task.priority}">flag</span>
@@ -389,13 +373,10 @@
 							class="ctl bare grow"
 							value={task.project ?? ''}
 							aria-label="Project"
-							onchange={async (e) => {
-								// Subtasks follow on the server; reload to show it.
-								if (await updateTask(task.id, { project: (e.target as HTMLSelectElement).value || null }))
-									void loadTasks();
-							}}
+							onchange={(e) =>
+								void updateTask(task.id, { project: (e.target as HTMLSelectElement).value || null })}
 						>
-							<option value="">None</option>
+							<option value="">{QUOTIDIAN}</option>
 							{#each $projects as p (p.path)}
 								<option value={p.path}>{p.path}</option>
 							{/each}
@@ -758,39 +739,6 @@
 	.seg button.on {
 		background: var(--press);
 		color: var(--text);
-	}
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-	}
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 26px;
-		padding: 0 9px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r);
-		background: none;
-		color: var(--text-2);
-		font: var(--fs-sm) var(--font-ui);
-		cursor: pointer;
-	}
-	.chip i {
-		width: 7px;
-		height: 7px;
-		border-radius: 2px;
-		background: var(--c);
-	}
-	.chip:hover {
-		color: var(--text);
-		border-color: var(--line-3);
-	}
-	.chip.on {
-		color: var(--text);
-		border-color: color-mix(in srgb, var(--c) 55%, transparent);
-		background: color-mix(in srgb, var(--c) 12%, transparent);
 	}
 	.flag {
 		font-size: 17px;

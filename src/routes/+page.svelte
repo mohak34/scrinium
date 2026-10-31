@@ -10,9 +10,10 @@
 	import NoteBar from '$lib/components/NoteBar.svelte';
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import NoteTasks from '$lib/components/NoteTasks.svelte';
-	import CodeEditor from '$lib/editor/CodeEditor.svelte';
+	import type CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import {
 		activePath,
+		tree,
 		loadTree,
 		loadArchive,
 		openTabs,
@@ -26,15 +27,24 @@
 		downloadNote,
 		scheduleTitleSync,
 		attachEditor,
+		refreshShown,
 		shownNote,
 		showNote,
 		hideNote
 	} from '$lib/stores/vault';
 	import { settings } from '$lib/stores/settings';
+	import { headingLine } from '$lib/editor/outline';
 	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 	import { createRequest, focusSearchRequest, renameRequest, startCreate } from '$lib/stores/actions';
 	import { paletteOpen, leaderPending, usePageCommands, isTyping } from '$lib/stores/palette';
 	import { goto } from '$app/navigation';
+	import { projects } from '$lib/stores/tasks';
+
+	let { data } = $props();
+
+	// CodeMirror is most of the page's code, so it loads beside the shell
+	// instead of holding up the sidebar.
+	const editorModule = import('$lib/editor/CodeEditor.svelte');
 
 	let editorRef = $state<CodeEditor>();
 	let currentContent = $state('');
@@ -49,6 +59,9 @@
 		else panelContent = content;
 	}
 	let lastLoadedPath = $state<string | null>('');
+	// The right panel fills in once the first note's text is in, so the
+	// Outline never lands late on top of sections that already drew.
+	let panelReady = $state(false);
 
 	onMount(() =>
 		attachEditor({
@@ -56,17 +69,34 @@
 				if (get(activePath) !== path) return false;
 				currentContent = content;
 				showInPanels(content);
+				panelReady = true;
 				editorRef?.setDoc(content, true);
 				return true;
 			},
 			read: () => currentContent,
+			reveal(heading) {
+				const line = headingLine(currentContent, heading);
+				if (line !== null) editorRef?.gotoLine(line);
+			},
 			write(content) {
 				editorRef?.setDoc(content);
 				onChange(content);
 				showInPanels(content);
+			},
+			replace(content) {
+				editorRef?.setDoc(content);
+				currentContent = content;
+				showInPanels(content);
 			}
 		})
 	);
+
+	// The open note may have changed elsewhere while the window was away.
+	onMount(() => {
+		const refresh = () => void refreshShown();
+		window.addEventListener('focus', refresh);
+		return () => window.removeEventListener('focus', refresh);
+	});
 
 	// Loading the active note's content happens here so that ANY activePath
 	// change - opening a note, or closeTab switching to a neighbour - reloads
@@ -111,7 +141,10 @@
 		if (Number.isFinite(savedWidth) && savedWidth >= 180 && savedWidth <= 480) {
 			sidebarWidth = savedWidth;
 		}
-		loadTree();
+		// The server sent the tree and projects with the page; set them after
+		// hydration so the server-rendered (empty) sidebar still matches.
+		tree.set(data.tree);
+		projects.set(data.projects);
 		void loadArchive();
 		// Saves never change the tree, so it refreshes when the tab comes
 		// back instead: notes an agent or another device added show up then.
@@ -427,12 +460,14 @@
 		{/if}
 		<div class="editor-scroll">
 			{#if $activePath}
-				<CodeEditor
-					bind:this={editorRef}
-					value={currentContent}
-					{onChange}
-					notePath={$activePath}
-				/>
+				{#await editorModule then { default: Editor }}
+					<Editor
+						bind:this={editorRef}
+						value={currentContent}
+						{onChange}
+						notePath={$activePath}
+					/>
+				{/await}
 			{:else}
 				<div class="empty">
 					<span class="material-symbols-outlined">description</span>
@@ -456,11 +491,13 @@
 				</button>
 			</div>
 			<div class="rscroll">
-				<Outline content={panelContent} onJump={(line) => editorRef?.gotoLine(line)} />
-				<Backlinks onSelect={openNote} />
-				<NoteTasks />
-				<Tags content={panelContent} />
-				<FileInfo content={panelContent} />
+				{#if panelReady}
+					<Outline content={panelContent} onJump={(line) => editorRef?.gotoLine(line)} />
+					<Backlinks onSelect={openNote} />
+					<NoteTasks />
+					<Tags content={panelContent} />
+					<FileInfo content={panelContent} />
+				{/if}
 			</div>
 		</aside>
 	{/if}

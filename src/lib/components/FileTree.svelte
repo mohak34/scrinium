@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { VaultEntry } from '$lib/stores/vault';
-	import { activePath, pinnedPaths } from '$lib/stores/vault';
+	import { activePath, fileOrder, inFileOrder, folderNoteCount, pinnedPaths } from '$lib/stores/vault';
 	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
 	import { drag } from './sidebarDrag';
+	import { isImagePath } from '$lib/attachments';
 	import FileTree from './FileTree.svelte';
 
 	interface Props {
@@ -36,10 +37,21 @@
 		onCancelRename
 	}: Props = $props();
 
+	function fileIcon(name: string): string {
+		if (isImagePath(name)) return 'image';
+		if (/\.pdf$/i.test(name)) return 'picture_as_pdf';
+		if (/\.(mp3|m4a|wav|ogg)$/i.test(name)) return 'audio_file';
+		if (/\.(mp4|webm|mov)$/i.test(name)) return 'video_file';
+		return 'draft';
+	}
+
 	// The row being dragged fades in place; the folder a drop would land in is
-	// highlighted with everything under it.
+	// highlighted with everything under it, a spot between files gets a line.
 	const dragged = $derived($drag && !$drag.source.fromPins ? $drag.source.path : null);
-	const dropDir = $derived($drag?.target?.kind === 'move' ? $drag.target.dir : undefined);
+	const moveTo = $derived($drag?.target?.kind === 'move' ? $drag.target : null);
+	const dropDir = $derived(moveTo && !moveTo.place ? moveTo.dir : undefined);
+	const insBefore = (path: string) => moveTo?.place?.path === path && !moveTo.place.after;
+	const insAfter = (path: string) => moveTo?.place?.path === path && moveTo.place.after;
 
 	let createName = $state('');
 	let createInput = $state<HTMLInputElement>();
@@ -99,16 +111,7 @@
 		onCancelRename();
 	}
 	// Pinned notes live in the Pinned list only, so each note shows once.
-	const display = $derived(entries.filter((e) => !$pinnedPaths.includes(e.path)));
-
-	// Notes under a folder, shown as a quiet count on the folder row. Pinned
-	// notes are left out, matching what the folder shows when expanded.
-	function noteCount(e: VaultEntry): number {
-		let n = 0;
-		for (const c of e.children ?? [])
-			n += c.type === 'directory' ? noteCount(c) : c.name.endsWith('.md') && !$pinnedPaths.includes(c.path) ? 1 : 0;
-		return n;
-	}
+	const display = $derived(inFileOrder(entries, $fileOrder).filter((e) => !$pinnedPaths.includes(e.path)));
 </script>
 
 <ul style="--depth: {depth}">
@@ -152,8 +155,11 @@
 						<span class="material-symbols-outlined file-chevron"
 							>{$collapsedDirs.has(entry.path) ? 'chevron_right' : 'expand_more'}</span
 						>
+						<span class="material-symbols-outlined fill dir-icon"
+							>{$collapsedDirs.has(entry.path) ? 'folder' : 'folder_open'}</span
+						>
 						<span class="file-label">{entry.name}</span>
-						{#if noteCount(entry) > 0}<span class="count">{noteCount(entry)}</span>{/if}
+						{#if folderNoteCount(entry, $pinnedPaths) > 0}<span class="count">{folderNoteCount(entry, $pinnedPaths)}</span>{/if}
 					</div>
 				{/if}
 				{#if !$collapsedDirs.has(entry.path)}
@@ -189,6 +195,8 @@
 					class="file"
 					class:active={$activePath === entry.path}
 					class:dragging={dragged === entry.path}
+					class:ins-before={insBefore(entry.path)}
+					class:ins-after={insAfter(entry.path)}
 					data-tree-entry
 					data-path={entry.path}
 					data-type="file"
@@ -208,6 +216,8 @@
 					class="file asset"
 					class:viewable={viewable}
 					class:dragging={dragged === entry.path}
+					class:ins-before={insBefore(entry.path)}
+					class:ins-after={insAfter(entry.path)}
 					title={entry.name}
 					role="button"
 					tabindex={viewable ? 0 : -1}
@@ -232,7 +242,7 @@
 					}}
 					onpointerdown={(e) => onDragStart(e, entry)}
 				>
-					<span class="material-symbols-outlined file-icon">{viewable ? 'image' : 'draft'}</span>
+					<span class="material-symbols-outlined file-icon">{fileIcon(entry.name)}</span>
 					<span class="file-label">{entry.name}</span>
 				</div>
 			{/if}
@@ -263,11 +273,17 @@
 		padding: 0;
 		position: relative;
 	}
+	/* One level is a chevron plus its gap, so a child's first column (a
+	   folder's chevron, an attachment's icon) sits under its parent's folder
+	   icon and note names line up with folder icons. */
+	ul {
+		--step: 23px;
+	}
 	/* Indent guide for nested levels, aligned under the parent chevron. */
 	ul:not([style*='--depth: 0'])::before {
 		content: '';
 		position: absolute;
-		left: calc(var(--depth) * 16px + 1px);
+		left: calc(var(--depth) * var(--step) - 7px);
 		top: 0;
 		bottom: 0;
 		width: 1px;
@@ -282,7 +298,7 @@
 		gap: 6px;
 		width: 100%;
 		height: 29px;
-		padding: 0 8px 0 calc(8px + var(--depth, 0) * 16px);
+		padding: 0 8px 0 calc(8px + var(--depth, 0) * var(--step));
 		border: none;
 		border-radius: var(--r);
 		background: none;
@@ -293,11 +309,13 @@
 		user-select: none;
 		white-space: nowrap;
 	}
+	/* Folders sit between notes (400) and project headers (700). */
 	.dir {
 		color: var(--text);
+		font-weight: 550;
 	}
 	.file {
-		padding-left: calc(30px + var(--depth, 0) * 16px);
+		padding-left: calc(30px + var(--depth, 0) * var(--step));
 	}
 	.dir:hover,
 	.file:hover {
@@ -318,16 +336,39 @@
 	.file.dragging {
 		opacity: 0.4;
 	}
+	/* Insertion line where a dragged file would land. */
+	.file.ins-before::before,
+	.file.ins-after::after {
+		content: '';
+		position: absolute;
+		left: calc(8px + var(--depth, 0) * var(--step));
+		right: 8px;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--accent);
+	}
+	.file.ins-before::before {
+		top: -1px;
+	}
+	.file.ins-after::after {
+		bottom: -1px;
+	}
+	/* The icon font has one weight; a stroke makes the arrow read bolder. */
 	.file-chevron {
-		font-size: 18px;
-		color: var(--text-3);
+		font-size: 17px;
+		color: var(--text-2);
+		-webkit-text-stroke: 0.6px currentColor;
+	}
+	.dir-icon {
+		font-size: 16px;
+		color: var(--text-2);
 	}
 	.file-icon {
 		font-size: 16px;
 		color: var(--text-3);
 	}
 	.file.asset {
-		padding-left: calc(10px + var(--depth, 0) * 16px);
+		padding-left: calc(8px + var(--depth, 0) * var(--step));
 	}
 	.count {
 		margin-left: auto;
@@ -361,8 +402,8 @@
 	}
 	.rename-input {
 		display: block;
-		margin: 1px 0 1px calc(8px + var(--depth, 0) * 16px);
-		width: calc(100% - 8px - var(--depth, 0) * 16px);
+		margin: 1px 0 1px calc(8px + var(--depth, 0) * var(--step));
+		width: calc(100% - 8px - var(--depth, 0) * var(--step));
 		height: 27px;
 		background: var(--bg);
 		border: 1px solid var(--accent);

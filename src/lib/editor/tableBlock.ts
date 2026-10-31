@@ -17,7 +17,6 @@
 
 import {
 	Annotation,
-	ChangeSet,
 	EditorSelection,
 	EditorState,
 	Facet,
@@ -34,22 +33,31 @@ import {
 	ViewPlugin,
 	WidgetType,
 	keymap,
+	showTooltip,
 	type DecorationSet
 } from '@codemirror/view';
 import { defaultKeymap, redo, undo } from '@codemirror/commands';
 import {
 	autocompletion,
 	startCompletion,
+	type Completion,
 	type CompletionContext,
 	type CompletionResult
 } from '@codemirror/autocomplete';
 import {
+	followWikilink,
 	isPreviewMode,
 	noteDirEffect,
 	noteDirField,
+	openUrl,
 	previewModeEffect,
-	setPreviewMode
+	setPreviewMode,
+	tagCtxField,
+	wikiCtxField
 } from './livePreview';
+import { wikiCompletionSource } from './wikiComplete';
+import { tagCompletionSource } from './tagComplete';
+import { findWikilinksInText } from './wikilinks';
 import { resolveAssetUrl } from '$lib/attachments';
 import {
 	findTableRanges,
@@ -63,6 +71,22 @@ import {
 import { findMathBlockRanges } from './mathRanges';
 import { fmEnd, perDoc } from './docRanges';
 import { toggleWrap } from './formatting';
+import {
+	DATE_RANGE_LABEL,
+	colType,
+	isDate,
+	localDay,
+	metaLine,
+	shiftCols,
+	statusColor,
+	statusOptions,
+	tableView,
+	type ColFilter,
+	type ColType,
+	type DateRange,
+	type TableMeta
+} from './tableMeta';
+import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 
 type Render = typeof import('$lib/print/renderNote').renderNoteToHtml;
 let render: Render | null = null;
@@ -90,6 +114,9 @@ function trimCache(noteTables: number) {
 	}
 }
 
+const tableKey = (source: string, refs: string, noteDir: string | null) =>
+	`${noteDir ?? ''}\n${source}\n${refs}`;
+
 /**
  * HTML for a table, null until the renderer has loaded, '' when the render
  * is not exactly one table with `rows` rows. `refs` are the note's link
@@ -102,7 +129,7 @@ function tableHtml(
 	noteDir: string | null
 ): string | null {
 	if (!render) return null;
-	const key = `${noteDir ?? ''}\n${source}\n${refs}`;
+	const key = tableKey(source, refs, noteDir);
 	let html = htmlCache.get(key);
 	if (html === undefined) {
 		html = render(refs ? `${source}\n\n${refs}` : source, '', (url) =>
@@ -123,25 +150,97 @@ function tableHtml(
 // The widget each table DOM currently shows: CodeMirror reuses a table's
 // DOM across edits (updateDOM), so listeners read the live widget here.
 const widgets = new WeakMap<HTMLElement, TableWidget>();
+// The body rows each table DOM shows, as source body indexes in display
+// order (sort and filter), so clicks and keys map rows both ways.
+const orders = new WeakMap<HTMLElement, number[]>();
 
+// Display orders by settings, kept row and source, so typing elsewhere in
+// the note never re-reads a sorted table.
+const orderCache = new Map<string, number[]>();
+
+const hasFilter = (meta: TableMeta | null) => Object.keys(meta?.filter ?? {}).length > 0;
+const hasView = (meta: TableMeta | null) => !!meta?.sort || hasFilter(meta);
+
+// The body row the cursor is in, for a filtered table it is in, else null.
+function keepRow(state: EditorState, t: TableRange): number | null {
+	const head = state.selection.main.head;
+	if (!hasFilter(t.meta) || head < t.start || head > t.to) return null;
+	const row = state.doc.lineAt(head).number - state.doc.lineAt(t.start).number - 2;
+	return row >= 0 ? row : null;
+}
+
+// Changes when the cursor moves to another row of a filtered table.
+const keepKey = (state: EditorState) =>
+	findTableRanges(state)
+		.map((t) => keepRow(state, t))
+		.join();
+
+// The HTML renders on first paint: typing in a cell builds a widget per
+// keystroke that never paints (see updateDOM).
 class TableWidget extends WidgetType {
-	// html is null while the renderer loads.
+	private rendered: string | null | undefined;
+	private viewOrder: number[] | undefined;
+	readonly ready = render !== null;
+	readonly metaKey: string;
 	constructor(
 		readonly source: string,
-		readonly html: string | null,
-		readonly noteDir: string | null
+		readonly refs: string,
+		readonly noteDir: string | null,
+		readonly meta: TableMeta | null,
+		// The body row the cursor is in, which filters never hide.
+		readonly keep: number | null,
+		// Source cell text of the body rows, read only when sorted or filtered.
+		readonly body: () => string[][]
 	) {
 		super();
+		this.metaKey = meta ? metaLine(meta) : '';
+	}
+	/** Source body indexes in display order. */
+	get order(): number[] {
+		if (this.viewOrder) return this.viewOrder;
+		const count = this.source.split('\n').length - 2;
+		if (!hasView(this.meta)) return (this.viewOrder = Array.from({ length: count }, (_, i) => i));
+		const key = `${this.metaKey}\n${this.keep}\n${localDay()}\n${this.source}`;
+		let order = orderCache.get(key);
+		if (!order) {
+			order = tableView(this.body(), this.meta, this.keep);
+			orderCache.set(key, order);
+			while (orderCache.size > 20) orderCache.delete(orderCache.keys().next().value!);
+		}
+		return (this.viewOrder = order);
+	}
+	/** The markdown rendered: header, delimiter, then body rows in display order. */
+	get shownSource(): string {
+		if (!hasView(this.meta)) return this.source;
+		const lines = this.source.split('\n');
+		return [lines[0], lines[1], ...this.order.map((i) => lines[i + 2])].join('\n');
+	}
+	// null while the renderer loads, '' when the source is not one table.
+	get html(): string | null {
+		if (this.rendered === undefined)
+			this.rendered = tableHtml(this.shownSource, this.refs, this.order.length + 1, this.noteDir);
+		return this.rendered;
+	}
+	get cached(): boolean {
+		return (
+			this.rendered !== undefined ||
+			(!hasView(this.meta) && htmlCache.has(tableKey(this.source, this.refs, this.noteDir)))
+		);
 	}
 	eq(other: TableWidget) {
 		return (
-			other.source === this.source && other.html === this.html && other.noteDir === this.noteDir
+			other.source === this.source &&
+			other.refs === this.refs &&
+			other.noteDir === this.noteDir &&
+			other.ready === this.ready &&
+			other.metaKey === this.metaKey &&
+			other.keep === this.keep
 		);
 	}
-	// Rows minus the delimiter line, so a fresh widget doesn't flap the
-	// viewport before it is measured (see BlockMathWidget).
+	// Toolbar, header, rows and the New row button, so a fresh widget
+	// doesn't flap the viewport before it is measured (see BlockMathWidget).
 	get estimatedHeight(): number {
-		return 16 + (this.source.split('\n').length - 1) * 34;
+		return 16 + 32 + (this.order.length + 1) * 33 + 30;
 	}
 	toDOM(view: EditorView) {
 		const div = document.createElement('div');
@@ -166,15 +265,106 @@ class TableWidget extends WidgetType {
 		widgets.set(div, this);
 		// Repainting drops a mounted cell editor; syncCell mounts it again.
 		if (edit?.host === div && edit.cell.hasFocus) edit.refocus = true;
-		div.classList.toggle('cm-table-pending', this.html === null);
-		if (this.html !== null) {
-			div.innerHTML = this.html;
-		} else {
+		const html = this.html;
+		div.classList.toggle('cm-table-pending', html === null);
+		if (html === null) {
 			div.textContent = this.source;
 			void loadRenderer().then(() => {
 				if (div.isConnected) view.dispatch({ effects: rendererReady.of(null) });
 			});
+			return;
 		}
+		div.innerHTML = html;
+		orders.set(div, this.order);
+		if (html) this.dress(div, view);
+	}
+	/** Toolbar, header icons, typed cells, then column widths. */
+	dress(div: HTMLElement, view: EditorView) {
+		const table = div.querySelector('table');
+		if (!table) return;
+		const meta = this.meta;
+		const width = table.rows[0]?.cells.length ?? 0;
+		const types = Array.from({ length: width }, (_, col) => colType(meta, col));
+		// Every cell's content goes in one box, so an open cell editor can
+		// cover it and a one-line cell can clip it.
+		for (const row of table.rows) {
+			for (const cell of row.cells) {
+				const box = document.createElement('div');
+				box.className = 'cm-cell-v';
+				box.append(...cell.childNodes);
+				cell.append(box);
+			}
+		}
+		Array.from(table.rows[0]?.cells ?? []).forEach((th, col) => {
+			const sorted = meta?.sort?.col === col ? meta.sort.dir : 0;
+			const icon = document.createElement('span');
+			icon.className = 'cm-th-icon material-symbols-outlined';
+			icon.textContent = sorted > 0 ? 'arrow_upward' : sorted < 0 ? 'arrow_downward' : TYPE_ICON[types[col]];
+			th.firstElementChild?.prepend(icon);
+			th.classList.toggle('cm-th-sorted', !!sorted);
+			th.classList.toggle('cm-th-filtered', !!meta?.filter?.[col]);
+			th.title = 'Column options';
+			const handle = document.createElement('span');
+			handle.className = 'cm-th-rz';
+			handle.title = 'Drag to resize, double-click to fit';
+			th.append(handle);
+		});
+		const body = types.some((t) => t !== 'text') ? this.body() : [];
+		const today = localDay();
+		const soon = localDay(7);
+		types.forEach((type, col) => {
+			if (type === 'text') return;
+			table.rows[0].cells[col].classList.add(`cm-col-${type}`);
+			const options = type === 'status' ? statusOptions(meta, col, body.map((r) => r[col] ?? '')) : [];
+			this.order.forEach((src, i) => {
+				const td = table.rows[i + 1]?.cells[col];
+				const v = body[src]?.[col] ?? '';
+				const box = td?.firstElementChild as HTMLElement | null;
+				if (!td || !box) return;
+				td.classList.add(`cm-col-${type}`);
+				if (!v) return;
+				if (type === 'status') {
+					td.style.setProperty('--status', statusColor(options, v));
+				} else if (type === 'number') {
+					if (/^-?\d+(\.\d+)?$/.test(v)) box.textContent = groupDigits(v);
+					else markBad(td, 'Not a number');
+				} else if (validDate(v)) {
+					box.textContent = friendlyDate(v);
+					td.title = v;
+					if (type === 'deadline') td.classList.add(v < today ? 'cm-cell-over' : v <= soon ? 'cm-cell-near' : 'cm-cell-ok');
+				} else {
+					markBad(td, 'Not a date, use YYYY-MM-DD');
+				}
+			});
+		});
+		// The kept row once the filter would hide it.
+		const out = this.keep !== null && !tableView(this.body(), meta, null).includes(this.keep);
+		if (out) {
+			const tr = table.rows[this.order.indexOf(this.keep) + 1];
+			tr?.classList.add('cm-row-out');
+			tr?.setAttribute('title', 'Hidden by the filter once you leave this row');
+		}
+		const scroll = document.createElement('div');
+		scroll.className = 'cm-table-scroll';
+		table.replaceWith(scroll);
+		scroll.append(table);
+		const bar = document.createElement('div');
+		bar.className = 'cm-table-bar';
+		const filters = Object.keys(meta?.filter ?? {}).length;
+		const total = this.source.split('\n').length - 2;
+		const shown = this.order.length - (out ? 1 : 0);
+		bar.innerHTML =
+			`<button data-act="sort"${meta?.sort ? ' class="on"' : ''}><span class="material-symbols-outlined">swap_vert</span>Sort</button>` +
+			`<button data-act="filter"${filters ? ' class="on"' : ''}><span class="material-symbols-outlined">filter_list</span>Filter${filters ? ` ${filters}` : ''}</button>` +
+			`<span class="cm-table-count">${shown === total ? plural(total, 'row') : `${shown} of ${plural(total, 'row')}`}</span>` +
+			`<button data-act="source" class="cm-table-md"><span class="material-symbols-outlined">code</span>Markdown</button>`;
+		const add = document.createElement('button');
+		add.className = 'cm-table-addrow';
+		add.dataset.act = 'row';
+		add.innerHTML = '<span class="material-symbols-outlined">add</span>New row';
+		div.prepend(bar);
+		div.append(add);
+		layoutColumns(div, table, types, view);
 	}
 	destroy(dom: HTMLElement) {
 		if (edit?.host === dom) closeCell();
@@ -184,43 +374,275 @@ class TableWidget extends WidgetType {
 	}
 }
 
-/** Where a press on the rendered table opens its cell editor. */
-let pendingClick: { x: number; y: number } | null = null;
+const TYPE_ICON: Record<ColType, string> = {
+	text: 'notes',
+	date: 'calendar_today',
+	deadline: 'event_upcoming',
+	status: 'radio_button_checked',
+	number: 'tag'
+};
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const groupDigits = (v: string) => v.replace(/^(-?\d+)/, (i) => i.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// isDate only checks the shape; this also rejects 2026-02-30.
+function validDate(v: string): boolean {
+	if (!isDate(v)) return false;
+	const [y, m, d] = v.split('-').map(Number);
+	const t = new Date(Date.UTC(y, m - 1, d));
+	return t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
+/** `Nov 2`, with the year when it is not this year. */
+function friendlyDate(v: string): string {
+	const [y, m, d] = v.split('-').map(Number);
+	return `${MONTHS[m - 1]} ${d}${y === new Date().getFullYear() ? '' : `, ${y}`}`;
+}
+
+function markBad(td: HTMLElement, why: string) {
+	td.classList.add('cm-cell-bad');
+	td.title = why;
+}
+
+// ---- Column widths ----
+
+// Widths are measured once from the rendered cells, then the table is laid
+// out fixed: a click, an open cell editor or a repaint never resizes a
+// column. Measured widths are kept per table DOM while its column types
+// and shown rows stay the same (and per source, for a widget drawn
+// again), so leaving an edited cell keeps the columns where they were; a
+// sort, filter or type change measures again.
+const MIN_COL = 64;
+const MAX_TEXT_COL = 320;
+const MAX_COL = 220;
+// Text columns give up width down to this before the table scrolls.
+const SHRINK_TO = 120;
+// The filler column's width when the table scrolls.
+const FILL_COL = 36;
+const domWidths = new WeakMap<HTMLElement, { shape: string; widths: number[] }>();
+const widthCache = new Map<string, number[]>();
+
+function measureColumns(table: HTMLTableElement, types: ColType[]): number[] {
+	table.classList.add('cm-table-measure');
+	const widths = types.map((type, i) =>
+		Math.ceil(
+			Math.min(Math.max(table.rows[0].cells[i].getBoundingClientRect().width + 1, MIN_COL), type === 'text' ? MAX_TEXT_COL : MAX_COL)
+		)
+	);
+	table.classList.remove('cm-table-measure');
+	return widths;
+}
+
+/**
+ * Widths fitted to the note: columns keep their natural or `fixed` width,
+ * and text columns that aren't fixed shrink before the table scrolls.
+ */
+function fitColumns(natural: number[], types: ColType[], fixed: boolean[], room: number) {
+	const w = [...natural];
+	const sum = w.reduce((a, b) => a + b, 0);
+	if (sum > room) {
+		const give = w.map((x, i) => (types[i] === 'text' && !fixed[i] ? Math.max(0, x - SHRINK_TO) : 0));
+		const spare = give.reduce((a, b) => a + b, 0);
+		const cut = Math.min(sum - room, spare);
+		if (spare) w.forEach((x, i) => (w[i] = x - Math.floor((cut * give[i]) / spare)));
+	}
+	return w;
+}
+
+function layoutColumns(div: HTMLElement, table: HTMLTableElement, types: ColType[], view: EditorView) {
+	const widget = widgets.get(div);
+	const key = `${types.join()}\n${widget?.source ?? ''}`;
+	const shape = `${types.join()}\n${widget?.order.join() ?? ''}`;
+	const set = types.map((_, i) => widget?.meta?.cols?.[i]?.width);
+	const apply = (natural: number[], room: number) => {
+		const w = fitColumns(
+			natural.map((x, i) => set[i] ?? x),
+			types,
+			set.map((x) => x !== undefined),
+			room
+		);
+		const sum = w.reduce((a, b) => a + b, 0);
+		const wide = sum + FILL_COL > room + 1;
+		// The table ends in an empty filler column holding the new-column
+		// button. It takes whatever the note width gives a table that fits,
+		// so no real cell stretches.
+		const group = document.createElement('colgroup');
+		[...w, FILL_COL].forEach((x, i) => {
+			const col = document.createElement('col');
+			if (wide || i < w.length) col.style.width = `${x}px`;
+			group.append(col);
+		});
+		table.querySelector('colgroup')?.remove();
+		table.prepend(group);
+		table.querySelectorAll('.cm-cell-fill').forEach((c) => c.remove());
+		for (const tr of table.rows) {
+			const head = tr.parentElement?.tagName === 'THEAD';
+			const c = document.createElement(head ? 'th' : 'td');
+			c.className = 'cm-cell-fill';
+			if (head)
+				c.innerHTML =
+					'<button data-act="col" title="New column"><span class="material-symbols-outlined">add</span></button>';
+			tr.append(c);
+		}
+		table.style.width = wide ? `${sum + FILL_COL}px` : '100%';
+		div.classList.toggle('cm-table-wide', wide);
+	};
+	const measure = () => {
+		if (!div.contains(table)) return;
+		const kept = domWidths.get(div);
+		const natural =
+			kept?.shape === shape ? kept.widths : (widthCache.get(key) ?? measureColumns(table, types));
+		domWidths.set(div, { shape, widths: natural });
+		widthCache.delete(key);
+		widthCache.set(key, natural);
+		while (widthCache.size > CACHE_SPARE) widthCache.delete(widthCache.keys().next().value!);
+		apply(natural, div.clientWidth);
+	};
+	if (div.isConnected) return measure();
+	// A fresh DOM is not in the page yet: lay it out from the last
+	// measurement of the same table, then fit it once it is.
+	const known = widthCache.get(key);
+	if (known) apply(known, view.contentDOM.clientWidth - 64);
+	view.requestMeasure({ read: measure });
+}
+
+/**
+ * Drags a column's right edge from a press on its handle. The table is
+ * held at its drawn widths while dragging; the width is written to the
+ * settings line on release. A double-click sets the measured width.
+ */
+function resizeColumn(e: MouseEvent, view: EditorView, div: HTMLElement, t: TableRange, col: number) {
+	const table = div.querySelector('table');
+	const cols = table?.querySelectorAll('col');
+	const handle = e.target as HTMLElement;
+	if (!table || !cols?.[col]) return;
+	const save = (width: number) => {
+		const meta: TableMeta = t.meta ?? { v: 1 };
+		const key = String(col);
+		const cur = meta.cols?.[key] ?? { type: 'text' };
+		metaSetter(view, t)({ ...meta, cols: { ...meta.cols, [key]: { ...cur, width } } })();
+	};
+	if (e.detail === 2) {
+		const fit = domWidths.get(div)?.widths[col];
+		if (fit) save(fit);
+		return;
+	}
+	const start = Array.from(table.rows[0].querySelectorAll(':scope > :not(.cm-cell-fill)'), (c) => c.getBoundingClientRect().width);
+	start.forEach((w, i) => cols[i] && (cols[i].style.width = `${w}px`));
+	const rest = start.reduce((a, b) => a + b, 0) - start[col];
+	const x0 = e.clientX;
+	let width = Math.round(start[col]);
+	const move = (ev: MouseEvent) => {
+		width = Math.max(MIN_COL, Math.round(start[col] + ev.clientX - x0));
+		cols[col].style.width = `${width}px`;
+		// The filler, while there, keeps a narrowed table at the note width.
+		table.style.width = `${Math.max(rest + width + FILL_COL, div.clientWidth)}px`;
+		div.classList.toggle('cm-table-wide', rest + width + FILL_COL > div.clientWidth + 1);
+	};
+	const up = () => {
+		window.removeEventListener('mousemove', move);
+		window.removeEventListener('mouseup', up);
+		document.documentElement.classList.remove('cm-col-resizing');
+		handle.classList.remove('cm-th-rz-drag');
+		if (width !== Math.round(start[col])) save(width);
+	};
+	window.addEventListener('mousemove', move);
+	window.addEventListener('mouseup', up);
+	document.documentElement.classList.add('cm-col-resizing');
+	handle.classList.add('cm-th-rz-drag');
+}
+
+function filterText(f: ColFilter): string {
+	const parts: string[] = [];
+	if (f.hide?.length) parts.push(`hides ${f.hide.join(', ')}`);
+	if (f.date) parts.push(DATE_RANGE_LABEL[f.date]);
+	if (f.filled) parts.push('not empty');
+	if (f.text) parts.push(`contains "${f.text}"`);
+	return parts.join(', ');
+}
+
+/**
+ * Where the next cell editor opens: at a press on the rendered table, or
+ * 'open' for an editor opened by a command (New row, Rename).
+ */
+let pendingClick: { x: number; y: number } | 'open' | null = null;
+
+// The URL markdown-it rendered for a link. It percent-encodes the href and
+// resolveAssetUrl encodes each path segment again, so a relative one is
+// decoded fully first.
+function linkHref(a: Element): string {
+	let href = a.getAttribute('href') ?? '';
+	if (!/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('/')) {
+		try {
+			href = decodeURIComponent(href);
+		} catch {}
+	}
+	return href;
+}
 
 function onTableMouseDown(e: MouseEvent, view: EditorView, div: HTMLElement) {
 	if (e.button !== 0) return;
 	const target = e.target as Element;
+	// The open cell editor handles its own presses (Ctrl+click: cellLinkClick).
 	if (edit?.host === div && edit.cell.dom.contains(target)) return;
 	const widget = widgets.get(div);
-	const link = target.closest('a');
-	if (link && widget && (e.ctrlKey || e.metaKey)) {
-		// markdown-it percent-encodes the href and resolveAssetUrl encodes
-		// each path segment again, so a relative one is decoded fully first.
-		let href = link.getAttribute('href') ?? '';
-		if (!/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('/')) {
-			try {
-				href = decodeURIComponent(href);
-			} catch {}
+	const t = tableAt(view.state, view.posAtDOM(div));
+	if (!widget || !t) return;
+	if (e.ctrlKey || e.metaKey) {
+		const wiki = target.closest<HTMLElement>('.print-wikilink');
+		const link = target.closest('a');
+		if (wiki || link) {
+			e.preventDefault();
+			if (wiki) followWikilink(view, wiki.dataset.target ?? '', wiki.dataset.heading ?? null);
+			else if (link) openUrl(linkHref(link), widget.noteDir);
+			return;
 		}
-		const url = resolveAssetUrl(href, widget.noteDir);
-		if (url) window.open(url, '_blank', 'noopener,noreferrer');
+	}
+	if (target.classList.contains('cm-th-rz')) {
 		e.preventDefault();
+		const th = target.closest('th');
+		resizeColumn(e, view, div, t, Array.from(th?.parentElement?.children ?? []).indexOf(th as Element));
+		return;
+	}
+	const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
+	if (act) {
+		e.preventDefault();
+		const r = target.closest('[data-act]')!.getBoundingClientRect();
+		if (act === 'sort') openSortMenu(view, t, r.left, r.bottom + 4);
+		else if (act === 'filter') openFilterMenu(view, t, r.left, r.bottom + 4);
+		else if (act === 'source') {
+			view.dispatch({ selection: { anchor: t.start }, effects: rawTableEffect.of(t.from) });
+			view.focus();
+		} else if (act === 'col') {
+			pendingClick = 'open';
+			atColumn(view, t, readTable(view.state, t).rows[0].length - 1, tableCommands.tableColRight)();
+			view.focus();
+		} else if (act === 'row') {
+			pendingClick = 'open';
+			rewriteTable(view, t, withRow(readTable(view.state, t)), Infinity, 0);
+			view.focus();
+		}
 		return;
 	}
 	// A wide table scrolls itself; a press below its client box is on
 	// the scrollbar, so the browser keeps it.
 	if (
-		target instanceof HTMLTableElement &&
+		target.classList.contains('cm-table-scroll') &&
 		e.clientY >= target.getBoundingClientRect().top + target.clientTop + target.clientHeight
 	)
 		return;
 	e.preventDefault();
-	const t = tableAt(view.state, view.posAtDOM(div));
-	if (!t) return;
-	const rows = Array.from(div.querySelectorAll('tr'));
-	const row = Math.max(0, rows.indexOf(target.closest('tr') as HTMLTableRowElement));
 	const cellEl = target.closest('td, th');
-	const col = cellEl ? Math.max(0, Array.from(cellEl.parentElement?.children ?? []).indexOf(cellEl)) : 0;
+	if (!cellEl || cellEl.classList.contains('cm-cell-fill')) return;
+	const col = Math.max(0, Array.from(cellEl.parentElement?.children ?? []).indexOf(cellEl));
+	if (cellEl.tagName === 'TH' && !e.shiftKey) {
+		const r = cellEl.getBoundingClientRect();
+		openColumnMenu(view, t, col, r.left, r.bottom + 4);
+		return;
+	}
+	const rows = Array.from(div.querySelectorAll('tr'));
+	const row = sourceRow(div, Math.max(0, rows.indexOf(cellEl.closest('tr') as HTMLTableRowElement)));
 	const cells = rowCells(view.state, rowLine(view.state, t, row));
 	pendingClick = { x: e.clientX, y: e.clientY };
 	if (col < cells.length) {
@@ -239,6 +661,45 @@ function onTableMouseDown(e: MouseEvent, view: EditorView, div: HTMLElement) {
 	view.focus();
 }
 
+// Ctrl/Cmd+click on a link in the open cell editor's raw text opens it.
+const MD_LINK = /!?\[(?:\\.|[^\]\\])*\]\(\s*<?([^)\s>]+)>?[^)]*\)|https?:\/\/[^\s|)]+/g;
+const cellLinkClick = EditorView.domEventHandlers({
+	mousedown(e, cell) {
+		if (!(e.ctrlKey || e.metaKey) || !edit || edit.cell !== cell) return false;
+		const pos = cell.posAtCoords(e);
+		if (pos === null) return false;
+		const text = cell.state.doc.toString();
+		const main = edit.main;
+		const wiki = findWikilinksInText(text).find((w) => pos >= w.from && pos <= w.to);
+		if (wiki) {
+			e.preventDefault();
+			followWikilink(main, wiki.target, wiki.heading);
+			return true;
+		}
+		for (const m of text.matchAll(MD_LINK)) {
+			if (pos < m.index || pos > m.index + m[0].length) continue;
+			e.preventDefault();
+			openUrl(m[1] ?? m[0], main.state.field(noteDirField, false) ?? null);
+			return true;
+		}
+		return false;
+	}
+});
+
+// Display row (0 the header) to source row, through the painted order.
+function sourceRow(host: HTMLElement, row: number): number {
+	const order = orders.get(host);
+	return row === 0 || !order ? row : (order[row - 1] ?? row - 1) + 1;
+}
+
+/** Source rows in display order, the header first. */
+function displayRows(view: EditorView, t: TableRange): number[] {
+	const host = tableDom(view, t);
+	const order = host && orders.get(host);
+	if (order) return [0, ...order.map((i) => i + 1)];
+	return Array.from({ length: rowCount(view.state, t) }, (_, i) => i);
+}
+
 function tableAt(state: EditorState, pos: number): TableRange | null {
 	return findTableRanges(state).find((t) => pos >= t.from && pos <= t.to) ?? null;
 }
@@ -246,7 +707,7 @@ function tableAt(state: EditorState, pos: number): TableRange | null {
 // Source line of rendered row `row`: row 0 is the header, body rows sit
 // after the delimiter line.
 function rowLine(state: EditorState, t: TableRange, row: number) {
-	const first = state.doc.lineAt(t.from).number;
+	const first = state.doc.lineAt(t.start).number;
 	return state.doc.line(Math.min(first + (row === 0 ? 0 : row + 1), state.doc.lines));
 }
 
@@ -264,7 +725,7 @@ interface CellRef {
 function cellAt(state: EditorState, pos: number): CellRef | null {
 	const table = tableAt(state, pos);
 	if (!table) return null;
-	const first = state.doc.lineAt(table.from).number;
+	const first = state.doc.lineAt(table.start).number;
 	const n = state.doc.lineAt(pos).number;
 	const row = n <= first + 1 ? 0 : n - first - 1;
 	const cells = rowCells(state, rowLine(state, table, row));
@@ -324,8 +785,12 @@ function tableDom(view: EditorView, t: TableRange): HTMLElement | null {
 	return null;
 }
 
+// The rendered cell of source row `row`; null when a filter hides it.
 function cellDom(host: HTMLElement, row: number, col: number): HTMLElement | null {
-	const tr = host.querySelectorAll('tr')[row];
+	const order = orders.get(host);
+	const shown = row === 0 || !order ? row : order.indexOf(row - 1) + 1;
+	if (shown < 0 || (row > 0 && shown === 0)) return null;
+	const tr = host.querySelectorAll('tr')[shown];
 	const td = tr?.children[col];
 	return td instanceof HTMLElement ? td : null;
 }
@@ -412,7 +877,8 @@ export function syncCell(view: EditorView) {
 	if (mine && sameCell(mine.ref, ref)) {
 		mine.ref = ref;
 		if (mine.host !== host || mine.cell.dom.parentElement !== td) {
-			td.replaceChildren(mine.cell.dom);
+			td.classList.add('cm-cell-editing');
+			td.append(mine.cell.dom);
 			mine.host = host;
 		}
 		const cur = mine.cell.state;
@@ -432,13 +898,25 @@ export function syncCell(view: EditorView) {
 	const freshHost = tableDom(view, ref.table);
 	const freshTd = freshHost && cellDom(freshHost, ref.row, ref.col);
 	if (!freshHost || !freshTd) return;
-	freshTd.replaceChildren();
+	// The editor lies over the cell's rendered content, which keeps the
+	// row's height.
+	freshTd.classList.add('cm-cell-editing');
 	const cell = new EditorView({
 		parent: freshTd,
-		state: EditorState.create({ doc: text, selection: local, extensions: cellExtensions })
+		state: EditorState.create({
+			doc: text,
+			selection: local,
+			extensions: [
+				cellExtensions,
+				// The note list and tags for `[[` and `#` completion, as the note has them.
+				wikiCtxField.init(() => view.state.field(wikiCtxField)),
+				tagCtxField.init(() => view.state.field(tagCtxField)),
+				ref.row > 0 && /^(date|deadline)$/.test(colType(ref.table.meta, ref.col)) ? datePicker : []
+			]
+		})
 	});
 	edit = { main: view, cell, host: freshHost, ref, refocus: false, opened: text };
-	if (click) {
+	if (click && click !== 'open') {
 		const pos = cell.posAtCoords(click);
 		if (pos !== null) cell.dispatch({ selection: { anchor: pos } });
 	}
@@ -458,25 +936,127 @@ function columnChoices(own: boolean): string[] {
 	const t = tableAt(main.state, ref.from);
 	if (!t) return [];
 	const column = readTable(main.state, t).rows.map((r) => r[ref.col]);
+	if (colType(t.meta, ref.col) === 'status')
+		return statusOptions(t.meta, ref.col, column.filter((_, i) => i > 0 && (own || i !== ref.row)));
 	const filled = column.slice(1).filter(Boolean);
 	if (new Set(filled).size === filled.length) return [];
 	const others = column.filter((v, i) => v && i > 0 && (own || i !== ref.row));
 	return [...new Set(others)].sort((a, b) => a.localeCompare(b));
 }
 
+// Status colors of the open cell's choices, for the dots in its list.
+let choiceColors = new Map<string, string>();
+
 // A cell lists every choice until it is edited, to show what a filled
-// cell can change to; typing filters them.
+// cell can change to; typing filters them. A status cell is a picker:
+// colored choices, plus one that adds what was typed.
 function cellCompletions(ctx: CompletionContext): CompletionResult | null {
+	const meta = edit && tableAt(edit.main.state, edit.ref.from)?.meta;
+	const type = edit && edit.ref.row > 0 ? colType(meta ?? null, edit.ref.col) : 'text';
+	if (type === 'date' || type === 'deadline') return null;
 	const untouched = ctx.state.doc.toString() === edit?.opened;
 	const choices = columnChoices(untouched);
-	if (!choices.length) return null;
-	return {
-		from: 0,
-		to: ctx.state.doc.length,
-		options: choices.map((label) => ({ label })),
-		filter: !untouched
-	};
+	const typed = ctx.state.doc.toString().trim();
+	const adding = type === 'status' && !untouched && !!typed && !choices.includes(typed);
+	if (type === 'status') {
+		const all = adding ? [...choices, typed] : choices;
+		choiceColors = new Map(all.map((c) => [c, statusColor(all, c)]));
+	} else choiceColors = new Map();
+	if (!choices.length && !adding) return null;
+	const options: Completion[] = choices.map((label) => ({ label }));
+	if (adding) options.push({ label: typed, displayLabel: `Add "${typed}"`, boost: -99 });
+	return { from: 0, to: ctx.state.doc.length, options, filter: !untouched };
 }
+
+const choiceDot = {
+	position: 20,
+	render: (c: Completion) => {
+		const color = choiceColors.get(c.label);
+		if (!color) return null;
+		const dot = document.createElement('span');
+		dot.className = 'cm-choice-dot';
+		dot.style.background = color;
+		return dot;
+	}
+};
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+const dayKey = (d: Date) =>
+	`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * The calendar under an open date cell. A click on a day writes it into
+ * the cell like typing; typing a date moves the calendar to it.
+ */
+const datePicker = showTooltip.of({
+	pos: 0,
+	above: false,
+	create(cell) {
+		const dom = document.createElement('div');
+		dom.className = 'cm-date-pop';
+		// First of the month on screen; null follows the cell's date.
+		let month: Date | null = null;
+		const draw = () => {
+			const v = cell.state.doc.toString().trim();
+			const picked = validDate(v) ? v : null;
+			const today = localDay();
+			const at = picked ?? today;
+			const m = (month ??= new Date(Number(at.slice(0, 4)), Number(at.slice(5, 7)) - 1, 1));
+			const lead = (m.getDay() + 6) % 7;
+			const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+			let grid = WEEKDAYS.map((d) => `<span class="cm-date-wd">${d}</span>`).join('');
+			for (let i = 0; i < Math.ceil((lead + days) / 7) * 7; i++) {
+				const d = new Date(m.getFullYear(), m.getMonth(), 1 - lead + i);
+				const k = dayKey(d);
+				const cls = [
+					d.getMonth() !== m.getMonth() && 'other',
+					k === today && 'today',
+					k === picked && 'on'
+				].filter(Boolean);
+				grid += `<button data-day="${k}"${cls.length ? ` class="${cls.join(' ')}"` : ''}>${d.getDate()}</button>`;
+			}
+			const hint = picked
+				? `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(`${picked}T00:00`).getDay()]}, ${friendlyDate(picked)}`
+				: v
+					? 'Not a date, use YYYY-MM-DD'
+					: 'Type YYYY-MM-DD';
+			dom.innerHTML =
+				`<div class="cm-date-head"><button data-step="-1" title="Previous month"><span class="material-symbols-outlined">chevron_left</span></button>` +
+				`<span>${MONTH_NAMES[m.getMonth()]} ${m.getFullYear()}</span>` +
+				`<button data-step="1" title="Next month"><span class="material-symbols-outlined">chevron_right</span></button></div>` +
+				`<div class="cm-date-grid">${grid}</div>` +
+				`<div class="cm-date-foot"><span class="cm-date-hint${picked || !v ? '' : ' bad'}">${hint}</span>` +
+				`<button data-day="${today}">Today</button>${v ? '<button data-day="">Clear</button>' : ''}</div>`;
+		};
+		// Presses never take focus from the cell.
+		dom.addEventListener('mousedown', (e) => {
+			e.preventDefault();
+			const b = (e.target as Element).closest<HTMLElement>('button');
+			if (!b) return;
+			if (b.dataset.step && month) {
+				month = new Date(month.getFullYear(), month.getMonth() + Number(b.dataset.step), 1);
+				draw();
+			} else if (b.dataset.day !== undefined) {
+				const v = b.dataset.day;
+				cell.dispatch({
+					changes: { from: 0, to: cell.state.doc.length, insert: v },
+					selection: { anchor: v.length },
+					userEvent: 'input.pick'
+				});
+			}
+		});
+		draw();
+		return {
+			dom,
+			update(u) {
+				if (!u.docChanged) return;
+				month = null;
+				draw();
+			}
+		};
+	}
+});
 
 // Copy cell edits and caret moves into the main doc, as one transaction
 // per cell transaction so undo groups typing like the main editor.
@@ -503,31 +1083,20 @@ const writeBack = EditorView.updateListener.of((u) => {
 	}
 });
 
-// A typed or pasted `|` would split the cell and a newline the table, so
-// pipes are escaped and newlines become spaces on the way in.
+// A bare `|` would split the cell and a newline the table, so after every
+// edit (a typed pipe, or a deleted backslash in front of one) pipes are
+// escaped and newlines become spaces. The fix-up runs after the edit, so the
+// edit's own selection maps through it.
 const cellInputFilter = EditorState.transactionFilter.of((tr) => {
 	if (!tr.docChanged || tr.annotation(fromMain)) return tr;
-	let changed = false;
-	const specs: { from: number; to: number; insert: string }[] = [];
-	tr.changes.iterChanges((fromA, toA, _fromB, _toB, ins) => {
-		const s = ins.toString();
-		let out = '';
-		for (let i = 0; i < s.length; i++) {
-			const prev = i ? s[i - 1] : tr.startState.sliceDoc(fromA - 1, fromA);
-			if (s[i] === '|' && prev !== '\\') out += '\\|';
-			else if (s[i] === '\n') out += ' ';
-			else out += s[i];
-		}
-		if (out !== s) changed = true;
-		specs.push({ from: fromA, to: toA, insert: out });
-	});
-	if (!changed) return tr;
-	const changes = ChangeSet.of(specs, tr.startState.doc.length);
-	return {
-		changes,
-		selection: tr.startState.selection.map(changes, 1),
-		userEvent: tr.annotation(Transaction.userEvent) ?? 'input'
-	};
+	const text = tr.newDoc.toString();
+	const fixes: { from: number; to?: number; insert: string }[] = [];
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === '\n') fixes.push({ from: i, to: i + 1, insert: ' ' });
+		else if (text[i] === '|' && text[i - 1] !== '\\') fixes.push({ from: i, insert: '\\' });
+	}
+	if (!fixes.length) return tr;
+	return [tr, { changes: fixes, sequential: true }];
 });
 
 /** Moves the main cursor to the end of a cell; syncCell then opens it. */
@@ -552,7 +1121,7 @@ function leaveTable(main: EditorView, t: TableRange, after: boolean) {
 }
 
 function rowCount(state: EditorState, t: TableRange): number {
-	return state.doc.lineAt(t.to).number - state.doc.lineAt(t.from).number;
+	return state.doc.lineAt(t.to).number - state.doc.lineAt(t.start).number;
 }
 
 // Cell keys: steps between cells, out of the table at its edges.
@@ -571,22 +1140,25 @@ function step(dir: 'next' | 'prev' | 'up' | 'down' | 'left' | 'right') {
 		}
 		const t = tableAt(main.state, ref.from);
 		if (!t) return false;
-		const rows = rowCount(main.state, t);
+		// Rows step in display order (sort and filter), by index into `rows`.
+		const rows = displayRows(main, t);
 		const cols = rowCells(main.state, rowLine(main.state, t, ref.row)).length;
-		let { row, col } = ref;
+		const { row, col } = ref;
+		const at = Math.max(0, rows.indexOf(row));
+		const last = rows.length - 1;
 		if (dir === 'up' || dir === 'down') {
-			row += dir === 'down' ? 1 : -1;
-			if (row < 0 || row >= rows) leaveTable(main, t, row >= rows);
-			else gotoCell(main, t, row, col);
+			const next = at + (dir === 'down' ? 1 : -1);
+			if (next < 0 || next > last) leaveTable(main, t, next > last);
+			else gotoCell(main, t, rows[next], col);
 		} else if (dir === 'next' || dir === 'right') {
 			if (col < cols - 1) gotoCell(main, t, row, col + 1);
-			else if (row < rows - 1) gotoCell(main, t, row + 1, 0);
+			else if (at < last) gotoCell(main, t, rows[at + 1], 0);
 			else if (dir === 'right') leaveTable(main, t, true);
-			else rewriteTable(main, t, withRow(readTable(main.state, t)), rows, 0);
+			else rewriteTable(main, t, withRow(readTable(main.state, t)), Infinity, 0);
 		} else if (col > 0) {
 			gotoCell(main, t, row, col - 1);
-		} else if (row > 0) {
-			gotoCell(main, t, row - 1, Infinity);
+		} else if (at > 0) {
+			gotoCell(main, t, rows[at - 1], Infinity);
 		} else {
 			leaveTable(main, t, false);
 		}
@@ -602,7 +1174,9 @@ function enterKey(cell: EditorView): boolean {
 	const { main, ref } = edit;
 	const t = tableAt(main.state, ref.from);
 	if (!t) return false;
-	if (ref.row < rowCount(main.state, t) - 1) gotoCell(main, t, ref.row + 1, ref.col);
+	const rows = displayRows(main, t);
+	const at = Math.max(0, rows.indexOf(ref.row));
+	if (at < rows.length - 1) gotoCell(main, t, rows[at + 1], ref.col);
 	else rewriteTable(main, t, withRow(readTable(main.state, t)), Infinity, ref.col);
 	return true;
 }
@@ -616,7 +1190,12 @@ const cellExtensions = [
 	EditorView.lineWrapping,
 	cellInputFilter,
 	writeBack,
-	autocompletion({ override: [cellCompletions], icons: false }),
+	cellLinkClick,
+	autocompletion({
+		override: [cellCompletions, wikiCompletionSource, tagCompletionSource],
+		icons: false,
+		addToOptions: [choiceDot]
+	}),
 	// The note theme styles the list, but inside the cell editor its own
 	// base styles are more specific for these two.
 	EditorView.theme(
@@ -680,7 +1259,7 @@ function enterTable(down: boolean) {
 			down ? sel.head < t.from && next >= t.from : sel.head > t.to && next <= t.to
 		);
 		if (!t || t.from === raw) return false;
-		gotoCell(view, t, down ? 0 : rowCount(view.state, t) - 1, 0);
+		gotoCell(view, t, down ? 0 : displayRows(view, t).at(-1)!, 0);
 		return true;
 	};
 }
@@ -705,9 +1284,10 @@ const vimRowKeys = Prec.highest(
 			const sel = view.state.selection.main;
 			const c = sel.empty && !isPreviewMode() ? cellAt(view.state, sel.head) : null;
 			if (c && view.state.field(rawTableField) !== c.table.from) {
-				const row = c.row + (down ? 1 : -1);
-				if (row < 0 || row >= rowCount(view.state, c.table)) leaveTable(view, c.table, down);
-				else gotoCell(view, c.table, row, c.col);
+				const rows = displayRows(view, c.table);
+				const next = Math.max(0, rows.indexOf(c.row)) + (down ? 1 : -1);
+				if (next < 0 || next >= rows.length) leaveTable(view, c.table, down);
+				else gotoCell(view, c.table, rows[next], c.col);
 			} else if (!enterTable(down)(view)) {
 				return false;
 			}
@@ -738,27 +1318,296 @@ const cellSync = ViewPlugin.define((view) => {
 
 // ---- Table commands ----
 
-/** Replaces a table with a model's markdown, cursor at the end of a cell. */
-function rewriteTable(main: EditorView, t: TableRange, m: TableModel, row: number, col: number) {
+const metaText = (meta: TableMeta) => {
+	const line = metaLine(meta);
+	return line ? line + '\n' : '';
+};
+
+/**
+ * Replaces a table with a model's markdown, cursor at the end of a cell.
+ * `meta` rewrites the settings line in the same change.
+ */
+function rewriteTable(main: EditorView, t: TableRange, m: TableModel, row: number, col: number, meta?: TableMeta) {
 	const { text, cellPos } = writeTable(m);
+	const head = meta ? metaText(meta) : '';
+	const from = meta ? t.from : t.start;
 	const r = Math.max(0, Math.min(row, m.rows.length - 1));
 	const c = Math.max(0, Math.min(col, m.rows[0].length - 1));
 	main.dispatch({
-		changes: { from: t.from, to: t.to, insert: text },
-		selection: { anchor: t.from + cellPos(r, c) + m.rows[r][c].length },
+		changes: { from, to: t.to, insert: head + text },
+		selection: { anchor: from + head.length + cellPos(r, c) + m.rows[r][c].length },
 		scrollIntoView: true
 	});
 }
 
+/** Writes a table's settings line, dropping it when nothing is set. */
+function setMeta(view: EditorView, t: TableRange, meta: TableMeta) {
+	const insert = metaText(meta);
+	if (view.state.sliceDoc(t.from, t.start) !== insert) view.dispatch({ changes: { from: t.from, to: t.start, insert } });
+}
+
+const TYPES: { type: ColType; label: string; icon: string }[] = [
+	{ type: 'text', label: 'Text', icon: 'notes' },
+	{ type: 'date', label: 'Date', icon: 'calendar_today' },
+	{ type: 'deadline', label: 'Deadline', icon: 'event_upcoming' },
+	{ type: 'status', label: 'Status', icon: 'radio_button_checked' },
+	{ type: 'number', label: 'Number', icon: 'tag' }
+];
+const RANGE_ITEMS: { range: DateRange; label: string }[] = [
+	{ range: 'week', label: 'Next 7 days' },
+	{ range: 'month', label: 'Next 30 days' },
+	{ range: 'upcoming', label: 'Upcoming' },
+	{ range: 'overdue', label: 'Overdue' }
+];
+
+/** Shows a menu of items at a screen point; CodeEditor provides it. */
+export const tableMenu = Facet.define<
+	(x: number, y: number, items: ContextMenuItem[]) => void,
+	((x: number, y: number, items: ContextMenuItem[]) => void) | null
+>({ combine: (v) => v[0] ?? null });
+
+/** Sets settings on a table that may have moved while a menu was open. */
+const metaSetter = (view: EditorView, t: TableRange) => (next: TableMeta) => () => {
+	const now = findTableRanges(view.state).find((r) => r.start === t.start);
+	if (now) setMeta(view, now, next);
+};
+
+// Header names for menus, numbered when blank or repeated (menu labels
+// must be unique).
+function columnNames(view: EditorView, t: TableRange): string[] {
+	const head = readTable(view.state, t).rows[0];
+	return head.map((h, i) => {
+		const name = h.trim() || `Column ${i + 1}`;
+		return head.findIndex((o, j) => (o.trim() || `Column ${j + 1}`) === name) === i ? name : `${name} (${i + 1})`;
+	});
+}
+
+// A menu opened from another menu's item waits for that one to close.
+const later = (open: () => void) => () => queueMicrotask(open);
+
+/**
+ * A one-line input at a screen point, for menu items that need text.
+ * Enter or leaving it keeps the text, Esc drops it.
+ */
+function askText(view: EditorView, x: number, y: number, value: string, done: (text: string) => void) {
+	const box = document.createElement('div');
+	box.className = 'cm-table-ask';
+	const input = document.createElement('input');
+	input.placeholder = 'Contains...';
+	input.spellcheck = false;
+	input.value = value;
+	box.append(input);
+	view.dom.append(box);
+	box.style.left = `${Math.max(8, Math.min(x, innerWidth - box.offsetWidth - 8))}px`;
+	box.style.top = `${Math.max(8, Math.min(y, innerHeight - box.offsetHeight - 8))}px`;
+	let open = true;
+	const close = (keep: boolean) => {
+		if (!open) return;
+		open = false;
+		box.remove();
+		if (keep) done(input.value.trim());
+		view.focus();
+	};
+	input.addEventListener('keydown', (e) => {
+		e.stopPropagation();
+		if (e.key === 'Enter' || e.key === 'Escape') {
+			e.preventDefault();
+			close(e.key === 'Enter');
+		}
+	});
+	input.addEventListener('blur', () => close(true));
+	input.focus();
+	input.select();
+}
+
+/** Filter choices for one column; x and y place the Contains input. */
+function filterItems(view: EditorView, t: TableRange, col: number, x: number, y: number): ContextMenuItem[] {
+	const meta: TableMeta = t.meta ?? { v: 1 };
+	const type = colType(meta, col);
+	const key = String(col);
+	const filter = meta.filter?.[key] ?? {};
+	const apply = metaSetter(view, t);
+	const withFilter = (f: ColFilter): TableMeta => {
+		const all = { ...meta.filter };
+		if (Object.keys(f).length) all[key] = f;
+		else delete all[key];
+		return { ...meta, filter: all };
+	};
+	const items: ContextMenuItem[] = [];
+	if (type === 'status') {
+		const values = readTable(view.state, t).rows.slice(1).map((r) => r[col] ?? '');
+		const options = statusOptions(meta, col, values);
+		for (const v of options) {
+			const hidden = !!filter.hide?.includes(v);
+			const hide = hidden ? filter.hide!.filter((h) => h !== v) : [...(filter.hide ?? []), v];
+			items.push({
+				label: `${hidden ? 'Show' : 'Hide'} ${v}`,
+				icon: hidden ? 'visibility' : 'visibility_off',
+				color: statusColor(options, v),
+				action: apply(withFilter({ ...filter, hide: hide.length ? hide : undefined }))
+			});
+		}
+	} else if (type === 'date' || type === 'deadline') {
+		for (const o of RANGE_ITEMS) {
+			items.push({
+				label: o.label,
+				icon: 'date_range',
+				current: filter.date === o.range,
+				action: apply(withFilter({ ...filter, date: filter.date === o.range ? undefined : o.range }))
+			});
+		}
+	} else {
+		items.push({
+			label: filter.text ? `Contains "${filter.text}"` : 'Contains...',
+			icon: 'search',
+			current: !!filter.text,
+			action: later(() =>
+				askText(view, x, y, filter.text ?? '', (text) => apply(withFilter({ ...filter, text: text || undefined }))())
+			)
+		});
+	}
+	items.push({
+		label: filter.filled ? 'Show empty rows' : 'Hide empty rows',
+		icon: filter.filled ? 'visibility' : 'visibility_off',
+		action: apply(withFilter({ ...filter, filled: filter.filled ? undefined : true }))
+	});
+	if (Object.keys(filter).length) {
+		items.push({ label: 'Remove filter', icon: 'close', divider: true, action: apply(withFilter({})) });
+	}
+	return items;
+}
+
+/** Runs a table command with the cursor in a column's header cell. */
+function atColumn(view: EditorView, t: TableRange, col: number, cmd: (view: EditorView) => boolean) {
+	return () => {
+		const now = findTableRanges(view.state).find((r) => r.start === t.start);
+		if (!now) return;
+		gotoCell(view, now, 0, col);
+		cmd(view);
+	};
+}
+
+/** Header menu: rename, type, sort, filter and column edits. */
+function openColumnMenu(view: EditorView, t: TableRange, col: number, x: number, y: number) {
+	const show = view.state.facet(tableMenu);
+	if (!show) return;
+	const meta: TableMeta = t.meta ?? { v: 1 };
+	const type = colType(meta, col);
+	const key = String(col);
+	const apply = metaSetter(view, t);
+	const values = readTable(view.state, t).rows.slice(1).map((r) => r[col] ?? '');
+	const sorted = meta.sort?.col === col ? meta.sort.dir : 0;
+	const width = readTable(view.state, t).rows[0].length;
+	show(x, y, [
+		{
+			label: 'Rename',
+			icon: 'edit',
+			action: () => {
+				const now = findTableRanges(view.state).find((r) => r.start === t.start);
+				if (!now) return;
+				pendingClick = 'open';
+				gotoCell(view, now, 0, col);
+				view.focus();
+			}
+		},
+		...TYPES.map((o, i) => ({
+			label: o.label,
+			icon: o.icon,
+			divider: i === 0,
+			current: type === o.type,
+			action: () => {
+				if (o.type === type) return;
+				const cols = { ...meta.cols };
+				const width = cols[key]?.width;
+				if (o.type === 'text' && !width) delete cols[key];
+				else
+					cols[key] = {
+						type: o.type,
+						...(o.type === 'status' && { options: statusOptions(null, col, values) }),
+						...(width && { width })
+					};
+				const all = { ...meta.filter };
+				delete all[key];
+				apply({ ...meta, cols, filter: all })();
+			}
+		})),
+		{ label: 'Sort ascending', icon: 'arrow_upward', divider: true, current: sorted > 0, action: apply({ ...meta, sort: { col, dir: 1 } }) },
+		{ label: 'Sort descending', icon: 'arrow_downward', current: sorted < 0, action: apply({ ...meta, sort: { col, dir: -1 } }) },
+		...(sorted ? [{ label: 'Clear sort', icon: 'close', action: apply({ ...meta, sort: undefined }) }] : []),
+		{
+			label: 'Filter',
+			icon: 'filter_list',
+			current: !!meta.filter?.[key],
+			action: later(() => show(x, y, filterItems(view, t, col, x, y)))
+		},
+		{ label: 'Insert column left', icon: 'add_column_left', divider: true, action: atColumn(view, t, col, tableCommands.tableColLeft) },
+		{ label: 'Insert column right', icon: 'add_column_right', action: atColumn(view, t, col, tableCommands.tableColRight) },
+		...(width > 1 ? [{ label: 'Delete column', icon: 'delete', danger: true, action: atColumn(view, t, col, tableCommands.tableDeleteCol) }] : [])
+	]);
+}
+
+/** Toolbar Sort: pick a column; picking it again flips, then clears. */
+function openSortMenu(view: EditorView, t: TableRange, x: number, y: number) {
+	const show = view.state.facet(tableMenu);
+	if (!show) return;
+	const meta: TableMeta = t.meta ?? { v: 1 };
+	const apply = metaSetter(view, t);
+	const items: ContextMenuItem[] = columnNames(view, t).map((name, col) => {
+		const dir = meta.sort?.col === col ? meta.sort.dir : 0;
+		return {
+			label: dir ? `${name}, ${dir > 0 ? 'ascending' : 'descending'}` : name,
+			icon: dir > 0 ? 'arrow_upward' : dir < 0 ? 'arrow_downward' : TYPE_ICON[colType(meta, col)],
+			current: !!dir,
+			action: apply({ ...meta, sort: dir < 0 ? undefined : { col, dir: dir > 0 ? -1 : 1 } })
+		};
+	});
+	if (meta.sort) items.push({ label: 'Clear sort', icon: 'close', divider: true, action: apply({ ...meta, sort: undefined }) });
+	show(x, y, items);
+}
+
+/** Toolbar Filter: a column, then its filter choices. */
+function openFilterMenu(view: EditorView, t: TableRange, x: number, y: number) {
+	const show = view.state.facet(tableMenu);
+	if (!show) return;
+	const meta: TableMeta = t.meta ?? { v: 1 };
+	const items: ContextMenuItem[] = columnNames(view, t).map((name, col) => {
+		const f = meta.filter?.[col];
+		return {
+			label: f ? `${name}: ${filterText(f)}` : name,
+			icon: TYPE_ICON[colType(meta, col)],
+			current: !!f,
+			action: later(() => show(x, y, filterItems(view, t, col, x, y)))
+		};
+	});
+	if (hasFilter(meta)) {
+		items.push({ label: 'Clear filters', icon: 'close', divider: true, action: metaSetter(view, t)({ ...meta, filter: undefined }) });
+	}
+	show(x, y, items);
+}
+
 type TableOp = (m: TableModel, row: number, col: number) => [row: number, col: number] | null;
 
-function tableOp(op: TableOp) {
+// `shift` moves the column settings when a column is added or removed.
+function tableOp(op: TableOp, shift?: (meta: TableMeta, col: number) => TableMeta) {
 	return (view: EditorView): boolean => {
 		const ref = cellAt(view.state, view.state.selection.main.head);
 		if (!ref) return false;
 		const m = readTable(view.state, ref.table);
 		const at = op(m, ref.row, ref.col);
-		if (at) rewriteTable(view, ref.table, m, at[0], at[1]);
+		const meta = shift && ref.table.meta ? shift(ref.table.meta, ref.col) : undefined;
+		if (at) rewriteTable(view, ref.table, m, at[0], at[1], meta);
+		view.focus();
+		return true;
+	};
+}
+
+// Sorting is a view: it sets the table's sort, the rows stay in file order.
+function sortBy(dir: 1 | -1) {
+	return (view: EditorView): boolean => {
+		const ref = cellAt(view.state, view.state.selection.main.head);
+		if (!ref) return false;
+		const width = readTable(view.state, ref.table).rows[0].length;
+		if (ref.col < width) setMeta(view, ref.table, { ...(ref.table.meta ?? { v: 1 }), sort: { col: ref.col, dir } });
 		view.focus();
 		return true;
 	};
@@ -766,12 +1615,6 @@ function tableOp(op: TableOp) {
 
 const blankRow = (m: TableModel) => m.rows[0].map(() => '');
 const align = (a: Align): TableOp => (m, row, col) => ((m.aligns[col] = a), [row, col]);
-const sortBy = (dir: 1 | -1): TableOp => (m, row, col) => {
-	const body = m.rows.slice(1);
-	body.sort((a, b) => dir * a[col].localeCompare(b[col], undefined, { numeric: true, sensitivity: 'base' }));
-	m.rows.splice(1, body.length, ...body);
-	return [row, col];
-};
 
 /** Table edits for the palette, keyed like CodeEditor's COMMANDS. */
 export const tableCommands: Record<string, (view: EditorView) => boolean> = {
@@ -784,27 +1627,36 @@ export const tableCommands: Record<string, (view: EditorView) => boolean> = {
 	tableDeleteRow: tableOp((m, row, col) =>
 		row === 0 ? null : (m.rows.splice(row, 1), [Math.min(row, m.rows.length - 1), col])
 	),
-	tableColLeft: tableOp((m, row, col) => {
-		for (const r of m.rows) r.splice(col, 0, '');
-		m.aligns.splice(col, 0, null);
-		return [row, col];
-	}),
-	tableColRight: tableOp((m, row, col) => {
-		for (const r of m.rows) r.splice(col + 1, 0, '');
-		m.aligns.splice(col + 1, 0, null);
-		return [row, col + 1];
-	}),
-	tableDeleteCol: tableOp((m, row, col) => {
-		if (m.rows[0].length < 2) return null;
-		for (const r of m.rows) r.splice(col, 1);
-		m.aligns.splice(col, 1);
-		return [row, Math.min(col, m.rows[0].length - 1)];
-	}),
+	tableColLeft: tableOp(
+		(m, row, col) => {
+			for (const r of m.rows) r.splice(col, 0, '');
+			m.aligns.splice(col, 0, null);
+			return [row, col];
+		},
+		(meta, col) => shiftCols(meta, col, 1)
+	),
+	tableColRight: tableOp(
+		(m, row, col) => {
+			for (const r of m.rows) r.splice(col + 1, 0, '');
+			m.aligns.splice(col + 1, 0, null);
+			return [row, col + 1];
+		},
+		(meta, col) => shiftCols(meta, col + 1, 1)
+	),
+	tableDeleteCol: tableOp(
+		(m, row, col) => {
+			if (m.rows[0].length < 2) return null;
+			for (const r of m.rows) r.splice(col, 1);
+			m.aligns.splice(col, 1);
+			return [row, Math.min(col, m.rows[0].length - 1)];
+		},
+		(meta, col) => shiftCols(meta, col, -1)
+	),
 	tableAlignLeft: tableOp(align('left')),
 	tableAlignCenter: tableOp(align('center')),
 	tableAlignRight: tableOp(align('right')),
-	tableSortAsc: tableOp(sortBy(1)),
-	tableSortDesc: tableOp(sortBy(-1)),
+	tableSortAsc: sortBy(1),
+	tableSortDesc: sortBy(-1),
 	tableSource: (view) => {
 		const t = tableAt(view.state, view.state.selection.main.head);
 		if (!t) return false;
@@ -868,20 +1720,16 @@ function buildTableDecorations(state: EditorState): DecorationSet {
 	for (const t of tables) {
 		const first = state.doc.lineAt(t.from).number;
 		const last = state.doc.lineAt(t.to).number;
-		// Header and body rows; the delimiter line renders no row.
-		const html =
-			state.field(rawTableField) === t.from && !isPreviewMode()
-				? ''
-				: tableHtml(t.source, refs, last - first, noteDir);
-		if (html === '') {
+		const widget = new TableWidget(t.source, refs, noteDir, t.meta, keepRow(state, t), () =>
+			readTable(state, t).rows.slice(1)
+		);
+		// A cell edit keeps the table's shape (cellInputFilter), so the table
+		// being typed in stays a widget without rendering it.
+		const raw = state.field(rawTableField) === t.from && !isPreviewMode();
+		if (raw || ((!echoing || widget.cached) && widget.html === '')) {
 			for (let n = first; n <= last; n++) ranges.push(sourceLine.range(state.doc.line(n).from));
 		} else {
-			ranges.push(
-				Decoration.replace({
-					widget: new TableWidget(t.source, html, noteDir),
-					block: true
-				}).range(t.from, t.to)
-			);
+			ranges.push(Decoration.replace({ widget, block: true }).range(t.from, t.to));
 		}
 	}
 	trimCache(tables.length);
@@ -896,7 +1744,8 @@ export const tableBlockField = StateField.define<DecorationSet>({
 			tr.reconfigured ||
 			syntaxTree(tr.state) !== syntaxTree(tr.startState) ||
 			tr.state.field(rawTableField) !== tr.startState.field(rawTableField) ||
-			tr.effects.some((e) => e.is(previewModeEffect) || e.is(noteDirEffect) || e.is(rendererReady))
+			tr.effects.some((e) => e.is(previewModeEffect) || e.is(noteDirEffect) || e.is(rendererReady)) ||
+			(tr.selection && keepKey(tr.state) !== keepKey(tr.startState))
 		) {
 			return buildTableDecorations(tr.state);
 		}

@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { movedBy, relinkNote } from '$lib/relink';
-import { linkFirstMention } from '$lib/editor/wikilinks';
-import { effectiveTitle, setEffectiveTitle, updateFrontmatterBlock } from '$lib/editor/frontmatter';
+import { linkFirstMention, liveOverArchived, notePathsFromTree, wikiResolver, type WikiResolver } from '$lib/editor/wikilinks';
+import { effectiveTitle, retitle, sanitizeTitleForFilename, updateFrontmatterBlock } from '$lib/editor/frontmatter';
 import type { Document } from 'yaml';
 import type { ArchiveEntry } from '$lib/archive';
 
@@ -10,6 +10,15 @@ export interface VaultEntry {
 	path: string;
 	type: 'file' | 'directory';
 	children?: VaultEntry[];
+}
+
+// Notes under a folder, shown as a quiet count on its sidebar row. Pinned
+// notes are left out, matching what the folder shows when expanded.
+export function folderNoteCount(e: VaultEntry, pins: string[]): number {
+	let n = 0;
+	for (const c of e.children ?? [])
+		n += c.type === 'directory' ? folderNoteCount(c, pins) : c.name.endsWith('.md') && !pins.includes(c.path) ? 1 : 0;
+	return n;
 }
 
 export const tree = writable<VaultEntry[]>([]);
@@ -78,11 +87,37 @@ export function movePin(path: string, before: string | null) {
 	});
 }
 
-// Rewrites or drops pins after a rename or delete of `path` (and below it).
+// Files placed by hand in the tree, client-side like pins. A folder whose
+// files were dragged into an order lists them here in that order; files it
+// doesn't list follow, by name. Folders always come first, by name.
+const ORDER_STORAGE = 'scrinium:fileOrder';
+export const fileOrder = storedPaths(ORDER_STORAGE, loadPaths(ORDER_STORAGE) ?? []);
+
+export function inFileOrder(entries: VaultEntry[], order: string[]): VaultEntry[] {
+	const rank = new Map(order.map((p, i) => [p, i]));
+	const of = (e: VaultEntry) => (e.type === 'directory' ? -1 : (rank.get(e.path) ?? Infinity));
+	// Stable, so equal ranks keep the server's folders-then-name order.
+	return [...entries].sort((a, b) => (of(a) === of(b) ? 0 : of(a) - of(b)));
+}
+
+// Drag between two files: puts `path` right before or after `at` among its
+// folder's files (`siblings`, in shown order) and records that folder's order.
+export function placeFile(path: string, siblings: string[], at: string, after: boolean) {
+	const rest = siblings.filter((p) => p !== path);
+	const i = rest.indexOf(at);
+	if (i === -1) return;
+	rest.splice(after ? i + 1 : i, 0, path);
+	const placed = new Set(rest);
+	fileOrder.update((order) => [...order.filter((p) => !placed.has(p)), ...rest]);
+}
+
+// Rewrites or drops pins and placed files after a rename or delete of `path`
+// (and below it).
 function updatePins(fn: (p: string) => string | null) {
 	const apply = (paths: string[]) => paths.map(fn).filter((p): p is string => p !== null);
 	pinnedPaths.update(apply);
 	globalPins.update(apply);
+	fileOrder.update(apply);
 }
 
 // Open tabs, oldest first. The active note is the last one opened (or the
@@ -134,9 +169,14 @@ export async function loadTree() {
 }
 
 export async function loadNote(path: string): Promise<string> {
+	return (await fetchNote(path)).content;
+}
+
+// The server copy of a note with its version (a hash of the text).
+async function fetchNote(path: string): Promise<{ content: string; version: string | null }> {
 	const res = await fetch(`/api/notes/${encPath(path)}`);
 	if (!res.ok) throw new Error('Failed to load note');
-	return res.text();
+	return { content: await res.text(), version: res.headers.get('X-Note-Version') };
 }
 
 // Download the note as a plain `.md` file through the browser. Flushes the
@@ -167,6 +207,11 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 // and a save never runs while a path change is in flight.
 let queue: Promise<unknown> = Promise.resolve();
 let retryMs = 0;
+// The version of each note's server copy this tab last read or wrote.
+// Saves send it as If-Match: the server keeps a copy that changed under
+// it as "<name> (conflict).md" and puts text for a note gone elsewhere in
+// such a copy (saveNote in server/vault.ts). Notes without one overwrite.
+const versions = new Map<string, string>();
 
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 	const run = queue.then(fn);
@@ -197,13 +242,9 @@ async function writePending(keepalive = false): Promise<boolean> {
 		pending.delete(path);
 		let ok = false;
 		try {
-			const res = await fetch(`/api/notes/${encPath(path)}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'text/plain' },
-				body: content,
-				keepalive: keepalive && content.length < 60000
-			});
+			const res = await putNote(path, content, keepalive && content.length < 60000);
 			ok = res.ok;
+			if (ok) await saved(path, res);
 		} catch {}
 		if (!ok) {
 			failed = true;
@@ -220,6 +261,53 @@ async function writePending(keepalive = false): Promise<boolean> {
 	retryMs = 0;
 	if (pending.size === 0) saveStatus.set('saved');
 	return true;
+}
+
+function putNote(path: string, content: string, keepalive = false): Promise<Response> {
+	const version = versions.get(path);
+	return fetch(`/api/notes/${encPath(path)}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'text/plain', ...(version && { 'If-Match': version }) },
+		body: content,
+		keepalive
+	});
+}
+
+// Record a save's version. A version-checked save also says where the text
+// landed: in a conflict copy when the note was gone (the tab follows it
+// there), plus any copy kept of a version it replaced.
+async function saved(path: string, res: Response) {
+	const version = res.headers.get('X-Note-Version');
+	if (res.status === 204) {
+		if (version) versions.set(path, version);
+		return;
+	}
+	const body: { path: string; conflict: string | null } = await res.json();
+	if (version) versions.set(body.path, version);
+	if (body.path !== path) followGone(path, body.path);
+	if (body.path !== path || body.conflict) void loadTree();
+}
+
+// The note went away elsewhere and its unsaved text was saved as `copy`:
+// the editor, tabs and text typed meanwhile move there, titled after it
+// like a rename.
+function followGone(path: string, copy: string) {
+	versions.delete(path);
+	if (pendingTitleSync?.path === path) cancelTitleSync();
+	const typed = pending.get(path);
+	if (typed !== undefined) {
+		pending.delete(path);
+		pending.set(copy, retitle(typed, path, copy));
+	}
+	if (shown === path) {
+		shown = copy;
+		const text = editorHost?.read();
+		if (text !== undefined) {
+			const out = retitle(text, path, copy);
+			if (out !== text) editorHost?.write(out);
+		}
+	}
+	followMove(path, copy);
 }
 
 function doSave(keepalive = false): Promise<boolean> {
@@ -243,13 +331,13 @@ function afterSaved<T>(fn: () => Promise<T>): Promise<T | null> {
 }
 
 // Pending text follows a rename so a late save never recreates the old file,
-// and gets the relative-link fix the server gave the saved copies, so it
-// never writes the old links back.
-function remapPending(from: string, to: string) {
+// and gets the link and title fix the server gave the saved copies, so it
+// never writes the old ones back.
+function remapPending(from: string, to: string, wiki: { before: WikiResolver; after: WikiResolver }) {
 	const moved = movedBy(from, to);
 	for (const [path, content] of [...pending]) {
 		pending.delete(path);
-		pending.set(moved(path), relinkNote(content, path, moved(path), moved));
+		pending.set(moved(path), relinkNote(retitle(content, path, moved(path)), path, moved(path), moved, wiki));
 	}
 }
 
@@ -263,9 +351,25 @@ export interface EditorHost {
 	// The editor's live text, and a replacement autosaved like typing.
 	read(): string;
 	write(content: string): void;
+	// Show a change made elsewhere, without saving it.
+	replace(content: string): void;
+	// Move the cursor to a heading of the shown note, if it has one.
+	reveal(heading: string): void;
 }
 let editorHost: EditorHost | null = null;
 let shown: string | null = null;
+// A heading to jump to once its note is shown (`[[Note#Heading]]`).
+let pendingHeading: { path: string; heading: string } | null = null;
+
+// Open a note at one of its headings (null: wherever it opens).
+export function openNoteAt(path: string, heading: string | null) {
+	if (heading && path === shown && get(activePath) === path) {
+		editorHost?.reveal(heading);
+		return;
+	}
+	pendingHeading = heading ? { path, heading } : null;
+	openTab(path);
+}
 
 export function attachEditor(host: EditorHost): () => void {
 	editorHost = host;
@@ -297,7 +401,9 @@ export function showNote(path: string): Promise<void> {
 		let content = pending.get(path);
 		if (content === undefined) {
 			try {
-				content = await loadNote(path);
+				const note = await fetchNote(path);
+				content = note.content;
+				if (note.version) versions.set(path, note.version);
 			} catch (e) {
 				console.error(e);
 				if (get(activePath) !== path) return;
@@ -306,7 +412,35 @@ export function showNote(path: string): Promise<void> {
 				return;
 			}
 		}
-		if (editorHost?.show(path, content)) shown = path;
+		if (!editorHost?.show(path, content)) return;
+		shown = path;
+		if (pendingHeading?.path === path) editorHost.reveal(pendingHeading.heading);
+		pendingHeading = null;
+	});
+}
+
+// Pick up a change made to the open note elsewhere (an agent, the phone,
+// another tab); called when the window gets focus. Skipped while the note
+// has unsaved text: that saves over the other change, which is kept as a
+// conflict copy. A note gone elsewhere closes, with nothing unsaved lost.
+export function refreshShown(): Promise<void> {
+	return enqueue(async () => {
+		if (!(await writePending())) return;
+		const path = shown;
+		if (!path || !versions.has(path)) return;
+		const res = await fetch(`/api/notes/${encPath(path)}`).catch(() => null);
+		if (!res || shown !== path || pending.has(path)) return;
+		if (res.status === 404) {
+			forget(path);
+			void loadTree();
+			return;
+		}
+		const version = res.headers.get('X-Note-Version');
+		if (!res.ok || !version || version === versions.get(path)) return;
+		const content = await res.text();
+		if (shown !== path || pending.has(path)) return;
+		versions.set(path, version);
+		editorHost?.replace(content);
 	});
 }
 
@@ -318,14 +452,6 @@ export function extractTitle(content: string, fallback = ''): string | null {
 	// exists. Empty means "nothing to sync", as before.
 	const title = effectiveTitle(content, fallback);
 	return title || null;
-}
-
-export function sanitizeTitleForFilename(title: string): string | null {
-	let name = title.trim().replace(/[\\/:*?"<>|]/g, '').replace(/^\.+/, '').trim();
-	if (!name || name === '.' || name === '..' || name.startsWith('.')) return null;
-	// Cap length to keep filesystem happy
-	if (name.length > 100) name = name.slice(0, 100).trim();
-	return name;
 }
 
 let pendingTitleSync: { path: string; title: string } | null = null;
@@ -368,18 +494,6 @@ export function cancelTitleSync() {
 	pendingTitleSync = null;
 }
 
-// Rewrite the renamed note's title (fm `title:` key when the block owns
-// one, else the body heading) to match its new filename.
-export async function syncFilenameToTitle(oldPath: string, newPath: string) {
-	if (!newPath.endsWith('.md')) return;
-	const newBase = newPath.split('/').pop()!.replace(/\.md$/, '');
-	const ok = await rewriteNote(newPath, (content) =>
-		effectiveTitle(content, '') === newBase ? null : setEffectiveTitle(content, newBase)
-	);
-	// A title sync queued before the rename would rename it back.
-	if (ok && shown === newPath) cancelTitleSync();
-}
-
 // --- New note defaults ---
 
 function getNewNoteTemplate(title: string): string {
@@ -404,6 +518,8 @@ export async function createNote(path: string) {
 		body
 	});
 	if (!res.ok) throw new Error(`create ${path}: ${res.status}`);
+	const version = res.headers.get('X-Note-Version');
+	if (version) versions.set(path, version);
 	await loadTree();
 }
 
@@ -431,20 +547,19 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 			host.write(out);
 			return true;
 		}
-		let content: string;
+		let note: { content: string; version: string | null };
 		try {
-			content = await loadNote(path);
+			note = await fetchNote(path);
 		} catch {
 			return false;
 		}
-		const out = next(content);
-		if (!out || out === content) return false;
-		const res = await fetch(`/api/notes/${encPath(path)}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'text/plain' },
-			body: out
-		}).catch(() => null);
-		return !!res?.ok;
+		const out = next(note.content);
+		if (!out || out === note.content) return false;
+		if (note.version) versions.set(path, note.version);
+		const res = await putNote(path, out).catch(() => null);
+		if (!res?.ok) return false;
+		await saved(path, res).catch(() => {});
+		return true;
 	});
 	if (ok) await loadTree();
 	return !!ok;
@@ -459,7 +574,18 @@ export function updateFrontmatter(path: string, mutate: (doc: Document) => void)
 // Convert the first bare mention of the target note into a `[[link]]`
 // inside the source file.
 export function linkUnlinkedMention(sourcePath: string, targetPath: string): Promise<boolean> {
-	return rewriteNote(sourcePath, (content) => linkFirstMention(content, targetPath));
+	const links = wikiResolver(notePathsFromTree(get(tree)));
+	return rewriteNote(sourcePath, (content) => linkFirstMention(content, targetPath, links));
+}
+
+// Insert text at `pos` in a note, on its own line. For an attachment whose
+// upload finished after the user left the note it was dropped on.
+export function insertIntoNote(path: string, pos: number, insert: string): Promise<boolean> {
+	return rewriteNote(path, (content) => {
+		const at = Math.min(pos, content.length);
+		const mid = at > 0 && content[at - 1] !== '\n';
+		return content.slice(0, at) + (mid ? '\n' : '') + insert + content.slice(at);
+	});
 }
 
 // Centralized rename/move that keeps tabs/activePath/pinned and pending
@@ -470,45 +596,55 @@ export function linkUnlinkedMention(sourcePath: string, targetPath: string): Pro
 export async function renameNote(oldPath: string, newPath: string): Promise<boolean> {
 	if (oldPath === newPath) return true;
 	const ok = await afterSaved(async () => {
+		// Wikilinks resolve by name, so the fix needs the notes before and after.
+		const moved = movedBy(oldPath, newPath);
+		const live = notePathsFromTree(get(tree));
+		const archived = wikiResolver(get(archiveEntries).flatMap((e) => e.notes));
+		const wiki = {
+			before: liveOverArchived(wikiResolver(live), archived),
+			after: liveOverArchived(wikiResolver(live.map(moved)), archived)
+		};
 		const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ newPath })
 		}).catch(() => null);
 		if (!res?.ok) return false;
-		remapPending(oldPath, newPath);
-		const moved = movedBy(oldPath, newPath);
+		const body: { versions?: Record<string, string> } | null = await res.json().catch(() => null);
+		for (const [p, v] of [...versions]) {
+			versions.delete(p);
+			versions.set(moved(p), v);
+		}
+		for (const [p, v] of Object.entries(body?.versions ?? {})) versions.set(p, v);
+		// A heading-to-filename rename queued for the old path is stale now.
+		if (pendingTitleSync && moved(pendingTitleSync.path) !== pendingTitleSync.path) cancelTitleSync();
+		remapPending(oldPath, newPath, wiki);
 		const before = shown;
 		if (shown) shown = moved(shown);
-		// The server fixed the relative links the move broke; the open note
+		// The server fixed the links the move broke (and the title, when it
+		// was the old filename); the open note
 		// gets the same fix in its live text (which may hold links typed
 		// during the request), autosaved like typing, so the next save never
 		// puts the old links back.
 		if (before && shown && editorHost) {
 			const text = editorHost.read();
-			const out = relinkNote(text, before, shown, moved);
+			const out = relinkNote(retitle(text, before, shown), before, shown, moved, wiki);
 			if (out !== text) editorHost.write(out);
 		}
-		const current = get(activePath);
-		if (current && (current === oldPath || current.startsWith(oldPath + '/'))) {
-			activePath.set(newPath + current.slice(oldPath.length));
-		}
-		openTabs.update((tabs) =>
-			tabs.map((t) => {
-				if (t === oldPath) return newPath;
-				if (t.startsWith(oldPath + '/')) return newPath + t.slice(oldPath.length);
-				return t;
-			})
-		);
-		updatePins((p) => {
-			if (p === oldPath) return newPath;
-			if (p.startsWith(oldPath + '/')) return newPath + p.slice(oldPath.length);
-			return p;
-		});
+		followMove(oldPath, newPath);
 		return true;
 	});
 	await loadTree();
 	return !!ok;
+}
+
+// The active note, tabs and pins follow a note or folder to its new path.
+function followMove(oldPath: string, newPath: string) {
+	const moved = movedBy(oldPath, newPath);
+	const current = get(activePath);
+	if (current) activePath.set(moved(current));
+	openTabs.update((tabs) => tabs.map(moved));
+	updatePins(moved);
 }
 
 // Move a note or folder out of the vault: to the trash (DELETE) or the
@@ -521,37 +657,54 @@ function putAway(path: string, send: () => Promise<Response>): Promise<boolean> 
 	return afterSaved(async () => {
 		const res = await send().catch(() => null);
 		if (!res?.ok) return false;
-		for (const p of [...pending.keys()]) if (p === path || p.startsWith(path + '/')) pending.delete(p);
-		if (shown && (shown === path || shown.startsWith(path + '/'))) shown = null;
-		const current = get(activePath);
-		if (current && (current === path || current.startsWith(path + '/'))) {
-			activePath.set(null);
-		}
-		openTabs.update((tabs) => tabs.filter((t) => t !== path && !t.startsWith(path + '/')));
-		updatePins((p) => (p === path || p.startsWith(path + '/') ? null : p));
+		forget(path);
 		return true;
 	}).then((ok) => !!ok);
 }
 
-export async function deletePath(path: string) {
-	const ok = await putAway(path, () => fetch(`/api/notes/${encPath(path)}`, { method: 'DELETE' }));
-	await loadTree();
-	if (ok) void loadTrash();
-	return ok;
+// Drop a note or folder that left the vault from the editor, tabs, pins
+// and the save queue.
+function forget(path: string) {
+	const under = (p: string) => p === path || p.startsWith(path + '/');
+	for (const p of [...pending.keys()]) if (under(p)) pending.delete(p);
+	for (const p of [...versions.keys()]) if (under(p)) versions.delete(p);
+	if (shown && under(shown)) shown = null;
+	const current = get(activePath);
+	if (current && under(current)) activePath.set(null);
+	openTabs.update((tabs) => tabs.filter((t) => !under(t)));
+	updatePins((p) => (under(p) ? null : p));
 }
 
-export async function archivePath(path: string) {
-	const ok = await putAway(path, () =>
+// Moves each path out one at a time, then reloads the tree and the bin
+// once. Resolves to the paths that moved.
+async function putAwayAll(
+	paths: string[],
+	send: (path: string) => Promise<Response>,
+	reload: () => Promise<void>
+): Promise<Set<string>> {
+	const done = new Set<string>();
+	for (const p of paths) if (await putAway(p, () => send(p))) done.add(p);
+	await loadTree();
+	if (done.size) void reload();
+	return done;
+}
+
+export function deletePaths(paths: string[]) {
+	return putAwayAll(paths, (p) => fetch(`/api/notes/${encPath(p)}`, { method: 'DELETE' }), loadTrash);
+}
+
+export function archivePaths(paths: string[]) {
+	const send = (path: string) =>
 		fetch('/api/archive', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ path })
-		})
-	);
-	await loadTree();
-	if (ok) void loadArchive();
-	return ok;
+		});
+	return putAwayAll(paths, send, loadArchive);
 }
+
+export const deletePath = async (path: string) => (await deletePaths([path])).has(path);
+export const archivePath = async (path: string) => (await archivePaths([path])).has(path);
 
 // Drag-and-drop move: a rename whose target is a folder (or null for the
 // vault root) with the basename kept.

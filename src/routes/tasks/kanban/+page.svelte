@@ -13,38 +13,44 @@
 		openTask,
 		openTaskId,
 		topLevel,
-		childrenOf,
+		subtaskCounts,
 		isOverdue,
 		isDueToday,
 		dueLabel,
 		stampShort,
+		daysSince,
+		STALE_DAYS,
+		LONG_WAIT_DAYS,
 		STATUSES,
-		AREAS,
 		type Task,
-		type TaskArea,
 		type TaskStatus,
 		type TaskUpdate as TaskPatch,
 		projects,
 		loadProjects,
-		setProjectArea,
 		removeProject,
 		newProjectOpen
 	} from '$lib/stores/tasks';
-	import { areaMeta, DOING_LIMIT, onMainBoard, projectName } from '$lib/taskModel';
-	import { boardHref, projectLabel, type ProjectView } from '$lib/projects';
+	import { DOING_LIMIT, projectName, selectTasks } from '$lib/taskModel';
+	import {
+		boardHref,
+		colorVar,
+		projectLabel,
+		projectStyle,
+		type ProjectKey,
+		type ProjectView
+	} from '$lib/projects';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 
-	// Two views of the same tasks: status columns, or the same columns split
-	// into one row per area. Drag a card to change its status (and its area,
-	// in the area view). Done only shows the last week unless expanded.
-	// ?project=<folder> narrows the board to one project, whose Inbox is its
-	// backlog; an empty ?project= is Quotidian (tasks in no project). With no
-	// ?project= it shows everything but the project backlogs (onMainBoard).
-	type View = 'columns' | 'areas';
+	// Two views of the same tasks: status columns, or, on the All board, the
+	// same columns split into one row per project. Drag a card to change its
+	// status (and its project, in the lanes). Done only shows the last week
+	// unless expanded. ?project=<folder> narrows the board to one project,
+	// whose Inbox is its backlog; an empty ?project= is Quotidian (tasks in no
+	// project). With no ?project= it is the All view of selectTasks.
+	type View = 'columns' | 'lanes';
 	const VIEW_KEY = 'scrinium:boardView';
 	let view = $state<View>('columns');
-	let area = $state<TaskArea | null>(null);
 	let showAllDone = $state(false);
 
 	let draft = $state('');
@@ -55,12 +61,13 @@
 	let overId = $state<string | null>(null);
 
 	const WEEK = 7 * 86400000;
-	// The area view leaves Inbox out: unplanned work has no row to sit in yet.
+	// The lanes leave Inbox out: unplanned work has no row to sit in yet.
 	const LANE_STATUSES = STATUSES.filter((s) => s.key !== 'inbox');
 
 	const project = $derived(page.url.searchParams.get('project'));
 	const proj = $derived($projects.find((p) => p.path === project) ?? null);
 	const boardView = $derived<ProjectView>(project === null ? 'all' : { project: project || null });
+	const lanesOn = $derived(view === 'lanes' && boardView === 'all');
 
 	// A project that isn't in the list gets a fresh load before giving up:
 	// one that no longer exists (removed or renamed, maybe in another tab)
@@ -76,10 +83,10 @@
 
 	onMount(() => {
 		void loadTasks();
-		if (localStorage.getItem(VIEW_KEY) === 'areas') view = 'areas';
+		if (localStorage.getItem(VIEW_KEY) === 'lanes') view = 'lanes';
 		return usePageCommands([
 			{ label: 'Board: status columns', hint: 'One column per status', run: () => setView('columns') },
-			{ label: 'Board: area lanes', hint: 'Columns split by area', run: () => setView('areas') },
+			{ label: 'Board: project lanes', hint: 'Columns split by project', run: () => lanes_() },
 			{ label: 'Board: toggle older done tasks', hint: 'Done shows the last week by default', run: () => (showAllDone = !showAllDone) },
 			{ label: 'Board: all tasks', hint: 'Every project on one board', run: () => openBoard('all') },
 			{ label: 'Board: Quotidian', hint: 'Tasks in no project', run: () => openBoard({ project: null }) }
@@ -91,13 +98,13 @@
 		localStorage.setItem(VIEW_KEY, v);
 	}
 
-	const pool = $derived(
-		topLevel($tasks).filter(
-			(t) =>
-				(project === null ? onMainBoard(t) : t.project === (project || null)) &&
-				(area == null || t.area === area)
-		)
-	);
+	const pool = $derived(topLevel(selectTasks($tasks, boardView)));
+
+	// Lanes split the All board, so asking for them from a project board goes there.
+	function lanes_() {
+		setView('lanes');
+		if (boardView !== 'all') openBoard('all');
+	}
 
 	function openBoard(v: ProjectView) {
 		void goto(boardHref(v));
@@ -108,10 +115,8 @@
 		if (await removeProject(path)) openBoard('all');
 	}
 
-	function cellRows(status: TaskStatus, laneArea?: TaskArea | null): Task[] {
-		let rows = pool.filter(
-			(t) => t.status === status && (laneArea === undefined || (t.area ?? null) === laneArea)
-		);
+	function cellRows(status: TaskStatus, lane?: ProjectKey): Task[] {
+		let rows = pool.filter((t) => t.status === status && (lane === undefined || t.project === lane));
 		if (status === 'done') {
 			rows = rows.sort((a, b) => b.updated_at - a.updated_at);
 			if (!showAllDone) rows = rows.filter((t) => t.updated_at >= Date.now() - WEEK);
@@ -121,16 +126,14 @@
 	}
 
 	const doneTotal = $derived(pool.filter((t) => t.status === 'done').length);
+	// Open tasks on each tab's board, Inbox backlog included.
+	const openOn = (v: ProjectView) => topLevel(selectTasks($tasks, v)).filter((t) => t.status !== 'done').length;
+	const styleOf = (key: ProjectKey) => projectStyle(key, $projects.find((p) => p.path === key));
 	const openCount = $derived(pool.filter((t) => t.status !== 'done').length);
 	const overdueCount = $derived(pool.filter(isOverdue).length);
 	const todayCount = $derived(pool.filter((t) => t.status !== 'done' && isDueToday(t)).length);
 	const inboxCount = $derived(pool.filter((t) => t.status === 'inbox').length);
-	const lanes = $derived([
-		...AREAS.map((a) => ({ key: a.key as TaskArea | null, label: a.label, color: a.color })),
-		...(pool.some((t) => t.area == null && t.status !== 'inbox')
-			? [{ key: null, label: 'No area', color: 'var(--text-4)' }]
-			: [])
-	]);
+	const lanes = $derived<ProjectKey[]>([null, ...$projects.map((p) => p.path)]);
 
 	function weekRange(): string {
 		const now = new Date();
@@ -140,12 +143,6 @@
 		return `${f(monday)} to ${f(sunday)}`;
 	}
 
-	function subLabel(key: TaskStatus): string {
-		if (key === 'todo') return `Committed for ${weekRange()}`;
-		if (key === 'done') return showAllDone ? 'All time' : 'Last 7 days';
-		if (key === 'inbox' && proj) return 'Backlog, only on this board';
-		return STATUSES.find((s) => s.key === key)!.hint;
-	}
 
 	// Clicking a card opens the detail drawer; drags and controls are exempt.
 	function cardClick(t: Task, e: MouseEvent) {
@@ -154,16 +151,11 @@
 		openTask(t.id);
 	}
 
-	async function add(status: TaskStatus, laneArea?: TaskArea | null) {
+	async function add(status: TaskStatus, lane?: ProjectKey) {
 		const title = draft.trim();
 		if (!title) return;
 		draft = '';
-		const row = await createTask({
-			title,
-			status,
-			area: laneArea === undefined ? (area ?? proj?.area ?? null) : laneArea,
-			project: project || null
-		});
+		const row = await createTask({ title, status, project: lane === undefined ? project || null : lane });
 		if (!row && !draft) draft = title;
 	}
 
@@ -172,8 +164,8 @@
 		addingTo = cell;
 	}
 
-	function cellKey(status: TaskStatus, laneArea?: TaskArea | null) {
-		return laneArea === undefined ? status : `${status}|${laneArea ?? ''}`;
+	function cellKey(status: TaskStatus, lane?: ProjectKey) {
+		return lane === undefined ? status : `${status}|${lane ?? ''}`;
 	}
 
 	function onDragStart(t: Task, e: DragEvent) {
@@ -242,7 +234,7 @@
 		}
 	}
 
-	async function onDrop(status: TaskStatus, laneArea: TaskArea | null | undefined, e: DragEvent) {
+	async function onDrop(status: TaskStatus, lane: ProjectKey | undefined, e: DragEvent) {
 		e.preventDefault();
 		const id = dragId ?? e.dataTransfer?.getData('text/plain');
 		const targetId = overId;
@@ -250,12 +242,12 @@
 		if (!id) return;
 		const moving = $tasks.find((t) => t.id === id);
 		if (!moving) return;
-		const sameCell = moving.status === status && (laneArea === undefined || (moving.area ?? null) === laneArea);
+		const sameCell = moving.status === status && (lane === undefined || moving.project === lane);
 		// Dropped back onto itself: nothing moves.
 		if (targetId === id && sameCell) return;
-		const rows = cellRows(status, laneArea).filter((t) => t.id !== id);
+		const rows = cellRows(status, lane).filter((t) => t.id !== id);
 		const patch: TaskPatch = { status };
-		if (laneArea !== undefined) patch.area = laneArea;
+		if (lane !== undefined && lane !== moving.project) patch.project = lane;
 		const position = positionAt(rows, targetId === id ? null : targetId);
 		if (Number.isNaN(position)) await renumber(rows, moving, targetId, patch);
 		else await updateTask(id, { ...patch, position });
@@ -268,11 +260,11 @@
 		if (next) await updateTask(t.id, { status: next, position: Date.now() });
 	}
 
-	// Swap with the neighbour in the same cell (the lane, in By area). Done
-	// is ordered by completion time, so there is nothing to reorder there.
-	async function shiftOrder(t: Task, dir: 1 | -1, laneArea: TaskArea | null | undefined) {
+	// Swap with the neighbour in the same cell (the lane, in By project).
+	// Done is ordered by completion time, so there is nothing to reorder there.
+	async function shiftOrder(t: Task, dir: 1 | -1, lane: ProjectKey | undefined) {
 		if (t.status === 'done') return;
-		const rows = cellRows(t.status, laneArea);
+		const rows = cellRows(t.status, lane);
 		const i = rows.findIndex((x) => x.id === t.id);
 		const other = rows[i + dir];
 		if (!other) return;
@@ -286,25 +278,22 @@
 		await updateTask(other.id, { position: t.position });
 	}
 
-	// The lane a card's cell key names: undefined in Columns view.
-	function laneOf(key: string): TaskArea | null | undefined {
-		if (!key.includes('|')) return undefined;
-		return (key.split('|')[1] || null) as TaskArea | null;
+	// The lane a card's cell key names: undefined in Columns view. Status
+	// keys hold no '|', so the first one ends the status.
+	function laneOf(key: string): ProjectKey | undefined {
+		const at = key.indexOf('|');
+		return at === -1 ? undefined : key.slice(at + 1) || null;
 	}
 
-	function subCount(t: Task): string | null {
-		const kids = childrenOf($tasks, t.id);
-		if (kids.length === 0) return null;
-		return `${kids.filter((k) => k.status === 'done').length}/${kids.length}`;
-	}
 
-	function since(ts: number | null): string {
-		if (ts == null) return '';
-		return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
-	}
+	const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 </script>
 
-{#snippet card(t: Task, key: string, showArea: boolean)}
+{#snippet card(t: Task, key: string, showProject: boolean)}
+	{@const waited = t.status === 'waiting' && t.waiting_since != null ? daysSince(t.waiting_since) : null}
+	{@const idle = t.status === 'doing' ? daysSince(t.updated_at) : 0}
+	{@const subs = $subtaskCounts.get(t.id)}
+	{@const due = t.due_at != null && t.status !== 'done'}
 	<div
 		class="kc"
 		class:done={t.status === 'done'}
@@ -338,31 +327,14 @@
 		}}
 	>
 		{#if overId === t.id && dragId && dragId !== t.id}<div class="ins"></div>{/if}
-		{#if (showArea && t.area) || (!project && t.project)}
-			<div class="tags">
-				{#if showArea && t.area}
-					<span class="area"><i style="background: {areaMeta(t.area).color}"></i>{areaMeta(t.area).label}</span>
-				{/if}
-				{#if !project && t.project}
-					<span class="area" title={t.project}>
-						<span class="material-symbols-outlined">folder</span>{projectName(t.project)}
-					</span>
-				{/if}
-			</div>
-		{/if}
+		{#if t.status === 'done'}<span class="material-symbols-outlined chk">check_circle</span>{/if}
 		<div class="kt">{t.title}</div>
-		{#if t.status === 'waiting' && (t.waiting_on || t.waiting_since)}
-			<div class="wait">
-				<span class="material-symbols-outlined">person</span>
-				{t.waiting_on ?? 'Someone'}{t.waiting_since ? `, since ${since(t.waiting_since)}` : ''}
-			</div>
-		{/if}
-		{#if t.due_at != null || t.priority !== 'none' || subCount(t) || t.link_count > 0 || t.remind_at != null}
+		{#if (showProject && t.project) || t.priority !== 'none' || due || (t.status === 'waiting' && (t.waiting_on || waited != null)) || idle >= STALE_DAYS || subs || t.remind_at != null || t.link_count > 0}
 			<div class="km">
-				{#if t.due_at != null}
-					<span class:over={isOverdue(t)} class:today={isDueToday(t) && t.status !== 'done'}>
-						<span class="material-symbols-outlined">{t.status === 'done' ? 'check' : 'event'}</span>
-						{isDueToday(t) && t.status !== 'done' ? 'Today' : dueLabel(t.due_at)}
+				{#if showProject && t.project}
+					{@const ps = styleOf(t.project)}
+					<span class="proj" style:color={colorVar(ps.color)} title={t.project}>
+						<span class="material-symbols-outlined">{ps.icon}</span>{projectName(t.project)}
 					</span>
 				{/if}
 				{#if t.priority !== 'none'}
@@ -370,8 +342,25 @@
 						<span class="material-symbols-outlined fill">flag</span>{t.priority}
 					</span>
 				{/if}
-				{#if subCount(t)}
-					<span title="Subtasks"><span class="material-symbols-outlined">subdirectory_arrow_right</span>{subCount(t)}</span>
+				{#if due}
+					<span class:over={isOverdue(t)} class:today={isDueToday(t)}>
+						<span class="material-symbols-outlined">{isOverdue(t) ? 'event_busy' : isDueToday(t) ? 'today' : 'event'}</span>
+						{isDueToday(t) ? 'Today' : dueLabel(t.due_at)}
+					</span>
+				{/if}
+				{#if t.status === 'waiting' && (t.waiting_on || waited != null)}
+					<span class:warn={waited != null && waited >= LONG_WAIT_DAYS} title="Waiting on">
+						<span class="material-symbols-outlined">person</span>
+						{t.waiting_on ?? 'Someone'}{waited != null ? `, ${plural(waited, 'day')}` : ''}
+					</span>
+				{/if}
+				{#if idle >= STALE_DAYS}
+					<span class="warn" title="Untouched for {plural(idle, 'day')}">
+						<span class="material-symbols-outlined">schedule</span>{plural(idle, 'day')}
+					</span>
+				{/if}
+				{#if subs}
+					<span title="Subtasks"><span class="material-symbols-outlined">subdirectory_arrow_right</span>{subs}</span>
 				{/if}
 				{#if t.remind_at != null}
 					<span title="Reminds {stampShort(t.remind_at)}"><span class="material-symbols-outlined">notifications</span></span>
@@ -398,8 +387,8 @@
 	</div>
 {/snippet}
 
-{#snippet adder(status: TaskStatus, laneArea?: TaskArea | null)}
-	{@const key = cellKey(status, laneArea)}
+{#snippet adder(status: TaskStatus, lane?: ProjectKey)}
+	{@const key = cellKey(status, lane)}
 	{#if addingTo === key}
 		<input
 			class="add-in"
@@ -408,13 +397,13 @@
 			{@attach (el) => el.focus()}
 			onblur={() => (addingTo = null)}
 			onkeydown={(e) => {
-				if (e.key === 'Enter') void add(status, laneArea);
+				if (e.key === 'Enter') void add(status, lane);
 				if (e.key === 'Escape') addingTo = null;
 			}}
 		/>
 	{:else}
 		<button class="col-add" onclick={() => startAdd(key)}>
-			<span class="material-symbols-outlined">add</span>{status === 'inbox' ? 'Capture' : 'Add task'}
+			<span class="material-symbols-outlined">add</span>Add task
 		</button>
 	{/if}
 {/snippet}
@@ -423,24 +412,17 @@
 	<header class="page-h">
 		<AppSwitcher current="board" size="lg" />
 		<span class="cnt">{openCount} open</span>
-		<span class="vsep"></span>
-		<div class="areas" role="group" aria-label="Filter by area">
-			<button class:on={area === null} onclick={() => (area = null)}>All</button>
-			{#each AREAS as a (a.key)}
-				<button class:on={area === a.key} onclick={() => (area = area === a.key ? null : a.key)}>
-					<i style="background: {a.color}"></i>{a.label}
-				</button>
-			{/each}
-		</div>
 		<span class="sp"></span>
-		<div class="seg" role="group" aria-label="Board view">
-			<button class:on={view === 'columns'} onclick={() => setView('columns')}>
-				<span class="material-symbols-outlined">view_week</span>Columns
-			</button>
-			<button class:on={view === 'areas'} onclick={() => setView('areas')}>
-				<span class="material-symbols-outlined">table_rows</span>By area
-			</button>
-		</div>
+		{#if boardView === 'all'}
+			<div class="seg" role="group" aria-label="Board view">
+				<button class:on={!lanesOn} onclick={() => setView('columns')}>
+					<span class="material-symbols-outlined">view_week</span>Columns
+				</button>
+				<button class:on={lanesOn} onclick={() => setView('lanes')}>
+					<span class="material-symbols-outlined">table_rows</span>By project
+				</button>
+			</div>
+		{/if}
 		<button
 			class="solid"
 			onclick={() => {
@@ -452,37 +434,28 @@
 		</button>
 	</header>
 	<nav class="tabs" aria-label="Project">
-		<button class:on={boardView === 'all'} onclick={() => openBoard('all')}>All</button>
-		{#each [null, ...$projects.map((p) => p.path)] as key (key ?? '')}
-			<button
-				class:on={boardView !== 'all' && boardView.project === key}
-				onclick={() => openBoard({ project: key })}>{projectLabel(key)}</button
-			>
+		<button class:on={boardView === 'all'} onclick={() => openBoard('all')}>
+			All<span class="n">{openOn('all')}</span>
+		</button>
+		{#each lanes as key (key ?? '')}
+			{@const ps = styleOf(key)}
+			<button class:on={boardView !== 'all' && boardView.project === key} onclick={() => openBoard({ project: key })}>
+				<span class="material-symbols-outlined" style:color={colorVar(ps.color)}>{ps.icon}</span>
+				{projectLabel(key)}<span class="n">{openOn({ project: key })}</span>
+			</button>
 		{/each}
 		<button class="icon" title="New project" onclick={() => newProjectOpen.set(true)}>
 			<span class="material-symbols-outlined">add</span>
 		</button>
 		<span class="sp"></span>
 		{#if proj}
-			<select
-				class="pick"
-				aria-label="Default area for new tasks"
-				title="Default area for new tasks"
-				value={proj.area ?? ''}
-				onchange={(e) => void setProjectArea(proj.path, ((e.target as HTMLSelectElement).value || null) as TaskArea | null)}
-			>
-				<option value="">No default area</option>
-				{#each AREAS as a (a.key)}
-					<option value={a.key}>Default area: {a.label}</option>
-				{/each}
-			</select>
 			<button class="icon" title="Remove project" onclick={() => void dropProject(proj.path)}>
 				<span class="material-symbols-outlined">folder_off</span>
 			</button>
 		{/if}
 	</nav>
 
-	{#if view === 'columns'}
+	{#if !lanesOn}
 		<div class="board">
 			{#each STATUSES as col (col.key)}
 				{@const rows = cellRows(col.key)}
@@ -494,26 +467,37 @@
 					ondrop={(e) => void onDrop(col.key, undefined, e)}
 					aria-label={col.label}
 				>
-					<div class="col-h">
+					<div class="col-h {col.key}">
 						<span class="material-symbols-outlined ci {col.key}">{col.icon}</span>
-						{col.label}<span class="n">{col.key === 'done' ? doneTotal : rows.length}</span>
-						<span class="sp"></span>
+						{col.label}
 						{#if col.key === 'doing'}
-							<span class="limit" class:over={rows.length > DOING_LIMIT}>limit {DOING_LIMIT}</span>
-						{:else if col.key === 'done'}
-							<button class="link" onclick={() => (showAllDone = !showAllDone)}>
-								{showAllDone ? 'Last week' : 'Show all'}
-							</button>
+							<span class="aside" class:warn={rows.length > DOING_LIMIT} title="Doing limit">
+								{rows.length} of {DOING_LIMIT}
+							</span>
+						{:else}
+							<span class="n">{rows.length}</span>
+							{#if col.key === 'todo'}
+								<span class="aside">{weekRange()}</span>
+							{:else if col.key === 'inbox' && proj}
+								<span class="aside" title="Only on this board">Backlog</span>
+							{:else if col.key === 'done'}
+								<button class="aside link" title="Toggle older done tasks" onclick={() => (showAllDone = !showAllDone)}>
+									{showAllDone ? 'All time' : 'Last 7 days'}
+								</button>
+							{/if}
 						{/if}
 					</div>
-					<div class="col-sub">{subLabel(col.key)}</div>
 					<div class="cards">
 						{#each rows as t (t.id)}
-							{@render card(t, key, area === null)}
+							{@render card(t, key, boardView === 'all')}
 						{/each}
 						{#if overCell === key && dragId && !overId}<div class="ins end"></div>{/if}
 						{#if col.key !== 'done'}
 							{@render adder(col.key)}
+						{:else if !showAllDone && doneTotal > rows.length}
+							<button class="col-add" onclick={() => (showAllDone = true)}>
+								<span class="material-symbols-outlined">history</span>Show {doneTotal - rows.length} older
+							</button>
 						{/if}
 					</div>
 				</section>
@@ -526,30 +510,34 @@
 				{#each LANE_STATUSES as st (st.key)}
 					<div class="lh">
 						<span class="material-symbols-outlined ci {st.key}">{st.icon}</span>{st.label}
-						<span class="n">{st.key === 'done' ? doneTotal : cellRows(st.key).length}</span>
+						<span class="n">{cellRows(st.key).length}</span>
 					</div>
 				{/each}
-				{#each lanes as lane (lane.key ?? 'none')}
+				{#each lanes as lane (lane ?? '')}
 					<div class="ln">
-						<span class="ln-name"><i style="background: {lane.color}"></i>{lane.label}</span>
-						<small>{pool.filter((t) => (t.area ?? null) === lane.key && t.status !== 'done' && t.status !== 'inbox').length} open</small>
+						<span class="ln-name"
+							><span class="material-symbols-outlined" style:color={colorVar(styleOf(lane).color)}
+								>{styleOf(lane).icon}</span
+							>{projectLabel(lane)}</span
+						>
+						<small>{pool.filter((t) => t.project === lane && t.status !== 'done' && t.status !== 'inbox').length} open</small>
 					</div>
 					{#each LANE_STATUSES as st (st.key)}
-						{@const key = cellKey(st.key, lane.key)}
+						{@const key = cellKey(st.key, lane)}
 						<div
 							class="cell"
 							class:drop={overCell === key && dragId}
 							ondragover={(e) => onCellOver(key, e)}
-							ondrop={(e) => void onDrop(st.key, lane.key, e)}
+							ondrop={(e) => void onDrop(st.key, lane, e)}
 							role="list"
-							aria-label="{lane.label}, {st.label}"
+							aria-label="{projectLabel(lane)}, {st.label}"
 						>
-							{#each cellRows(st.key, lane.key) as t (t.id)}
+							{#each cellRows(st.key, lane) as t (t.id)}
 								{@render card(t, key, false)}
 							{/each}
 							{#if overCell === key && dragId && !overId}<div class="ins end"></div>{/if}
 							{#if st.key !== 'done'}
-								{@render adder(st.key, lane.key)}
+								{@render adder(st.key, lane)}
 							{/if}
 						</div>
 					{/each}
@@ -600,6 +588,9 @@
 		scrollbar-width: none;
 	}
 	.tabs > button:not(.icon) {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		height: 40px;
 		padding: 0 10px;
 		border: none;
@@ -613,20 +604,15 @@
 	.tabs > button:not(.icon):hover {
 		color: var(--text);
 	}
+	.tabs > button .material-symbols-outlined {
+		font-size: 16px;
+	}
+	.tabs .n {
+		font-size: var(--fs-xs);
+	}
 	.tabs > button.on {
 		color: var(--text);
 		border-bottom-color: var(--accent);
-	}
-	.pick {
-		height: 28px;
-		max-width: 220px;
-		padding: 0 6px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-md);
-		background: var(--bg);
-		color: var(--text);
-		font: var(--fs) var(--font-ui);
-		cursor: pointer;
 	}
 	.icon {
 		display: grid;
@@ -652,47 +638,6 @@
 	}
 	.sp {
 		flex: 1;
-	}
-	.vsep {
-		width: 1px;
-		height: 18px;
-		background: var(--line-2);
-	}
-	.areas {
-		display: flex;
-		gap: 2px;
-		min-width: 0;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-	.areas button {
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		height: 28px;
-		padding: 0 10px;
-		border: none;
-		border-radius: var(--r-md);
-		background: none;
-		color: var(--text-3);
-		font: var(--fs) var(--font-ui);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.areas button:hover {
-		color: var(--text);
-	}
-	.areas button.on {
-		background: var(--raise);
-		color: var(--text);
-	}
-	.areas i,
-	.area i,
-	.ln-name i {
-		width: 7px;
-		height: 7px;
-		border-radius: 2px;
-		flex-shrink: 0;
 	}
 	.seg {
 		display: inline-flex;
@@ -744,31 +689,47 @@
 		min-height: 0;
 		overflow: auto;
 		display: grid;
-		grid-template-columns: repeat(5, minmax(240px, 1fr));
-		gap: 10px;
-		padding: 14px 16px 16px;
+		grid-template-columns: repeat(5, minmax(220px, 1fr));
+		gap: 20px;
+		padding: 6px 20px 16px;
 		align-items: start;
+		background: #000;
 	}
 	.col {
-		background: var(--panel);
-		border: 1px solid var(--line);
-		border-radius: var(--r-lg);
 		display: flex;
 		flex-direction: column;
 		max-height: 100%;
 		min-height: 120px;
 	}
-	.col.drop {
-		border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-	}
 	.col-h {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 42px;
-		padding: 0 10px 0 14px;
+		height: 44px;
+		padding: 0 2px;
+		margin-bottom: 10px;
+		border-bottom: 2px solid var(--line);
 		font-weight: 600;
 		flex-shrink: 0;
+	}
+	.col-h.doing {
+		border-bottom-color: color-mix(in srgb, var(--accent) 35%, transparent);
+	}
+	.col-h.waiting {
+		border-bottom-color: color-mix(in srgb, var(--yellow) 27%, transparent);
+	}
+	.col.drop .col-h {
+		border-bottom-color: var(--accent);
+	}
+	.aside {
+		margin-left: auto;
+		color: var(--text-3);
+		font-size: var(--fs-xs);
+		font-weight: 400;
+		white-space: nowrap;
+	}
+	.aside.warn {
+		color: var(--orange);
 	}
 	.ci {
 		font-size: 18px;
@@ -787,14 +748,6 @@
 		color: var(--text-3);
 		font-weight: 400;
 	}
-	.limit {
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-		font-weight: 400;
-	}
-	.limit.over {
-		color: var(--orange);
-	}
 	.link {
 		border: none;
 		background: none;
@@ -806,14 +759,8 @@
 	.link:hover {
 		color: var(--accent);
 	}
-	.col-sub {
-		padding: 0 14px 8px;
-		margin-top: -6px;
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-	}
 	.cards {
-		padding: 0 8px 8px;
+		padding: 0 0 8px;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
@@ -822,8 +769,8 @@
 	}
 	.kc {
 		position: relative;
-		background: var(--raise);
-		border: 1px solid var(--line-2);
+		background: var(--bg);
+		border: 1px solid var(--line);
 		border-radius: var(--r-md);
 		padding: 10px 12px;
 		display: flex;
@@ -840,42 +787,30 @@
 	.kc.dragging {
 		opacity: 0.4;
 	}
+	.kc.done {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		align-items: center;
+		column-gap: 8px;
+		padding: 8px 12px;
+		background: none;
+	}
+	.kc.done .km {
+		grid-column: 2;
+	}
+	.chk {
+		font-size: 16px;
+		color: var(--text-4);
+	}
 	.kc.done .kt {
 		color: var(--text-3);
-		text-decoration: line-through;
-	}
-	.tags {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 12px;
-		padding-right: 18px;
-	}
-	.area {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		color: var(--text-2);
-		font-size: var(--fs-xs);
-	}
-	.area .material-symbols-outlined {
-		font-size: 14px;
-		color: var(--text-3);
+		font-size: var(--fs);
 	}
 	.kt {
 		color: var(--text);
 		font-size: var(--fs-md);
 		line-height: 1.4;
 		padding-right: 18px;
-	}
-	.wait {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		color: var(--text-3);
-		font-size: var(--fs-xs);
-	}
-	.wait .material-symbols-outlined {
-		font-size: 15px;
 	}
 	.km {
 		display: flex;
@@ -899,6 +834,9 @@
 	.km .today {
 		color: var(--accent);
 	}
+	.km .warn {
+		color: var(--orange);
+	}
 	.km .r {
 		margin-left: auto;
 	}
@@ -920,7 +858,7 @@
 		right: 6px;
 		display: none;
 		gap: 1px;
-		background: var(--raise);
+		background: var(--bg);
 		border-radius: var(--r);
 	}
 	.kc:hover .ops,
@@ -990,6 +928,7 @@
 		min-height: 0;
 		overflow: auto;
 		padding: 0 16px 16px;
+		background: #000;
 	}
 	.grid {
 		display: grid;
@@ -1003,7 +942,7 @@
 		gap: 8px;
 		height: 44px;
 		padding: 0 10px;
-		background: var(--bg);
+		background: #000;
 		border-bottom: 1px solid var(--line);
 		font-weight: 600;
 	}
@@ -1019,6 +958,10 @@
 		align-items: center;
 		gap: 8px;
 		font-weight: 600;
+	}
+	.ln-name .material-symbols-outlined {
+		font-size: 16px;
+		color: var(--text-3);
 	}
 	.ln small {
 		color: var(--text-3);

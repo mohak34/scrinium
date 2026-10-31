@@ -4,6 +4,7 @@
 	import { settings } from '$lib/stores/settings';
 	import FileTree from './FileTree.svelte';
 	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
+	import ProjectStylePicker from './ProjectStylePicker.svelte';
 	import SearchBox from './SearchBox.svelte';
 	import {
 		tree,
@@ -15,14 +16,17 @@
 		createNote,
 		createFolder,
 		renameNote,
-		syncFilenameToTitle,
 		deletePath,
 		archivePath,
 		movePath,
 		movePin,
+		fileOrder,
+		inFileOrder,
+		placeFile,
 		downloadNote,
 		flushSave,
 		loadTree,
+		folderNoteCount,
 		type VaultEntry
 	} from '$lib/stores/vault';
 	import {
@@ -39,9 +43,18 @@
 		loadProjects,
 		createProject,
 		removeProject,
-		newProjectOpen
+		newProjectOpen,
+		topLevel
 	} from '$lib/stores/tasks';
-	import { projectOf, projectLabel, boardHref, type ProjectKey, type ProjectView } from '$lib/projects';
+	import {
+		projectOf,
+		projectLabel,
+		projectStyle,
+		colorVar,
+		boardHref,
+		type ProjectKey,
+		type ProjectView
+	} from '$lib/projects';
 	import { drag, beginDrag, type DragSource, type DropTarget } from './sidebarDrag';
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest } from '$lib/stores/actions';
@@ -62,8 +75,9 @@
 		| { kind: 'blank' }
 		| { kind: 'entry'; entry: VaultEntry; pinRow: boolean }
 		| { kind: 'section'; key: ProjectKey }
-		| { kind: 'view' };
+		| { kind: 'view'; width: number };
 	let menu = $state<({ x: number; y: number } & MenuOn) | null>(null);
+	let stylePicker = $state<{ x: number; y: number; path: string } | null>(null);
 	let createTarget = $state<{ parent: string | null; kind: 'note' | 'folder' } | null>(null);
 	let renameTarget = $state<{ path: string } | null>(null);
 	let treeEl = $state<HTMLDivElement>();
@@ -87,7 +101,6 @@
 		} catch {
 			// a bad stored view falls back to All
 		}
-		void loadProjects();
 		if ($tasks.length === 0) void loadTasks();
 		const unsubCreate = createRequest.subscribe((req) => {
 			if (req) {
@@ -118,6 +131,10 @@
 	// Quotidian. A section folds under its folder path ("" for Quotidian) in
 	// collapsedDirs, so a rename keeps it folded.
 	const projectSet = $derived(new Set($projects.map((p) => p.path)));
+	const styleOf = $derived.by(() => {
+		const rows = new Map($projects.map((p) => [p.path, p]));
+		return (key: ProjectKey) => projectStyle(key, key === null ? undefined : rows.get(key));
+	});
 	const isProjectDir = (e: VaultEntry) => e.type === 'directory' && projectSet.has(e.path);
 	const sections = $derived<{ key: ProjectKey; entries: VaultEntry[] }[]>([
 		{ key: null, entries: $tree.filter((e) => !isProjectDir(e)) },
@@ -135,9 +152,16 @@
 	const homeDir = $derived(current === 'all' ? null : current.project);
 	const foldKey = (key: ProjectKey) => key ?? '';
 
-	const openTasks = $derived.by(() => {
-		const counts = new Map<ProjectKey, number>();
-		for (const t of $tasks) if (t.status !== 'done') counts.set(t.project, (counts.get(t.project) ?? 0) + 1);
+	// Done and total cards on each project's board, subtasks left out like
+	// the board does. Feeds the header's progress ring.
+	const progress = $derived.by(() => {
+		const counts = new Map<ProjectKey, { done: number; total: number }>();
+		for (const t of topLevel($tasks)) {
+			const c = counts.get(t.project) ?? { done: 0, total: 0 };
+			c.total++;
+			if (t.status === 'done') c.done++;
+			counts.set(t.project, c);
+		}
 		return counts;
 	});
 
@@ -230,7 +254,6 @@
 				const ok = await renameNote(path, newPath);
 				if (ok) {
 					renameDir(path, newPath);
-					await syncFilenameToTitle(path, newPath);
 					// The server moved the project and its tasks with the folder.
 					if (wasProject) {
 						await Promise.all([loadProjects(), loadTasks()]);
@@ -290,13 +313,41 @@
 		}
 	}
 
-	async function onMove(path: string, toDir: string | null) {
-		const ok = await movePath(path, toDir);
-		if (ok && toDir) expandDir(toDir);
+	async function onMove(path: string, toDir: string | null, place?: { path: string; after: boolean }) {
+		let at = path;
+		if (parentDirOf(path) !== toDir) {
+			// A pin stays hidden from every tree, so a pin dragged into a folder
+			// unpins and shows in that folder, where it landed.
+			const wasPinned = $pinnedPaths.includes(path);
+			const name = path.split('/').pop()!;
+			if (!(await movePath(path, toDir))) {
+				if (findEntry($tree, joinPath(toDir, name))) alert(`${toDir ?? projectLabel(null)} already has "${name}".`);
+				return;
+			}
+			at = joinPath(toDir, name);
+			renameDir(path, at);
+			if (wasPinned) togglePin(at);
+			if (toDir) expandDir(toDir);
+		}
+		// A file's spot in its old folder means nothing in the new one.
+		if (!place) return fileOrder.update((order) => order.filter((p) => p !== at));
+		const siblings = inFileOrder(filesIn($tree, toDir), $fileOrder).map((e) => e.path);
+		placeFile(at, siblings, place.path, place.after);
+	}
+
+	// The files directly in folder `dir` (null for the vault root).
+	function filesIn(entries: VaultEntry[], dir: string | null): VaultEntry[] {
+		if (dir === null) return entries.filter((e) => e.type === 'file');
+		for (const e of entries) {
+			if (e.type !== 'directory') continue;
+			if (e.path === dir) return (e.children ?? []).filter((c) => c.type === 'file');
+			if (dir.startsWith(e.path + '/')) return filesIn(e.children ?? [], dir);
+		}
+		return [];
 	}
 
 	function onDrop(source: DragSource, target: DropTarget) {
-		if (target.kind === 'move') void onMove(source.path, target.dir);
+		if (target.kind === 'move') void onMove(source.path, target.dir, target.place);
 		else if (target.kind === 'pin') {
 			movePin(source.path, target.before);
 			setPinGlobal(source.path, target.global);
@@ -316,17 +367,14 @@
 		dropTarget?.kind === 'pin' &&
 		dropTarget.before === null &&
 		(key === undefined ? dropTarget.global : !dropTarget.global && ($drag?.source.project || null) === key);
-	// A note dragged from the tree can be pinned even when nothing is pinned yet.
-	const pinDropOpen = $derived(
-		!!$drag && !$drag.source.fromPins && $drag.source.path.endsWith('.md')
-	);
-	// A section offers an empty pin list while one of its notes is dragged
-	// that is not pinned to it yet.
-	const pinDropHere = (key: ProjectKey) =>
+	// Whether the dragged item can pin onto a list: the global one (undefined)
+	// takes any note, a project's only that project's notes. The project
+	// header and the switcher bar then offer a pin target, so even an empty
+	// list can be dropped on without anything appearing in the tree.
+	const canPin = (key?: ProjectKey) =>
 		!!$drag &&
-		$drag.source.path.endsWith('.md') &&
-		($drag.source.project || null) === key &&
-		(!$drag.source.fromPins || $globalPins.includes($drag.source.path));
+		($drag.source.fromPins || $drag.source.kind === 'directory' || $drag.source.path.endsWith('.md')) &&
+		(key === undefined || ($drag.source.project || null) === key);
 	// What releasing would do, shown on the lifted row.
 	const dropLabel = $derived.by(() => {
 		if (!$drag || !dropTarget) return null;
@@ -336,6 +384,8 @@
 			if ($pinnedPaths.includes(path) && $globalPins.includes(path) === dropTarget.global) return null;
 			return dropTarget.global ? 'Pin everywhere' : `Pin in ${projectLabel($drag.source.project || null)}`;
 		}
+		// Reordering within its own folder needs no label; the line says it.
+		if (dropTarget.place && dropTarget.dir === parentDirOf($drag.source.path)) return null;
 		return `Move to ${dropTarget.dir ? dropTarget.dir.split('/').pop() : projectLabel(null)}`;
 	});
 	const dragIcon = $derived(
@@ -359,99 +409,121 @@
 	const noteCount = $derived(shownSections.reduce((n, s) => n + countNotes(s.entries), 0));
 	const pinName = (path: string) => (path.split('/').pop() ?? path).replace(/\.md$/, '');
 
-	// Pins are per browser, so a note deleted elsewhere (another device, an
-	// agent) can linger in the list; only show pins that still exist.
-	function hasFile(entries: VaultEntry[], path: string): boolean {
-		return entries.some((e) =>
-			e.type === 'file' ? e.path === path : path.startsWith(e.path + '/') && hasFile(e.children ?? [], path)
-		);
+	function findEntry(entries: VaultEntry[], path: string): VaultEntry | undefined {
+		for (const e of entries) {
+			if (e.path === path) return e;
+			if (e.type === 'directory' && path.startsWith(e.path + '/')) return findEntry(e.children ?? [], path);
+		}
 	}
-	const livePins = $derived($pinnedPaths.filter((p) => hasFile($tree, p)));
+	// Pins are per browser, so a note deleted elsewhere (another device, an
+	// agent) can linger in the list; only show pins that still exist. Pinned
+	// folders come before pinned notes.
+	const pinEntries = $derived(
+		new Map(
+			$pinnedPaths.flatMap((p) => {
+				// A folder that became a project shows as its section instead.
+				if (projectSet.has(p)) return [];
+				const e = findEntry($tree, p);
+				return e ? [[p, e] as const] : [];
+			})
+		)
+	);
+	const livePins = $derived.by(() => {
+		const pinned = [...pinEntries.values()];
+		return [...pinned.filter((e) => e.type === 'directory'), ...pinned.filter((e) => e.type === 'file')].map(
+			(e) => e.path
+		);
+	});
 	const topPins = $derived(livePins.filter((p) => $globalPins.includes(p)));
 	const pinsIn = (key: ProjectKey) =>
 		livePins.filter((p) => !$globalPins.includes(p) && projectOf(p, projectSet) === key);
 
 	function pinItems(path: string): ContextMenuItem[] {
 		const here = projectLabel(projectOf(path, projectSet));
-		if (!$pinnedPaths.includes(path))
-			return [
-				{ label: `Pin in ${here}`, action: () => setPinGlobal(path, false) },
-				{ label: 'Pin everywhere', action: () => setPinGlobal(path, true) }
-			];
+		const inHere = { label: `Pin in ${here}`, icon: 'keep', action: () => setPinGlobal(path, false) };
+		const everywhere = { label: 'Pin everywhere', icon: 'keep_public', action: () => setPinGlobal(path, true) };
+		if (!$pinnedPaths.includes(path)) return [inHere, everywhere];
 		return [
-			$globalPins.includes(path)
-				? { label: `Pin in ${here} only`, action: () => setPinGlobal(path, false) }
-				: { label: 'Pin everywhere', action: () => setPinGlobal(path, true) },
-			{ label: 'Unpin', action: () => togglePin(path) }
+			$globalPins.includes(path) ? { ...inHere, label: `Pin in ${here} only` } : everywhere,
+			{ label: 'Unpin', icon: 'keep_off', action: () => togglePin(path) }
 		];
 	}
 
 	const menuItems = $derived.by((): ContextMenuItem[] => {
 		if (!menu) return [];
-		const newProject = { label: 'New project...', action: () => newProjectOpen.set(true) };
+		const newProject = { label: 'New project...', icon: 'add', action: () => newProjectOpen.set(true) };
+		const create = (dir: string | null): ContextMenuItem[] => [
+			{ label: 'New note', icon: 'note_add', action: () => startCreate(dir, 'note') },
+			{ label: 'New folder', icon: 'create_new_folder', action: () => startCreate(dir, 'folder') }
+		];
 		if (menu.kind === 'view') {
 			const pick = (v: ProjectView) => () => setView(v);
 			return [
-				{ label: 'All projects', action: pick('all') },
-				...sections.map((s) => ({ label: projectLabel(s.key), action: pick({ project: s.key }) })),
-				newProject
+				{ label: 'All projects', icon: 'apps', current: current === 'all', action: pick('all') },
+				...sections.map((s) => {
+					const st = styleOf(s.key);
+					return {
+						label: projectLabel(s.key),
+						icon: st.icon,
+						color: colorVar(st.color),
+						current: current !== 'all' && current.project === s.key,
+						action: pick({ project: s.key })
+					};
+				}),
+				{ ...newProject, divider: true }
 			];
 		}
-		if (menu.kind === 'blank') {
-			return [
-				{ label: 'New note', action: () => startCreate(homeDir, 'note') },
-				{ label: 'New folder', action: () => startCreate(homeDir, 'folder') },
-				newProject
-			];
-		}
+		if (menu.kind === 'blank') return [...create(homeDir), newProject];
 		if (menu.kind === 'section') {
 			const key = menu.key;
+			const at = { x: menu.x, y: menu.y };
 			const items: ContextMenuItem[] = [
-				{ label: 'New note', action: () => startCreate(key, 'note') },
-				{ label: 'New folder', action: () => startCreate(key, 'folder') },
-				{ label: 'Open board', action: () => void openBoard({ project: key }) }
+				...create(key),
+				{ label: 'Open board', icon: 'view_kanban', action: () => void openBoard({ project: key }) }
 			];
 			if (key === null) return [...items, newProject];
 			return [
 				...items,
-				{ label: 'Rename project', action: () => (renameTarget = { path: key }) },
-				{ label: 'Remove project', action: () => void dropProject(key) }
+				{ label: 'Rename project', icon: 'edit', divider: true, action: () => (renameTarget = { path: key }) },
+				{ label: 'Icon and color', icon: 'palette', action: () => (stylePicker = { ...at, path: key }) },
+				{ label: 'Remove project', icon: 'folder_off', action: () => void dropProject(key) }
 			];
 		}
 		const { entry, pinRow } = menu;
-		if (entry.type === 'file') {
-			const items: ContextMenuItem[] = [
-				...(pinRow ? [] : [{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) }]),
-				{ label: 'Archive', action: () => void archivePath(entry.path) },
-				{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
-			];
-			// Notes download as plain text; other assets open in the preview
-			// overlay instead, so only .md entries get a download row.
-			if (entry.path.endsWith('.md')) {
-				items.splice(
-					pinRow ? 0 : 1,
-					0,
-					...pinItems(entry.path),
-					{
-						label: 'Download as .md',
-						action: () => void downloadNote(entry.path).catch(() => {})
-					},
-					{
-						label: 'Print / PDF',
-						action: () => goto(`/print?note=${encodeURIComponent(entry.path)}`)
-					}
-				);
-			}
-			return items;
-		}
-		return [
-			{ label: 'New note', action: () => startCreate(entry.path, 'note') },
-			{ label: 'New folder', action: () => startCreate(entry.path, 'folder') },
-			{ label: 'Rename', action: () => (renameTarget = { path: entry.path }) },
-			...(entry.path.includes('/') ? [] : [{ label: 'Make project', action: () => void makeProject(entry.path) }]),
-			{ label: 'Archive', action: () => void archivePath(entry.path) },
-			{ label: 'Delete', danger: true, action: () => void deletePath(entry.path) }
+		const rename: ContextMenuItem[] = pinRow
+			? []
+			: [{ label: 'Rename', icon: 'edit', action: () => (renameTarget = { path: entry.path }) }];
+		const removal: ContextMenuItem[] = [
+			{ label: 'Archive', icon: 'inventory_2', divider: true, action: () => void archivePath(entry.path) },
+			{ label: 'Delete', icon: 'delete', danger: true, action: () => void deletePath(entry.path) }
 		];
+		if (entry.type === 'file') {
+			// Notes download as plain text; other assets open in the preview
+			// overlay instead, so only .md entries get pin and export rows.
+			if (!entry.path.endsWith('.md')) return [...rename, ...removal];
+			return [
+				...rename,
+				...pinItems(entry.path),
+				{
+					label: 'Download as .md',
+					icon: 'download',
+					divider: true,
+					action: () => void downloadNote(entry.path).catch(() => {})
+				},
+				{
+					label: 'Print / PDF',
+					icon: 'print',
+					action: () => goto(`/print?note=${encodeURIComponent(entry.path)}`)
+				},
+				...removal
+			];
+		}
+		const [first, ...rest] = [
+			...rename,
+			...pinItems(entry.path),
+			...(entry.path.includes('/') ? [] : [{ label: 'Make project', icon: 'rocket_launch', action: () => void makeProject(entry.path) }])
+		];
+		return [...create(entry.path), { ...first, divider: true }, ...rest, ...removal];
 	});
 
 	let renameName = $state('');
@@ -467,31 +539,63 @@
 </script>
 
 {#snippet pinRow(p: string, last: boolean, key?: ProjectKey)}
+	{@const entry = pinEntries.get(p)!}
+	{@const isDir = entry.type === 'directory'}
+	{@const open = isDir && !$collapsedDirs.has(p)}
 	<button
 		class="pin-row"
+		class:dir={isDir}
 		class:active={$activePath === p}
 		class:dragging={$drag?.source.fromPins && $drag.source.path === p}
 		class:ins-before={pinBefore === p}
 		class:ins-after={last && endOfList(key)}
+		class:drop-into={isDir && dropTarget?.kind === 'move' && !dropTarget.place && dropTarget.dir === p}
 		title={p}
 		data-pin={p}
-		onclick={() => onSelect(p)}
-		onpointerdown={(e) => startDrag(e, p, 'file', true)}
+		data-pin-dir={isDir || undefined}
+		onclick={() => (isDir ? toggleDir(p) : onSelect(p))}
+		onpointerdown={(e) => startDrag(e, p, entry.type, true)}
 		oncontextmenu={(e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			menu = {
-				x: e.clientX,
-				y: e.clientY,
-				kind: 'entry',
-				entry: { name: pinName(p), path: p, type: 'file' },
-				pinRow: true
-			};
+			menu = { x: e.clientX, y: e.clientY, kind: 'entry', entry, pinRow: true };
 		}}
 	>
-		<span class="material-symbols-outlined">keep</span>
+		{#if key !== undefined}
+			<span class="material-symbols-outlined">keep</span>
+		{/if}
+		{#if isDir}
+			<span class="material-symbols-outlined fill dir-icon">{open ? 'folder_open' : 'folder'}</span>
+		{:else if key === undefined}
+			<span class="material-symbols-outlined file-icon">draft</span>
+		{/if}
 		<span class="pin-name">{pinName(p)}</span>
+		{#if isDir}
+			{@const n = folderNoteCount(entry, $pinnedPaths)}
+			<span class="sp"></span>
+			{#if n > 0}<span class="count">{n}</span>{/if}
+			<span class="material-symbols-outlined chev">{open ? 'expand_more' : 'chevron_right'}</span>
+		{/if}
 	</button>
+	{#if open}
+		<div class="pin-tree" data-pin-tree={p}>
+		<FileTree
+			entries={entry.children ?? []}
+			dirPath={p}
+			depth={1}
+			{onSelect}
+			{onOpenAsset}
+			onContextMenu={onEntryContextMenu}
+			onDragStart={(e, child) => startDrag(e, child.path, child.type, false)}
+			{createTarget}
+			{renameTarget}
+			onCreate={commitCreate}
+			onRename={commitRename}
+			onCancelCreate={() => (createTarget = null)}
+			onCancelRename={() => (renameTarget = null)}
+		/>
+		</div>
+	{/if}
 {/snippet}
 
 <aside
@@ -515,16 +619,31 @@
 	</div>
 	<button
 		class="view-pick"
+		class:pin-drop={canPin()}
+		class:on={canPin() && endOfList()}
+		data-drop-pins={canPin() || undefined}
+		data-pin-here={canPin() || undefined}
 		title="Show one project or all of them"
 		onclick={(e) => {
 			const r = e.currentTarget.getBoundingClientRect();
-			menu = { x: r.left, y: r.bottom + 4, kind: 'view' };
+			menu = { x: r.left, y: r.bottom + 4, kind: 'view', width: r.width };
 		}}
 	>
-		<span class="material-symbols-outlined">{current === 'all' ? 'apps' : 'folder'}</span>
-		<span class="pin-name">{current === 'all' ? 'All projects' : projectLabel(current.project)}</span>
+		{#if canPin()}
+			<span class="material-symbols-outlined">keep</span>
+		{:else if current === 'all'}
+			<span class="material-symbols-outlined">apps</span>
+		{:else}
+			{@const st = styleOf(current.project)}
+			<span class="material-symbols-outlined fill" style:color={colorVar(st.color)}>{st.icon}</span>
+		{/if}
+		<span class="pin-name">
+			{canPin() ? 'Pin everywhere' : current === 'all' ? 'All projects' : projectLabel(current.project)}
+		</span>
 		<span class="sp"></span>
-		<span class="material-symbols-outlined">unfold_more</span>
+		{#if !canPin()}
+			<span class="material-symbols-outlined">unfold_more</span>
+		{/if}
 	</button>
 	<SearchBox {onSelect} folder={homeDir ?? undefined} />
 	<div
@@ -536,23 +655,29 @@
 		bind:this={treeEl}
 		onkeydown={treeKey}
 	>
-		{#if topPins.length > 0 || pinDropOpen}
+		{#if topPins.length > 0}
 			<div class="pins" data-drop-pins>
-				<div class="group"><span class="material-symbols-outlined">keep</span>Pinned</div>
+				<div class="group sec-h pins-h">
+					<span class="ring">
+						<svg viewBox="0 0 30 30" aria-hidden="true"><circle class="track" cx="15" cy="15" r="12" /></svg>
+						<span class="material-symbols-outlined fill">keep</span>
+					</span>
+					<span class="pin-name">Pinned</span>
+					<span class="sp"></span>
+					<span class="sec-s">{topPins.length}</span>
+				</div>
 				{#each topPins as p, i (p)}
 					{@render pinRow(p, i === topPins.length - 1)}
 				{/each}
-				{#if topPins.length === 0}
-					<div class="pin-empty" class:drop-target={endOfList()}>Drop to pin everywhere</div>
-				{/if}
 			</div>
 		{/if}
 		{#each shownSections as s (foldKey(s.key))}
 			{@const folded = $collapsedDirs.has(foldKey(s.key))}
 			{@const pins = pinsIn(s.key)}
-			{@const open = openTasks.get(s.key) ?? 0}
+			{@const pr = progress.get(s.key) ?? { done: 0, total: 0 }}
+			{@const st = styleOf(s.key)}
 			<section
-				class:drop-root={dropTarget?.kind === 'move' && dropTarget.dir === s.key}
+				class:drop-root={dropTarget?.kind === 'move' && !dropTarget.place && dropTarget.dir === s.key}
 				data-drop-dir={s.key ?? ''}
 			>
 				{#if s.key !== null && renameTarget?.path === s.key}
@@ -569,6 +694,11 @@
 				{:else}
 					<div
 						class="group sec-h"
+						class:pin-on={canPin(s.key) && endOfList(s.key)}
+						style:--c={colorVar(st.color)}
+						data-drop-pins={canPin(s.key) || undefined}
+						data-pin-here={canPin(s.key) || undefined}
+						data-project={canPin(s.key) ? (s.key ?? '') : undefined}
 						role="button"
 						tabindex="0"
 						title={folded ? 'Expand' : 'Collapse'}
@@ -585,9 +715,31 @@
 							menu = { x: e.clientX, y: e.clientY, kind: 'section', key: s.key };
 						}}
 					>
-						<span class="material-symbols-outlined">{folded ? 'chevron_right' : 'expand_more'}</span>
+						<span class="ring">
+							<svg viewBox="0 0 30 30" aria-hidden="true">
+								<circle class="track" cx="15" cy="15" r="12" />
+								{#if pr.done > 0}
+									<circle
+										class="arc"
+										cx="15"
+										cy="15"
+										r="12"
+										pathLength="100"
+										stroke-dasharray="{(pr.done / pr.total) * 100} 100"
+									/>
+								{/if}
+							</svg>
+							<span class="material-symbols-outlined fill">{st.icon}</span>
+						</span>
 						<span class="pin-name">{projectLabel(s.key)}</span>
 						<span class="sp"></span>
+						{#if canPin(s.key)}
+							<span class="sec-pin" class:on={endOfList(s.key)}>
+								<span class="material-symbols-outlined">keep</span>Pin
+							</span>
+						{:else if pr.total > 0}
+							<span class="sec-s" title="{pr.done} of {pr.total} tasks done">{pr.done}/{pr.total}</span>
+						{/if}
 						<span class="acts">
 							<button
 								class="icon-btn sm"
@@ -610,23 +762,21 @@
 								<span class="material-symbols-outlined">add</span>
 							</button>
 						</span>
-						{#if open > 0}<span class="open" title="Open tasks">{open}</span>{/if}
+						<span class="material-symbols-outlined chev">{folded ? 'chevron_right' : 'expand_more'}</span>
 					</div>
 				{/if}
 				{#if !folded}
-					{#if pins.length > 0 || pinDropHere(s.key)}
+					{#if pins.length > 0}
 						<div class="pins" data-drop-pins data-project={s.key ?? ''}>
 							{#each pins as p, i (p)}
 								{@render pinRow(p, i === pins.length - 1, s.key)}
 							{/each}
-							{#if pins.length === 0}
-								<div class="pin-empty" class:drop-target={endOfList(s.key)}>
-									Drop to pin in {projectLabel(s.key)}
-								</div>
-							{/if}
 						</div>
 					{/if}
 					<div class="tree">
+						{#if s.entries.length === 0 && createTarget?.parent !== s.key}
+							<div class="tree-empty">No notes</div>
+						{/if}
 						<FileTree
 							entries={s.entries}
 							dirPath={s.key}
@@ -652,7 +802,17 @@
 		<AppActions />
 	</div>
 	{#if menu}
-		<ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
+		<ContextMenu
+			x={menu.x}
+			y={menu.y}
+			width={menu.kind === 'view' ? menu.width : undefined}
+			items={menuItems}
+			onClose={() => (menu = null)}
+		/>
+	{/if}
+	{#if stylePicker}
+		{@const st = styleOf(stylePicker.path)}
+		<ProjectStylePicker {...stylePicker} icon={st.icon} color={st.color} onClose={() => (stylePicker = null)} />
 	{/if}
 	{#if $drag}
 		<div class="drag-card" style="top: {$drag.top}px; left: {$drag.left}px; width: {$drag.width}px">
@@ -715,18 +875,20 @@
 		font-size: var(--fs-sm);
 		font-weight: 500;
 	}
-	.group .material-symbols-outlined {
-		font-size: 16px;
+	/* The global pins' band: a project header in plain text color. */
+	.pins-h.sec-h {
+		--c: var(--text);
+		cursor: default;
 	}
 	.pin-row {
 		position: relative;
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 		width: calc(100% - 12px);
 		height: 29px;
 		margin: 0 6px;
-		padding: 0 8px 0 14px;
+		padding: 0 8px;
 		border: none;
 		border-radius: var(--r);
 		background: none;
@@ -738,6 +900,20 @@
 	:global(html.sidebar-dragging) .pin-row:not(.active):hover {
 		background: none;
 		color: var(--text-2);
+	}
+	.pin-row.dir {
+		color: var(--text);
+		font-weight: 550;
+	}
+	.pin-row .file-icon {
+		color: var(--text-3);
+	}
+	.pin-row .dir-icon {
+		color: var(--text-2);
+	}
+	.pin-row.drop-into {
+		background: var(--hover);
+		box-shadow: inset 0 0 0 1px var(--accent);
 	}
 	.pin-row.dragging {
 		opacity: 0.4;
@@ -759,21 +935,6 @@
 	.pin-row.ins-after::after {
 		bottom: -1px;
 	}
-	.pin-empty {
-		display: flex;
-		align-items: center;
-		height: 29px;
-		margin: 0 6px;
-		padding: 0 14px;
-		border: 1px dashed var(--line-2);
-		border-radius: var(--r);
-		color: var(--text-3);
-		font-size: var(--fs-sm);
-	}
-	.pin-empty.drop-target {
-		border-color: var(--accent);
-		color: var(--text);
-	}
 	.pin-row .material-symbols-outlined {
 		font-size: 16px;
 		color: var(--text-3);
@@ -786,12 +947,17 @@
 		background: var(--accent-dim);
 		color: var(--text);
 	}
+	.pin-row .count {
+		font-size: var(--fs-xs);
+		color: var(--text-3);
+	}
 	.pin-name {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.tree {
+	.tree,
+	.pin-tree {
 		padding: 0 6px;
 		min-height: 40px;
 	}
@@ -823,16 +989,68 @@
 		font-size: 16px;
 		color: var(--text-3);
 	}
+	/* A project header is a band washed in its color that sticks to the top
+	   while its section scrolls; the band is opaque so rows slide under it. */
 	.sec-h {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		gap: 9px;
+		height: 34px;
+		margin-top: 6px;
+		padding: 0 10px 0 12px;
+		background: color-mix(in srgb, var(--c) 8%, var(--panel));
+		color: var(--c);
 		cursor: pointer;
-		padding-right: 8px;
 	}
-	.sec-h:hover {
-		color: var(--text);
+	.ring {
+		position: relative;
+		flex-shrink: 0;
+		width: 24px;
+		height: 24px;
+	}
+	.ring svg {
+		position: absolute;
+		inset: 0;
+		fill: none;
+		stroke-width: 2.5;
+	}
+	.ring .track {
+		stroke: color-mix(in srgb, var(--c) 22%, var(--panel));
+	}
+	.ring .arc {
+		stroke: var(--c);
+		stroke-linecap: round;
+		transform: rotate(-90deg);
+		transform-origin: center;
+	}
+	.ring .material-symbols-outlined {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 12px;
+	}
+	.sec-h .pin-name {
+		font-size: var(--fs-sm);
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.sec-s {
+		color: color-mix(in srgb, var(--c) 60%, var(--text-3));
+		font-size: var(--fs-xs);
+		font-variant-numeric: tabular-nums;
+	}
+	/* The icon font has one weight; a stroke makes the arrow read bolder. */
+	.sec-h > .chev {
+		font-size: 17px;
+		-webkit-text-stroke: 0.6px currentColor;
 	}
 	/* The buttons replace the count on hover or keyboard focus. A mouse
 	   click leaves focus on the header, so plain :focus-within would keep
-	   them up next to the count. */
+	   them up. */
 	.sec-h .acts {
 		display: none;
 		gap: 2px;
@@ -840,17 +1058,50 @@
 	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .acts {
 		display: flex;
 	}
-	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .open {
+	.sec-h:is(:hover, :focus-visible, :has(:focus-visible)) .sec-s {
 		display: none;
+	}
+	:global(html.sidebar-dragging) .sec-h .acts {
+		display: none;
+	}
+	/* Pin targets on the header and the switcher bar while a note is dragged. */
+	.sec-pin {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		height: 24px;
+		padding: 0 8px 0 6px;
+		border-radius: var(--r);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, transparent);
+		color: var(--c);
+		font-size: var(--fs-xs);
+	}
+	.sec-pin .material-symbols-outlined {
+		font-size: 14px;
+	}
+	.sec-h.pin-on {
+		box-shadow: inset 0 0 0 1px var(--accent);
+	}
+	.sec-pin.on,
+	.view-pick.pin-drop.on {
+		background: var(--hover);
+		box-shadow: inset 0 0 0 1px var(--accent);
+		color: var(--accent);
+	}
+	.view-pick.pin-drop {
+		box-shadow: inset 0 0 0 1px var(--border-raised);
+	}
+	.view-pick.pin-drop.on .material-symbols-outlined {
+		color: var(--accent);
 	}
 	.icon-btn.sm {
 		width: 22px;
 		height: 22px;
 	}
-	.open {
-		color: var(--text-3);
+	.tree-empty {
+		padding: 6px 30px;
+		color: var(--text-4);
 		font-size: var(--fs-xs);
-		font-variant-numeric: tabular-nums;
 	}
 	.rename-input {
 		width: calc(100% - 12px);

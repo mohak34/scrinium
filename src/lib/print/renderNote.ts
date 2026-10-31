@@ -27,6 +27,7 @@ import {
 	defaultCalloutTitle
 } from '$lib/editor/callouts';
 import { findWikilinksInText, wikilinkDisplay } from '$lib/editor/wikilinks';
+import { findTableRanges } from '$lib/editor/tableRanges';
 import { findTagsInText } from '$lib/editor/tags';
 import { stripFrontmatter } from '$lib/editor/frontmatter';
 import { resolveAssetUrl } from '$lib/attachments';
@@ -144,6 +145,13 @@ export function renderNoteToHtml(
 	// Properties are metadata, not content: drop the block before the
 	// pipeline so `---` never renders as a rule plus stray paragraphs.
 	src = stripFrontmatter(src);
+	// Table settings lines (tableMeta.ts) are editor state, not content.
+	if (src.includes('scrinium-table:')) {
+		const raw = EditorState.create({ doc: src, extensions: md });
+		for (const t of [...findTableRanges(raw)].reverse()) {
+			if (t.from < t.start) src = src.slice(0, t.from) + '\n' + src.slice(t.start);
+		}
+	}
 	const state = EditorState.create({ doc: src, extensions: md });
 	const chunks: string[] = [];
 	const stash = (html: string): string => {
@@ -202,10 +210,15 @@ export function renderNoteToHtml(
 			}
 			if (node.name === 'InlineCode') {
 				if (claimed(node.from, node.to)) return;
+				let code = state.doc.sliceString(node.from, node.to).replace(/^`+|`+$/g, '');
+				// GFM unescapes `\|` in table cells, code spans included.
+				for (let p = node.node.parent; p; p = p.parent) {
+					if (p.name === 'Table') code = code.replaceAll('\\|', '|');
+				}
 				spans.push({
 					from: node.from,
 					to: node.to,
-					html: `<code class="print-inline-code">${esc(state.doc.sliceString(node.from, node.to).replace(/^`+|`+$/g, ''))}</code>`,
+					html: `<code class="print-inline-code">${esc(code)}</code>`,
 					block: false
 				});
 			}
@@ -283,7 +296,8 @@ export function renderNoteToHtml(
 		wikiSpans.push({
 			from: w.from,
 			to: w.to,
-			html: `<span class="print-wikilink">${parser.renderInline(wikilinkDisplay(w))}</span>`,
+			// The target rides along so the editor's tables can open the link.
+			html: `<span class="print-wikilink" data-target="${esc(w.target)}"${w.heading === null ? '' : ` data-heading="${esc(w.heading)}"`}>${parser.renderInline(wikilinkDisplay(w))}</span>`,
 			block: false
 		});
 	}

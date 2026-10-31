@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { deletePath, flushSave } from '$lib/stores/vault';
+	import { deletePaths, flushSave } from '$lib/stores/vault';
 	import type { UnusedFile } from '$lib/archive';
 	import { kindIcon, longDate, split } from './lists';
 	import NotePreview from './NotePreview.svelte';
@@ -63,7 +63,7 @@
 				return;
 			}
 			const unused = new Set(files.map((f) => f.path));
-			for (const p of paths) if (unused.has(p) && (await deletePath(p))) unused.delete(p);
+			for (const p of await deletePaths(paths.filter((p) => unused.has(p)))) unused.delete(p);
 			files = files.filter((f) => unused.has(f.path));
 			picked = new Set([...picked].filter((p) => unused.has(p)));
 		} finally {
