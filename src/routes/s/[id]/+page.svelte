@@ -38,6 +38,28 @@
 		return new Date(mtimeMs).toLocaleDateString();
 	}
 
+	// Contents: a side column on wide screens at normal zoom, a menu in the
+	// bar otherwise. Short notes get neither.
+	const toc = $derived(share && share.toc.length >= 3 ? share.toc : []);
+	const top = $derived(Math.min(...toc.map((t) => t.level)));
+	let current = $state('');
+	let menuOpen = $state(false);
+
+	// The section being read: the last heading scrolled past the top.
+	function track() {
+		let id = toc[0]?.id ?? '';
+		for (const t of toc) {
+			const el = document.getElementById(t.id);
+			if (el && el.getBoundingClientRect().top > 96) break;
+			id = t.id;
+		}
+		current = id;
+	}
+
+	$effect(() => {
+		if (toc.length) track();
+	});
+
 	async function unlock() {
 		if (!password || busy) return;
 		busy = true;
@@ -68,6 +90,25 @@
 		}
 	}
 </script>
+
+<svelte:window
+	onscroll={() => toc.length && track()}
+	onclick={(e) => menuOpen && !(e.target as Element).closest('.contents') && (menuOpen = false)}
+	onkeydown={(e) => e.key === 'Escape' && (menuOpen = false)}
+/>
+
+{#snippet contents(cls: string)}
+	<nav class={cls} aria-label="Contents">
+		{#each toc as t (t.id)}
+			<a
+				href="#{t.id}"
+				class:on={t.id === current}
+				style:padding-left="{(t.level - top) * 14 + 12}px"
+				onclick={() => (menuOpen = false)}>{t.text}</a
+			>
+		{/each}
+	</nav>
+{/snippet}
 
 <svelte:head>
 	<title>{share?.title ?? 'Shared note'}</title>
@@ -113,6 +154,22 @@
 			<span class="doc">{share.title}</span>
 			<span class="tag">read-only</span>
 			<span class="tools">
+				{#if toc.length}
+					<span class="contents">
+						<button
+							class="tbtn wide"
+							class:always={zoom > 100}
+							class:open={menuOpen}
+							title="Contents"
+							aria-expanded={menuOpen}
+							onclick={() => (menuOpen = !menuOpen)}
+						>
+							<span class="material-symbols-outlined">toc</span><span class="lbl">Contents</span>
+						</button>
+						{#if menuOpen}{@render contents('toc menu')}{/if}
+					</span>
+					<span class="zoom-sep"></span>
+				{/if}
 				<button
 					class="tbtn"
 					title="Download / print PDF"
@@ -147,6 +204,7 @@
 				</span>
 			{/if}
 		</header>
+		{#if toc.length && zoom <= 100}{@render contents('toc rail')}{/if}
 		<article class="paper" style:--zoom={zoom / 100}>{@html share.html}</article>
 	{/if}
 </div>
@@ -304,6 +362,92 @@
 			min-height: 36px;
 		}
 	}
+	.tbtn.wide {
+		display: none;
+		width: auto;
+		gap: 6px;
+		padding: 0 8px;
+	}
+	.tbtn.wide.always,
+	.tbtn.open {
+		display: flex;
+	}
+	.tbtn.open {
+		background: #1a1a1a;
+		color: #eee;
+	}
+	.contents {
+		position: relative;
+		display: flex;
+	}
+	.toc a {
+		display: block;
+		padding-top: 5px;
+		padding-bottom: 5px;
+		padding-right: 12px;
+		color: #888;
+		text-decoration: none;
+		line-height: 1.35;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.toc a:hover {
+		color: #fff;
+	}
+	.toc a.on {
+		color: #5db8aa;
+	}
+	.menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 10;
+		width: min(300px, calc(100vw - 2rem));
+		max-height: 70vh;
+		overflow-y: auto;
+		padding: 6px 0;
+		background: #000;
+		border: 1px solid #2a2a2a;
+		border-radius: 6px;
+		font-size: 0.85rem;
+	}
+	.menu a:hover {
+		background: #111;
+	}
+	/* Fixed left of the 880px sheet, shown only when there is room for it. */
+	.rail {
+		position: fixed;
+		top: 72px;
+		left: calc(50% - 440px - 252px);
+		width: 220px;
+		max-height: calc(100vh - 96px);
+		overflow-y: auto;
+		border-left: 1px solid #222;
+		font-size: 0.8rem;
+	}
+	.rail a.on {
+		box-shadow: inset 1px 0 #5db8aa;
+	}
+	@media (max-width: 1399px) {
+		.rail {
+			display: none;
+		}
+		.tbtn.wide {
+			display: flex;
+		}
+	}
+	@media (max-width: 640px) {
+		.tbtn.wide .lbl {
+			display: none;
+		}
+		.tbtn.wide {
+			padding: 0 6px;
+		}
+	}
+	.paper :global(:is(h1, h2, h3, h4, h5, h6)[id]) {
+		scroll-margin-top: 16px;
+	}
 	.zoom-sep {
 		width: 1px;
 		height: 16px;
@@ -449,7 +593,8 @@
 			min-height: 0;
 			background: #fff;
 		}
-		.bar {
+		.bar,
+		.rail {
 			display: none;
 		}
 		.paper {

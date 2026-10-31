@@ -477,7 +477,10 @@ State channels you will touch:
   viewer (ShareModal.svelte manages links from the note bar). Open links
   render on the server with the note's title and first line as link
   preview tags; a password link sends nothing about the note until the
-  unlock POST returns it rendered.
+  unlock POST returns it rendered. `withHeadingIds` in shares.ts gives the
+  rendered headings ids and returns the contents list; a note with 3+
+  headings shows it as a side column on wide screens and behind a
+  Contents button elsewhere.
 - `src/lib/design/theme.css` — the only design tokens: surfaces (`--bg`
   reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto
   accent split into `--accent-fill` (solid #175e54 under white text) and

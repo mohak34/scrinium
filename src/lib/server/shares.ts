@@ -251,6 +251,8 @@ export interface SharePage {
 	// One line of the note's text, for link previews in chat apps.
 	description: string;
 	html: string;
+	// The note's sections, each heading carrying `id` in html.
+	toc: { id: string; text: string; level: number }[];
 	updatedAt: number | null;
 	hasPassword: boolean;
 }
@@ -299,11 +301,12 @@ export async function openShare(id: string, password: string | null): Promise<Sh
 		};
 	}
 	const title = effectiveTitle(markdown, row.note_path);
-	const html = renderNoteToHtml(markdown, row.note_path, asset, linkTo);
+	const { html, toc } = withHeadingIds(renderNoteToHtml(markdown, row.note_path, asset, linkTo));
 	return {
 		title,
 		description: excerpt(html, title),
 		html,
+		toc,
 		updatedAt,
 		hasPassword: !!row.password_hash
 	};
@@ -313,9 +316,8 @@ const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"'
 const INLINE = new Set(['a', 'span', 'strong', 'em', 'b', 'i', 'code', 's', 'del', 'mark', 'sub', 'sup', 'u']);
 const VOID = new Set(['img', 'br', 'hr', 'input', 'wbr', 'col', 'source', 'path', 'rect', 'circle', 'line']);
 
-// The rendered note's text up to 200 chars, skipping math, code and icons.
-function excerpt(full: string, title: string): string {
-	const html = full.slice(0, 20_000);
+// The text a reader sees in a piece of rendered html: no math, code or icons.
+function plainText(html: string): string {
 	let text = '';
 	let skip = 0;
 	let at = 0;
@@ -329,10 +331,37 @@ function excerpt(full: string, title: string): string {
 		} else if (skip || /^(pre|svg|style|script)$/i.test(tag) || /class="katex/.test(attrs)) skip++;
 	}
 	if (!skip) text += html.slice(at);
-	text = text
+	return text
 		.replace(/&(amp|lt|gt|quot|#39);/g, (_, e: string) => ENTITIES[e])
 		.replace(/\s+/g, ' ')
 		.trim();
+}
+
+function excerpt(html: string, title: string): string {
+	let text = plainText(html.slice(0, 20_000));
 	if (text.startsWith(title)) text = text.slice(title.length).trim();
 	return text.length > 200 ? `${text.slice(0, 199).trimEnd()}…` : text;
+}
+
+// Gives every heading below the title an id the contents list can link to.
+function withHeadingIds(html: string): Pick<SharePage, 'html' | 'toc'> {
+	const toc: SharePage['toc'] = [];
+	const used = new Set<string>();
+	let first = true;
+	const out = html.replace(/<h([1-6])>([\s\S]*?)<\/h\1>/g, (whole, lv: string, inner: string) => {
+		const level = Number(lv);
+		const text = plainText(inner);
+		if ((first && level === 1) || !text) {
+			first = false;
+			return whole;
+		}
+		first = false;
+		const base = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'section';
+		let id = base;
+		for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+		used.add(id);
+		toc.push({ id, text, level });
+		return `<h${lv} id="${id}">${inner}</h${lv}>`;
+	});
+	return { html: out, toc };
 }
