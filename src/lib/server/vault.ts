@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
-import { createReadStream, createWriteStream, statSync, type ReadStream } from 'node:fs';
+import { createReadStream, createWriteStream, statSync, type ReadStream, type Stats } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
@@ -145,35 +145,49 @@ export async function writeAssetStream(
 	}
 }
 
+// A non-note file's version: its size and modification time, cheap to
+// read for any size of file.
+const fileVersion = (stat: Stats) => `${stat.size}-${Math.floor(stat.mtimeMs)}`;
+
 // Replaces an existing non-note file with a streamed body, e.g. a PDF saved
 // with new annotations. The rename is atomic, so a failed upload leaves the
-// old file intact.
+// old file intact. With `version`, a file that changed since that version
+// is kept and the body lands in "<name> (conflict).<ext>" beside it, like a
+// note save. Resolves where the body landed and its version.
 export async function replaceAssetStream(
 	relPath: string,
 	body: ReadableStream<Uint8Array>,
-	maxBytes: number
-): Promise<void> {
+	maxBytes: number,
+	version: string | null
+): Promise<{ path: string; version: string }> {
 	const fullPath = safeResolve(relPath);
 	if (isHiddenPath(relPath) || /\.md$/i.test(fullPath)) throw error(403, 'Not writable here');
-	const isFile = async () => (await fs.stat(fullPath).catch(() => null))?.isFile() ?? false;
-	if (!(await isFile())) throw error(404, 'Not found');
+	const fileStat = async () => {
+		const stat = await fs.stat(fullPath).catch(() => null);
+		if (!stat?.isFile()) throw error(404, 'Not found');
+		return stat;
+	};
+	await fileStat();
 	const tmp = await streamToTemp(path.dirname(fullPath), body, maxBytes);
 	try {
-		await withVaultLock(async () => {
-			if (!(await isFile())) throw error(404, 'Not found');
-			await fs.rename(tmp, fullPath);
+		return await withVaultLock(async () => {
+			const stale = version !== null && fileVersion(await fileStat()) !== version;
+			const rel = stale ? await conflictPath(relPath) : vaultRel(relPath);
+			const target = safeResolve(rel);
+			await fs.rename(tmp, target);
+			return { path: rel, version: fileVersion(await fs.stat(target)) };
 		});
 	} finally {
 		await fs.rm(tmp, { force: true });
 	}
 }
 
-export async function openAsset(relPath: string): Promise<{ stream: ReadStream; size: number }> {
+export async function openAsset(relPath: string): Promise<{ stream: ReadStream; size: number; version: string }> {
 	const fullPath = safeResolve(relPath);
 	try {
 		const stat = await fs.stat(fullPath);
 		if (!stat.isFile()) throw error(404, 'Not found');
-		return { stream: createReadStream(fullPath), size: stat.size };
+		return { stream: createReadStream(fullPath), size: stat.size, version: fileVersion(stat) };
 	} catch (e: unknown) {
 		if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw error(404, 'Not found');
 		throw e;

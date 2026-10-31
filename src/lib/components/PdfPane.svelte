@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { loadPdfjs } from '$lib/pdf/pdfjs';
+	import { loadTree } from '$lib/stores/vault';
 	import type { PDFDocumentProxy } from 'pdfjs-dist';
 	import type { PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 
@@ -34,42 +35,77 @@
 	let saveState = $state<'saved' | 'dirty' | 'saving' | 'failed'>('saved');
 
 	const name = $derived(path.split('/').pop() ?? path);
-	const url = $derived('/api/assets/' + path.split('/').map(encodeURIComponent).join('/'));
+	const assetUrl = (p: string) => '/api/assets/' + p.split('/').map(encodeURIComponent).join('/');
+	// Where saves go and the version of that file they replace. The file
+	// changed elsewhere (another tab, the phone): the server keeps it and
+	// saves land in a conflict copy, which later saves then update.
+	let target = '';
+	let version: string | null = null;
+	let copy = $state('');
 
 	// Each save uploads the whole file (original bytes plus every
 	// annotation), so they wait for a 10 s pause, the tab hiding, or the
 	// pane closing. Edits made while one is in flight mark the PDF dirty
 	// again and queue the next.
 	let timer: ReturnType<typeof setTimeout> | undefined;
-	let saving: Promise<void> | undefined;
+	let saving: Promise<boolean> | undefined;
 	let closed = false;
 	function scheduleSave(wait = 10_000) {
 		clearTimeout(timer);
 		timer = setTimeout(() => void save(), wait);
 	}
-	async function save() {
+	// The bytes of the last save that failed, for the download fallback.
+	let unsavedBytes: Blob | undefined;
+	async function save(): Promise<boolean> {
 		clearTimeout(timer);
 		await saving;
-		if (!doc || saveState === 'saved') return;
+		if (!doc || saveState === 'saved') return true;
 		const current = doc;
 		saving = (async () => {
 			saveState = 'saving';
 			current.annotationStorage.resetModified();
+			let bytes: Blob | undefined;
 			try {
-				const bytes = await current.saveDocument();
-				const res = await fetch(url, {
+				bytes = new Blob([await current.saveDocument()], { type: 'application/pdf' });
+				const res = await fetch(assetUrl(target), {
 					method: 'PUT',
-					headers: { 'Content-Type': 'application/pdf' },
+					headers: { 'Content-Type': 'application/pdf', ...(version && { 'If-Match': version }) },
 					body: bytes
 				});
 				if (!res.ok) throw new Error(String(res.status));
+				const landed: { path: string; version: string } = await res.json();
+				version = landed.version;
+				if (landed.path !== target) {
+					target = copy = landed.path;
+					void loadTree();
+				}
+				unsavedBytes = undefined;
 				if (saveState === 'saving') saveState = 'saved';
+				return true;
 			} catch {
+				unsavedBytes = bytes;
 				saveState = 'failed';
 				if (!closed) scheduleSave(5000);
+				return false;
 			}
 		})();
-		await saving;
+		return await saving;
+	}
+
+	// Closing keeps trying to save for about a minute, then hands the
+	// annotated PDF to the browser as a download so no annotation is lost.
+	async function saveOnClose() {
+		for (let wait = 2000; saveState !== 'saved' && wait <= 32_000; ) {
+			if (await save()) continue;
+			await new Promise((r) => setTimeout(r, wait));
+			wait *= 2;
+		}
+		if (saveState === 'saved' || !unsavedBytes) return;
+		const a = document.createElement('a');
+		a.href = URL.createObjectURL(unsavedBytes);
+		a.download = (target.split('/').pop() ?? 'document.pdf').replace(/\.pdf$/i, '') + ' (unsaved).pdf';
+		a.click();
+		setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
 	}
 
 	function setMode(next: number) {
@@ -87,15 +123,17 @@
 		};
 		document.addEventListener('visibilitychange', hidden);
 
+		target = path;
 		void (async () => {
 			try {
 				const [{ lib, viewer: v, BinaryDataFactory }, res] = await Promise.all([
 					loadPdfjs(),
 					// The asset route lets browsers cache for an hour; annotations
 					// change the file, so always read the current copy.
-					fetch(url, { cache: 'no-store' })
+					fetch(assetUrl(path), { cache: 'no-store' })
 				]);
 				if (!res.ok) throw new Error(res.status === 404 ? 'File not found' : `Load failed (${res.status})`);
+				version = res.headers.get('X-Asset-Version');
 				const data = new Uint8Array(await res.arrayBuffer());
 				if (gone || !container) return;
 				const eventBus = new v.EventBus();
@@ -142,12 +180,11 @@
 			gone = true;
 			window.removeEventListener('beforeunload', unsaved);
 			document.removeEventListener('visibilitychange', hidden);
-			// Closing or switching files still writes pending annotations, then
-			// frees the worker's copy of the document.
-			// No retry after this one: the document is destroyed with the pane.
+			// Closing or switching files still writes pending annotations
+			// (saveOnClose), then frees the worker's copy of the document.
 			const last = doc;
 			closed = true;
-			void save().finally(() => {
+			void saveOnClose().finally(() => {
 				viewer?.cleanup();
 				void last?.loadingTask.destroy();
 			});
@@ -163,6 +200,11 @@
 		<span class="save" class:bad={saveState === 'failed'}>
 			{saveState === 'saving' ? 'Saving' : saveState === 'failed' ? 'Save failed, retrying' : ''}
 		</span>
+		{#if copy}
+			<span class="save bad" title="This PDF changed elsewhere; your annotations save to {copy}">
+				Saving to {copy.split('/').pop()}
+			</span>
+		{/if}
 		{#each TOOLS as t (t.mode)}
 			<button
 				class="btn"

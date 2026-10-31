@@ -31,7 +31,7 @@ const INLINE: Record<string, string> = {
 // covers anything that slips past the type list; Chrome refuses to render
 // PDFs under it, and its PDF viewer is isolated already, so PDFs skip it.
 export async function assetResponse(relPath: string): Promise<Response> {
-	const { stream, size } = await openAsset(relPath);
+	const { stream, size, version } = await openAsset(relPath);
 	const name = relPath.split('/').pop() ?? 'file';
 	const ext = name.split('.').pop()?.toLowerCase() ?? '';
 	const type = INLINE[ext];
@@ -40,7 +40,9 @@ export async function assetResponse(relPath: string): Promise<Response> {
 		'Content-Length': String(size),
 		'Content-Disposition': `${type ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(name)}`,
 		'Cache-Control': 'private, max-age=3600',
-		'X-Content-Type-Options': 'nosniff'
+		'X-Content-Type-Options': 'nosniff',
+		// Sent back as If-Match by PUT /api/assets (the PDF pane).
+		'X-Asset-Version': version
 	};
 	if (ext !== 'pdf') headers['Content-Security-Policy'] = 'sandbox';
 	return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, { headers });

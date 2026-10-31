@@ -316,7 +316,10 @@ State channels you will touch:
   under `BODY_SIZE_LIMIT` in `deploy/scrinium.service` (`MAX_UPLOAD_BYTES`
   in assets.ts). `PUT /api/assets/<path>` overwrites an existing non-note
   file the same streamed way (`replaceAssetStream`, atomic rename under
-  the vault lock); the PDF pane saves annotations through it.
+  the vault lock); the PDF pane saves annotations through it. Asset reads
+  answer with `X-Asset-Version` (size and mtime); a PUT with it as
+  `If-Match` over a file changed since saves as `<name> (conflict).<ext>`
+  instead, and the pane keeps saving to that copy.
   `src/lib/attachments.ts` (`isImagePath`, `attachmentMarkdown`,
   `resolveAssetUrl`) is shared by the editor, MCP and share pages.
   mobileAuth.ts (Google ID-token verification + API-token issue/verify),
@@ -339,7 +342,9 @@ State channels you will touch:
   are bundled through `import.meta.glob` and handed over by file name.
   Highlights, ink and text notes are written into the PDF as standard
   annotations (`saveDocument`) and PUT back over the file after a 10 s
-  pause, when the tab hides and on close; there is no sidecar store. The asset route caches for
+  pause, when the tab hides and on close; there is no sidecar store.
+  A failed save on close retries for about a minute, then downloads the
+  annotated PDF so nothing is lost. The asset route caches for
   an hour, so the pane always fetches with `no-store`.
 - `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
   renderer (markdown-it plus the editor's math, code, callout, wikilink
