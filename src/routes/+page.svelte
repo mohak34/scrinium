@@ -84,7 +84,7 @@
 				showInPanels(content);
 			},
 			replace(content) {
-				editorRef?.setDoc(content);
+				editorRef?.setDoc(content, false, true);
 				currentContent = content;
 				showInPanels(content);
 			}

@@ -660,11 +660,13 @@ import { perDoc } from './docRanges';
 
 	// If the parent swaps to a different note, reset the doc without treating
 	// it as a user edit (no spurious save). resetCursor marks a note switch:
-	// the old note's undo history is dropped with its text.
-	export function setDoc(newValue: string, resetCursor = false) {
+	// the old note's undo history is dropped with its text. dropHistory alone
+	// is for a copy saved elsewhere: undo past it would bring back text the
+	// server no longer has and save it over the other change.
+	export function setDoc(newValue: string, resetCursor = false, dropHistory = resetCursor) {
 		if (!view) return;
 		suppressChange = true;
-		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure([]) });
+		if (dropHistory) view.dispatch({ effects: historyCompartment.reconfigure([]) });
 		// Same-note pushes replace only the part that differs, so the cursor
 		// and scroll around it stay put.
 		const old = view.state.doc.toString();
@@ -683,7 +685,7 @@ import { perDoc } from './docRanges';
 			effects: resetCursor ? [EditorView.scrollIntoView(0)] : []
 		});
 		docText = newValue;
-		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
+		if (dropHistory) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
 		// Note switches also take focus so typing starts immediately.
 		if (resetCursor) view.focus();
 		suppressChange = false;
