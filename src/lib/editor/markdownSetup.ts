@@ -221,6 +221,7 @@ export const baseTheme = EditorView.theme(
 		'& .cm-image': {
 			display: 'block',
 			maxWidth: '100%',
+			height: 'auto',
 			maxHeight: '60vh',
 			margin: '0',
 			padding: '0.4em 0',

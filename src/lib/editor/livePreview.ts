@@ -336,6 +336,9 @@ class CalloutHeaderWidget extends WidgetType {
 	}
 }
 
+// Natural sizes of images loaded this session, by URL.
+const imageSizes = new Map<string, [number, number]>();
+
 class ImageWidget extends WidgetType {
 	constructor(
 		readonly url: string,
@@ -347,13 +350,22 @@ class ImageWidget extends WidgetType {
 	eq(other: ImageWidget) {
 		return other.url === this.url && other.alt === this.alt && other.noteDir === this.noteDir;
 	}
-	toDOM() {
+	toDOM(view: EditorView) {
 		const img = document.createElement('img');
-		const src = resolveAssetUrl(this.url, this.noteDir);
-		img.src = src ?? '';
+		const src = resolveAssetUrl(this.url, this.noteDir) ?? '';
+		// A size seen before reserves the image's box, so lines below don't
+		// jump when it loads; a first load remeasures instead.
+		const size = imageSizes.get(src);
+		if (size) [img.width, img.height] = size;
+		img.addEventListener('load', () => {
+			imageSizes.set(src, [img.naturalWidth, img.naturalHeight]);
+			if (!size) view.requestMeasure();
+		});
+		img.src = src;
 		img.alt = this.alt;
 		img.className = 'cm-image';
 		img.loading = 'lazy';
+		img.decoding = 'async';
 		return img;
 	}
 	ignoreEvent() {
