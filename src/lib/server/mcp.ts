@@ -84,23 +84,45 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		const headers = new Headers(init?.headers);
 		if (typeof init?.body === 'string' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
 		const res = await fetch(path, { ...init, headers });
-		if (!res.ok) {
-			const raw = await res.text();
-			let msg = raw;
-			try {
-				msg = JSON.parse(raw).message ?? raw;
-			} catch {}
-			throw new Error(`${res.status}: ${msg}`);
-		}
+		if (!res.ok) throw await failure(res);
 		return res;
+	}
+	async function failure(res: Response): Promise<Error> {
+		const raw = await res.text();
+		let msg = raw;
+		try {
+			msg = JSON.parse(raw).message ?? raw;
+		} catch {}
+		return new Error(`${res.status}: ${msg}`);
+	}
+	// Read a note (null when missing), change it and write it back only over
+	// the version read, so a save landing in between (the browser, another
+	// agent) is never overwritten: the change is applied again to the new
+	// text. Resolves whether the note existed.
+	async function rewriteNote(path: string, change: (cur: string | null) => string): Promise<boolean> {
+		const url = `/api/notes/${enc(path)}`;
+		for (let tries = 0; tries < 5; tries++) {
+			const res = await fetch(url);
+			if (!res.ok && res.status !== 404) throw await failure(res);
+			const cur = res.ok ? await res.text() : null;
+			const version = res.headers.get('X-Note-Version');
+			const guard: Record<string, string> =
+				cur === null ? { 'If-None-Match': '*' } : { 'If-Match': version ?? '', 'X-Note-Strict': '1' };
+			const put = await fetch(url, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'text/plain', ...guard },
+				body: change(cur)
+			});
+			if (put.ok) return cur !== null;
+			if (put.status !== 409 && put.status !== 412) throw await failure(put);
+		}
+		throw new Error(`${path} kept changing while it was edited; try again.`);
 	}
 	const getJson = async <T>(path: string, init?: RequestInit) =>
 		(await (await call(path, init)).json()) as T;
 	const send = (method: string, path: string, body?: unknown) =>
 		call(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 	const readNote = async (path: string) => (await call(`/api/notes/${enc(path)}`)).text();
-	const writeNote = (path: string, content: string) =>
-		call(`/api/notes/${enc(path)}`, { method: 'PUT', body: content });
 	const allTasks = () => getJson<TaskRow[]>('/api/tasks');
 
 	const server = new McpServer({ name: 'scrinium', version: '1.0.0' }, { instructions: INSTRUCTIONS });
@@ -188,8 +210,10 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			annotations: { destructiveHint: true }
 		},
 		async ({ path, content }) => {
-			await readNote(path);
-			await writeNote(path, content);
+			await rewriteNote(path, (cur) => {
+				if (cur === null) throw new Error(`404: ${path} not found`);
+				return content;
+			});
 			onWrite('update_note', path);
 			return result(`Updated ${path}`);
 		}
@@ -203,10 +227,12 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			inputSchema: { path: NotePath, old_text: z.string().min(1), new_text: z.string() }
 		},
 		async ({ path, old_text, new_text }) => {
-			const content = await readNote(path);
-			const count = content.split(old_text).length - 1;
-			if (count !== 1) throw new Error(`old_text found ${count} times in ${path}; it must match exactly once.`);
-			await writeNote(path, content.replace(old_text, () => new_text));
+			await rewriteNote(path, (content) => {
+				if (content === null) throw new Error(`404: ${path} not found`);
+				const count = content.split(old_text).length - 1;
+				if (count !== 1) throw new Error(`old_text found ${count} times in ${path}; it must match exactly once.`);
+				return content.replace(old_text, () => new_text);
+			});
 			onWrite('edit_note', path);
 			return result(`Edited ${path}`);
 		}
@@ -220,12 +246,12 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		},
 		async ({ path, text }) => {
 			if (!path.endsWith('.md')) throw new Error('Note paths end in .md');
-			const res = await fetch(`/api/notes/${enc(path)}`);
-			const cur = res.ok ? await res.text() : '';
-			const sep = cur === '' || cur.endsWith('\n') ? '' : '\n';
-			await writeNote(path, cur + sep + text + (text.endsWith('\n') ? '' : '\n'));
+			const existed = await rewriteNote(path, (cur) => {
+				const sep = !cur || cur.endsWith('\n') ? '' : '\n';
+				return (cur ?? '') + sep + text + (text.endsWith('\n') ? '' : '\n');
+			});
 			onWrite('append_to_note', path);
-			return result(res.ok ? `Appended to ${path}` : `Created ${path}`);
+			return result(existed ? `Appended to ${path}` : `Created ${path}`);
 		}
 	);
 

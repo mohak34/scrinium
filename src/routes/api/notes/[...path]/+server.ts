@@ -54,14 +54,15 @@ function indexed(path: string, content: string) {
 
 // `If-None-Match: *` asks for create-only: 409 instead of overwriting.
 // `If-Match: <version>` saves over that version only (saveNote) and answers
-// with where the text landed and any conflict copy; without either the
-// note is overwritten (agents, the phone).
+// with where the text landed and any conflict copy; with `X-Note-Strict: 1`
+// as well it answers 412 instead of keeping a copy (MCP edits read again).
+// Without either the note is overwritten (the phone).
 export const PUT: RequestHandler = async ({ params, request }) => {
 	const path = writable(params.path);
 	const content = await request.text();
 	const version = request.headers.get('if-match');
 	if (version) {
-		const saved = await saveNote(path, content, version);
+		const saved = await saveNote(path, content, version, request.headers.get('x-note-strict') === '1');
 		indexed(saved.path, saved.content);
 		if (saved.conflict) indexed(saved.conflict.path, saved.conflict.content);
 		return json(

@@ -235,13 +235,16 @@ export interface SavedNote {
 // (moved or trashed elsewhere) the text lands in that copy instead. A stale
 // tab never overwrites another writer's change or recreates a moved note.
 // Copies take their name as title when the title was the note's name.
-export function saveNote(relPath: string, content: string, version: string): Promise<SavedNote> {
+export function saveNote(relPath: string, content: string, version: string, strict = false): Promise<SavedNote> {
 	const fullPath = safeResolve(relPath);
 	return withVaultLock(async () => {
 		const theirs = await fs.readFile(fullPath, 'utf-8').catch((e: NodeJS.ErrnoException) => {
 			if (e.code === 'ENOENT') return null;
 			throw e;
 		});
+		// Strict: a read-modify-write (MCP edits) that must start over
+		// instead of keeping a conflict copy.
+		if (strict && (theirs === null || noteVersion(theirs) !== version)) throw error(412, 'Note changed');
 		if (theirs === null) {
 			const copy = await conflictPath(relPath);
 			const text = retitle(content, relPath, copy);
