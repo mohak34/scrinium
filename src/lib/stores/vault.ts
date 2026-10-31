@@ -468,6 +468,10 @@ export function scheduleTitleSync(path: string, content: string) {
 		if (pendingTitleSync?.path === path) cancelTitleSync();
 		return;
 	}
+	queueTitleSync(path, title);
+}
+
+function queueTitleSync(path: string, title: string) {
 	pendingTitleSync = { path, title };
 	clearTimeout(titleSyncTimer);
 	titleSyncTimer = setTimeout(() => {
@@ -623,8 +627,15 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 			const held = versions.get(p);
 			if (held === undefined || held === body?.previous?.[p]) versions.set(p, v);
 		}
-		// A heading-to-filename rename queued for the old path is stale now.
-		if (pendingTitleSync && moved(pendingTitleSync.path) !== pendingTitleSync.path) cancelTitleSync();
+		// A heading-to-filename rename queued for a note that moved follows
+		// it when only its folder changed; a new filename was picked by
+		// hand, so the queued one is dropped.
+		const sync = pendingTitleSync;
+		if (sync && moved(sync.path) !== sync.path) {
+			cancelTitleSync();
+			const to = moved(sync.path);
+			if (to.split('/').pop() === sync.path.split('/').pop()) queueTitleSync(to, sync.title);
+		}
 		remapPending(oldPath, newPath, wiki);
 		const before = shown;
 		if (shown) shown = moved(shown);
