@@ -361,6 +361,10 @@ State channels you will touch:
   answers 412 once the file changed, so a pane never mixes two versions.
   Asset reads carry an ETag and `no-cache`, so browsers revalidate (304)
   instead of showing an overwritten file.
+  Ctrl+F inside the pane opens pdf.js's own find (`PDFFindController`)
+  ahead of the page's Mod+F, which opens the note editor's search. The
+  page counter is a page jump; page and zoom per PDF path and the dark
+  pages switch (a CSS filter on the page canvas) live in localStorage.
 - `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
   renderer (markdown-it plus the editor's math, code, callout, wikilink
   and tag parsing). Used by `/print` (NoteBar's Print / PDF) and, on the

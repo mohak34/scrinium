@@ -34,6 +34,90 @@
 	let pages = $state(0);
 	let mode = $state(NONE);
 	let saveState = $state<'saved' | 'dirty' | 'saving' | 'failed'>('saved');
+	let eventBus: InstanceType<typeof import('pdfjs-dist/web/pdf_viewer.mjs').EventBus> | undefined;
+
+	// Page and zoom per PDF path, and the dark-pages switch, kept in this
+	// browser. Only the last 100 PDFs are remembered.
+	const VIEW_STORAGE = 'scrinium:pdfViews';
+	const DARK_STORAGE = 'scrinium:pdfDark';
+	type View = { page: number; scale: string };
+	function readViews(): Record<string, View> {
+		try {
+			const v = JSON.parse(localStorage.getItem(VIEW_STORAGE) ?? '{}');
+			return v && typeof v === 'object' ? v : {};
+		} catch {
+			return {};
+		}
+	}
+	let restored = false;
+	function rememberView() {
+		if (!viewer || !restored) return;
+		const views = readViews();
+		delete views[path];
+		views[path] = { page: viewer.currentPageNumber, scale: viewer.currentScaleValue };
+		const keys = Object.keys(views);
+		for (const k of keys.slice(0, Math.max(0, keys.length - 100))) delete views[k];
+		try {
+			localStorage.setItem(VIEW_STORAGE, JSON.stringify(views));
+		} catch {
+			// Storage full or blocked: the next open starts at page 1.
+		}
+	}
+	let dark = $state(typeof window !== 'undefined' && localStorage.getItem(DARK_STORAGE) === '1');
+	function toggleDark() {
+		dark = !dark;
+		localStorage.setItem(DARK_STORAGE, dark ? '1' : '0');
+	}
+
+	// Page jump: the page counter turns into an input on click.
+	let jumping = $state(false);
+	function jump(value: string) {
+		const n = Math.round(Number(value));
+		if (viewer && n >= 1 && n <= pages) viewer.currentPageNumber = n;
+		jumping = false;
+	}
+
+	// Find in the PDF (Ctrl+F while the pane has focus), pdf.js's own
+	// controller: it highlights every match and scrolls to the selected one.
+	let finding = $state(false);
+	let query = $state('');
+	let found = $state<{ current: number; total: number } | null>(null);
+	let findInput = $state<HTMLInputElement>();
+	function find(type: '' | 'again', previous = false) {
+		eventBus?.dispatch('find', {
+			source: null,
+			type,
+			query,
+			caseSensitive: false,
+			entireWord: false,
+			highlightAll: true,
+			findPrevious: previous,
+			matchDiacritics: false
+		});
+	}
+	function openFind() {
+		finding = true;
+		const selected = window.getSelection()?.toString().trim();
+		if (selected && !selected.includes('\n')) {
+			query = selected;
+			find('');
+		}
+		requestAnimationFrame(() => findInput?.select());
+	}
+	function closeFind() {
+		finding = false;
+		found = null;
+		eventBus?.dispatch('findbarclose', { source: null });
+		container?.focus();
+	}
+	function paneKey(e: KeyboardEvent) {
+		if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+			// Ahead of the page's Mod+F, which opens the note editor's search.
+			e.preventDefault();
+			e.stopPropagation();
+			openFind();
+		}
+	}
 
 	const name = $derived(path.split('/').pop() ?? path);
 	const assetUrl = (p: string) => '/api/assets/' + p.split('/').map(encodeURIComponent).join('/');
@@ -138,23 +222,39 @@
 				if (!res.ok) throw new Error(res.status === 404 ? 'File not found' : `Load failed (${res.status})`);
 				version = res.headers.get('X-Asset-Version');
 				if (gone || !container) return;
-				const eventBus = new v.EventBus();
-				const linkService = new v.PDFLinkService({ eventBus });
+				const bus = (eventBus = new v.EventBus());
+				const linkService = new v.PDFLinkService({ eventBus: bus });
+				const findController = new v.PDFFindController({ eventBus: bus, linkService });
 				viewer = new v.PDFViewer({
 					container,
-					eventBus,
+					eventBus: bus,
 					linkService,
+					findController,
 					annotationEditorMode: lib.AnnotationEditorType.NONE,
 					// pdf.js's own viewer defaults; the highlight tool needs a list.
 					annotationEditorHighlightColors:
 						'yellow=#FFFF98,green=#53FFBC,blue=#80EBFF,pink=#FFCBE6,red=#FF4F5F'
 				});
 				linkService.setViewer(viewer);
-				eventBus.on('pagesinit', () => {
-					if (viewer) viewer.currentScaleValue = 'page-width';
+				bus.on('pagesinit', () => {
+					if (!viewer) return;
+					const view = readViews()[path];
+					viewer.currentScaleValue = view?.scale || 'page-width';
+					if (view && view.page > 1 && view.page <= viewer.pagesCount) viewer.currentPageNumber = view.page;
+					restored = true;
 				});
-				eventBus.on('pagechanging', (e: { pageNumber: number }) => (page = e.pageNumber));
-				eventBus.on('annotationeditormodechanged', (e: { mode: number }) => (mode = e.mode));
+				bus.on('pagechanging', (e: { pageNumber: number }) => {
+					page = e.pageNumber;
+					rememberView();
+				});
+				bus.on('scalechanging', rememberView);
+				bus.on('annotationeditormodechanged', (e: { mode: number }) => (mode = e.mode));
+				type Count = { matchesCount: { current: number; total: number } };
+				bus.on('updatefindmatchescount', (e: Count) => (found = e.matchesCount));
+				bus.on('updatefindcontrolstate', (e: Count & { state: number }) => {
+					// PENDING (3) repeats the old count while pdf.js searches.
+					if (e.state !== 3) found = e.matchesCount;
+				});
 
 				task = lib.getDocument({
 					url: `${assetUrl(path)}?v=${encodeURIComponent(version ?? '')}`,
@@ -198,11 +298,37 @@
 	});
 </script>
 
-<section class="pane" aria-label="PDF {name}">
+<!-- Catches Ctrl+F from anywhere inside the pane. -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<section class="pane" class:dark aria-label="PDF {name}" onkeydown={paneKey}>
 	<div class="bar">
 		<span class="material-symbols-outlined kind">picture_as_pdf</span>
 		<span class="name" title={path}>{name}</span>
-		{#if pages}<span class="pages">{page} / {pages}</span>{/if}
+		{#if pages}
+			{#if jumping}
+				<!-- svelte-ignore a11y_autofocus -->
+				<input
+					class="jump"
+					type="number"
+					min="1"
+					max={pages}
+					value={page}
+					autofocus
+					onfocus={(e) => e.currentTarget.select()}
+					onblur={() => (jumping = false)}
+					onkeydown={(e) => {
+						if (e.key === 'Enter') jump(e.currentTarget.value);
+						else if (e.key === 'Escape') {
+							e.stopPropagation();
+							jumping = false;
+						}
+					}}
+				/>
+				<span class="pages">/ {pages}</span>
+			{:else}
+				<button class="pages" title="Go to page" onclick={() => (jumping = true)}>{page} / {pages}</button>
+			{/if}
+		{/if}
 		<span class="save" class:bad={saveState === 'failed'}>
 			{saveState === 'saving' ? 'Saving' : saveState === 'failed' ? 'Save failed, retrying' : ''}
 		</span>
@@ -223,6 +349,12 @@
 			</button>
 		{/each}
 		<span class="vsep"></span>
+		<button class="btn" class:on={finding} title="Find (Ctrl+F)" onclick={() => (finding ? closeFind() : openFind())}>
+			<span class="material-symbols-outlined">search</span>
+		</button>
+		<button class="btn" class:on={dark} title={dark ? 'Light pages' : 'Dark pages'} onclick={toggleDark}>
+			<span class="material-symbols-outlined">dark_mode</span>
+		</button>
 		<button class="btn" title="Zoom out" onclick={() => viewer?.decreaseScale()}>
 			<span class="material-symbols-outlined">zoom_out</span>
 		</button>
@@ -243,11 +375,41 @@
 			<span class="material-symbols-outlined">close</span>
 		</button>
 	</div>
+	{#if finding}
+		<div class="find">
+			<span class="material-symbols-outlined">search</span>
+			<input
+				bind:this={findInput}
+				bind:value={query}
+				placeholder="Find in PDF"
+				oninput={() => (query ? find('') : (found = null))}
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && query) find('again', e.shiftKey);
+					else if (e.key === 'Escape') {
+						e.stopPropagation();
+						closeFind();
+					}
+				}}
+			/>
+			{#if found && query}
+				<span class="count">{found.total ? `${found.current} of ${found.total}` : 'No matches'}</span>
+			{/if}
+			<button class="btn" title="Previous match (Shift+Enter)" disabled={!query} onclick={() => find('again', true)}>
+				<span class="material-symbols-outlined">keyboard_arrow_up</span>
+			</button>
+			<button class="btn" title="Next match (Enter)" disabled={!query} onclick={() => find('again')}>
+				<span class="material-symbols-outlined">keyboard_arrow_down</span>
+			</button>
+			<button class="btn" title="Close find (Esc)" onclick={closeFind}>
+				<span class="material-symbols-outlined">close</span>
+			</button>
+		</div>
+	{/if}
 	<div class="stage">
 		{#if failed}
 			<p class="error">{failed}</p>
 		{/if}
-		<div class="scroller" bind:this={container}>
+		<div class="scroller" tabindex="-1" bind:this={container}>
 			<div class="pdfViewer"></div>
 		</div>
 	</div>
@@ -288,9 +450,70 @@
 	}
 	.pages {
 		margin-left: 10px;
+		padding: 0;
+		border: 0;
+		background: none;
 		color: var(--text-3);
 		font: var(--fs) var(--font-mono);
 		white-space: nowrap;
+	}
+	button.pages {
+		cursor: pointer;
+	}
+	button.pages:hover {
+		color: var(--text);
+	}
+	.jump {
+		width: 5ch;
+		margin-left: 10px;
+		padding: 1px 4px;
+		border: 1px solid var(--line-2);
+		border-radius: var(--r-sm);
+		background: var(--panel);
+		color: var(--text);
+		font: var(--fs) var(--font-mono);
+		appearance: textfield;
+	}
+	.jump + .pages {
+		margin-left: 4px;
+	}
+	.find {
+		height: 38px;
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		padding: 0 8px 0 14px;
+		border-bottom: 1px solid var(--line);
+		flex-shrink: 0;
+		background: var(--bg);
+		color: var(--text-3);
+	}
+	.find > .material-symbols-outlined {
+		font-size: 18px;
+		margin-right: 6px;
+	}
+	.find input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		outline: none;
+		background: none;
+		color: var(--text);
+		font: inherit;
+	}
+	.count {
+		margin: 0 6px;
+		font: var(--fs) var(--font-mono);
+		white-space: nowrap;
+	}
+	.btn:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	/* A plain filter on the rendered page; text, links and highlights sit
+	   in layers above it and keep their colors. */
+	.dark :global(.page canvas) {
+		filter: invert(0.9) hue-rotate(180deg);
 	}
 	.save {
 		flex: 1;
@@ -341,6 +564,7 @@
 		position: absolute;
 		inset: 0;
 		overflow: auto;
+		outline: none;
 	}
 	.error {
 		position: absolute;
