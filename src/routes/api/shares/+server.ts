@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { isHiddenPath, readNote, vaultRel } from '$lib/server/vault';
+import { isHiddenPath, vaultRel, whileNoteExists } from '$lib/server/vault';
 import { createShare, listAllShares, listSharesForNote } from '$lib/server/shares';
 
 // Auth is enforced in hooks.server.ts - these endpoints need a session.
@@ -27,7 +27,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (password !== undefined && (password.length < 4 || password.length > 200)) {
 		throw error(400, 'Password must be 4-200 characters');
 	}
-	await readNote(path); // 404 when the file does not exist
 	const email = locals.session?.user?.email ?? null;
-	return json(createShare(path, email, password || undefined), { status: 201 });
+	// 404 when the file does not exist; a delete never slips in between.
+	const share = await whileNoteExists(path, () => createShare(path, email, password || undefined));
+	return json(share, { status: 201 });
 };

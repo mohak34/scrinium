@@ -71,6 +71,18 @@ function withVaultLock<T>(fn: () => Promise<T>): Promise<T> {
 	return run;
 }
 
+// Runs fn (synchronous, e.g. a db insert) only while a note file exists,
+// under the vault lock: a delete or move can't land between the check and
+// fn, so a row never points at a path the note already left.
+export function whileNoteExists<T>(relPath: string, fn: () => T): Promise<T> {
+	const fullPath = safeResolve(relPath);
+	return withVaultLock(async () => {
+		const stat = await fs.stat(fullPath).catch(() => null);
+		if (!stat?.isFile()) throw error(404, 'Note not found');
+		return fn();
+	});
+}
+
 export async function readNote(relPath: string): Promise<string> {
 	const fullPath = safeResolve(relPath);
 	try {
