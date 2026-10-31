@@ -28,7 +28,7 @@ import { perDoc } from './docRanges';
 	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, openUrl, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
 	import { attachmentMarkdown } from '$lib/attachments';
-	import { tree, archiveEntries, insertIntoNote, shownNote } from '$lib/stores/vault';
+	import { tree, archiveEntries, insertIntoNote, shownNote, trackPath } from '$lib/stores/vault';
 	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
 	import { syncCell, tableBlockField, tableCommands, tableMenu, tableVim } from './tableBlock';
@@ -337,18 +337,26 @@ import { perDoc } from './docRanges';
 
 	// Upload pasted or dropped files and insert their markdown reference at
 	// `pos` in the note they were dropped on, also when the editor moved to
-	// another note during the upload. Failed uploads are skipped silently
-	// rather than leaving broken refs.
+	// another note or the note was renamed during the upload. A failed
+	// upload leaves no ref and says so.
 	async function insertFiles(view: EditorView, files: File[], pos: number) {
-		const note = shownNote();
-		let insert = '';
+		const dropped = shownNote();
+		const target = trackPath(dropped);
+		const uploaded: string[] = [];
+		const failed: string[] = [];
 		for (const file of files) {
-			const vaultRel = await uploadFile(file, note);
-			if (vaultRel) insert += attachmentMarkdown(vaultRel, note) + '\n';
+			const vaultRel = await uploadFile(file, dropped);
+			if (vaultRel) uploaded.push(vaultRel);
+			else failed.push(file.name);
 		}
-		if (!insert) return;
+		const note = target.get();
+		target.done();
+		if (failed.length) alert(`Upload failed: ${failed.join(', ')}`);
+		if (!uploaded.length) return;
+		const insert = uploaded.map((p) => attachmentMarkdown(p, note) + '\n').join('');
 		if (shownNote() !== note) {
-			if (note) void insertIntoNote(note, pos, insert);
+			const ok = note !== null && (await insertIntoNote(note, pos, insert));
+			if (!ok) alert(`Uploaded ${uploaded.join(', ')}, but could not add ${uploaded.length > 1 ? 'them' : 'it'} to the note.`);
 			return;
 		}
 		pos = Math.min(pos, view.state.doc.length);

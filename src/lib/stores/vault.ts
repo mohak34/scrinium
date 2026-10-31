@@ -293,6 +293,7 @@ async function saved(path: string, res: Response) {
 // like a rename.
 function followGone(path: string, copy: string) {
 	versions.delete(path);
+	for (const r of tracked) if (r.path === path) r.path = copy;
 	if (pendingTitleSync?.path === path) cancelTitleSync();
 	const typed = pending.get(path);
 	if (typed !== undefined) {
@@ -582,6 +583,15 @@ export function linkUnlinkedMention(sourcePath: string, targetPath: string): Pro
 	return rewriteNote(sourcePath, (content) => linkFirstMention(content, targetPath, links));
 }
 
+// Note paths held across a long wait (an upload) follow renames and land
+// on null when the note leaves the vault. Call `done` when finished.
+const tracked = new Set<{ path: string | null }>();
+export function trackPath(path: string | null) {
+	const ref = { path };
+	tracked.add(ref);
+	return { get: () => ref.path, done: () => void tracked.delete(ref) };
+}
+
 // Insert text at `pos` in a note, on its own line. For an attachment whose
 // upload finished after the user left the note it was dropped on.
 export function insertIntoNote(path: string, pos: number, insert: string): Promise<boolean> {
@@ -637,6 +647,7 @@ export async function renameNote(oldPath: string, newPath: string): Promise<bool
 			if (to.split('/').pop() === sync.path.split('/').pop()) queueTitleSync(to, sync.title);
 		}
 		remapPending(oldPath, newPath, wiki);
+		for (const r of tracked) if (r.path) r.path = moved(r.path);
 		const before = shown;
 		if (shown) shown = moved(shown);
 		// The server fixed the links the move broke (and the title, when it
@@ -688,6 +699,7 @@ function forget(path: string, keepTyped = false) {
 	const under = (p: string) => p === path || p.startsWith(path + '/');
 	for (const p of [...pending.keys()]) if (under(p) && !(keepTyped && versions.has(p))) pending.delete(p);
 	for (const p of [...versions.keys()]) if (under(p) && !pending.has(p)) versions.delete(p);
+	for (const r of tracked) if (r.path && under(r.path)) r.path = null;
 	if (shown && under(shown)) shown = null;
 	const current = get(activePath);
 	if (current && under(current)) activePath.set(null);
