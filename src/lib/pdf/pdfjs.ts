@@ -1,5 +1,4 @@
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import 'pdfjs-dist/web/pdf_viewer.css';
 
 // Fonts, CMaps and image decoders pdf.js asks for on demand. Vite emits each
 // as a hashed asset, so they are found by file name, not by a base URL.
@@ -21,9 +20,10 @@ class BundledData {
 }
 
 // The viewer module reads the core library from globalThis, so it has to
-// load second.
+// load second. Its CSS is a dynamic import too: a static one gets linked
+// into every page that might open a PDF.
 async function load() {
-	const lib = await import('pdfjs-dist');
+	const [lib] = await Promise.all([import('pdfjs-dist'), import('pdfjs-dist/web/pdf_viewer.css')]);
 	lib.GlobalWorkerOptions.workerSrc = workerUrl;
 	(globalThis as { pdfjsLib?: typeof lib }).pdfjsLib = lib;
 	const viewer = await import('pdfjs-dist/web/pdf_viewer.mjs');
