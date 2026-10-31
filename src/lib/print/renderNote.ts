@@ -64,12 +64,40 @@ function tokenRanges(t: string): Array<{ from: number; to: number }> {
 	return out;
 }
 
+// (from, to) meets one of the sorted, non-overlapping ranges. Binary search:
+// a note can hold thousands of tokens and is checked once per match.
 function overlaps(
 	from: number,
 	to: number,
 	ranges: Array<{ from: number; to: number }>
 ): boolean {
-	return ranges.some((r) => from < r.to && r.from < to);
+	let lo = 0;
+	let hi = ranges.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if (ranges[mid].to > from) hi = mid;
+		else lo = mid + 1;
+	}
+	return lo < ranges.length && ranges[lo].from < to;
+}
+
+// Swaps each span for its stash token in one pass (a slice per span would
+// copy the whole note once per span). Spans overlapping an earlier one are
+// dropped.
+function spliceSpans<S extends { from: number; to: number }>(
+	text: string,
+	spans: S[],
+	put: (s: S) => string
+): string {
+	const parts: string[] = [];
+	let at = 0;
+	for (const s of [...spans].sort((a, b) => a.from - b.from)) {
+		if (s.from < at) continue;
+		parts.push(text.slice(at, s.from), put(s));
+		at = s.to;
+	}
+	parts.push(text.slice(at));
+	return parts.join('');
 }
 
 function katexBlock(source: string): string {
@@ -185,8 +213,9 @@ export function renderNoteToHtml(
 	}
 
 	// 2 + 3. Fenced code (non-math) and inline code from the tree.
-	const claimed = (from: number, to: number) =>
-		spans.some((s) => from <= s.to && s.from <= to);
+	// Code nodes never overlap each other, so only math can claim them.
+	const math = [...spans];
+	const claimed = (from: number, to: number) => overlaps(from - 1, to + 1, math);
 	syntaxTree(state).iterate({
 		enter: (node) => {
 			if (node.name === 'FencedCode') {
@@ -227,14 +256,7 @@ export function renderNoteToHtml(
 
 	// Splice back to front so earlier indices stay valid. Block spans get
 	// blank lines around the token for a clean paragraph restore.
-	let text = src;
-	for (const s of [...spans].sort((a, b) => b.from - a.from)) {
-		const token = stash(s.html);
-		text =
-			text.slice(0, s.from) +
-			(s.block ? `\n\n${token}\n\n` : token) +
-			text.slice(s.to);
-	}
+	let text = spliceSpans(src, spans, (s) => (s.block ? `\n\n${stash(s.html)}\n\n` : stash(s.html)));
 
 	// 4. Inline math on what's left (no code remains except raw fences of
 	// unclosed blocks, which the tree guard below still skips).
@@ -262,10 +284,7 @@ export function renderNoteToHtml(
 		}
 		inlineSpans.push({ from: start, to: end, html: katexInline(content), block: false });
 	}
-	for (const s of inlineSpans.sort((a, b) => b.from - a.from)) {
-		const token = stash(s.html);
-		text = text.slice(0, s.from) + token + text.slice(s.to);
-	}
+	text = spliceSpans(text, inlineSpans, (s) => stash(s.html));
 
 	// 4b. Wikilinks after math+code so those claim first (Iverson `$[[P]]$`,
 	// code spans). Stashed like everything else for a clean restore.
@@ -301,10 +320,7 @@ export function renderNoteToHtml(
 			block: false
 		});
 	}
-	for (const s of wikiSpans.sort((a, b) => b.from - a.from)) {
-		const token = stash(s.html);
-		text = text.slice(0, s.from) + token + text.slice(s.to);
-	}
+	text = spliceSpans(text, wikiSpans, (s) => stash(s.html));
 
 	// 4b. Tags: same stash trick, same code guard. Tag bodies are
 	// grammar-safe (letters/digits/`_`/`-`/`/`), so no escaping needed.
@@ -334,17 +350,16 @@ export function renderNoteToHtml(
 			block: false
 		});
 	}
-	for (const s of tagSpans.sort((a, b) => b.from - a.from)) {
-		const token = stash(s.html);
-		text = text.slice(0, s.from) + token + text.slice(s.to);
-	}
+	text = spliceSpans(text, tagSpans, (s) => stash(s.html));
 
 	// 5. Markdown over the remainder, then restore (tolerating <p> wrap).
-	let html = parser.render(text);
-	chunks.forEach((chunk, i) => {
-		const token = `SCRINIUMPRINT${i}X`;
-		html = html.split(`<p>${token}</p>`).join(chunk).split(token).join(chunk);
-	});
+	// One pass over the html; a chunk holding tokens of its own (math in a
+	// wikilink's label) is restored too.
+	const restore = (h: string): string =>
+		h.replace(/<p>SCRINIUMPRINT(\d+)X<\/p>|SCRINIUMPRINT(\d+)X/g, (_, a: string, b: string) =>
+			restore(chunks[Number(a ?? b)] ?? '')
+		);
+	let html = restore(parser.render(text));
 	// 6. Relative image URLs resolve against the note's folder (same rule as
 	// the editor) - otherwise they 404 against /print and only alt shows.
 	// markdown-it hands back the src HTML-escaped and percent-encoded; the
