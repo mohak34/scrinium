@@ -3,6 +3,7 @@
 	import type { ReviewNote } from '$lib/archive';
 	import { longDate, split } from './lists';
 	import NotePreview from './NotePreview.svelte';
+	import Select from '../Select.svelte';
 
 	// Notes that look abandoned (old, nothing links to them, no task, no
 	// share link, not pinned), to archive or trash in bulk.
@@ -77,12 +78,16 @@
 	<div class="list">
 		<div class="tools">
 			<input type="checkbox" checked={allPicked} disabled={!shown.length} onchange={toggleAll} title="Select all" />
-			<label class="span">
+			<div class="span">
 				Untouched for
-				<select bind:value={days}>
-					{#each SPANS as s (s)}<option value={s}>{s} days</option>{/each}
-				</select>
-			</label>
+				<Select
+					boxed
+					value={String(days)}
+					options={SPANS.map((s) => ({ value: String(s), label: `${s} days` }))}
+					label="Untouched for"
+					onchange={(v) => (days = Number(v))}
+				/>
+			</div>
 			<button class="btn" disabled={!picked.size || busy} onclick={() => bulk(archivePaths, [...picked])}>
 				<span class="material-symbols-outlined">inventory_2</span>Archive {picked.size || ''}
 			</button>
@@ -181,15 +186,6 @@
 		color: var(--text-3);
 		font-size: var(--fs-sm);
 		white-space: nowrap;
-	}
-	select {
-		height: 28px;
-		padding: 0 6px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r);
-		background: var(--panel);
-		color: var(--text);
-		font: var(--fs-sm) var(--font-ui);
 	}
 	input[type='checkbox'] {
 		accent-color: var(--accent-fill);

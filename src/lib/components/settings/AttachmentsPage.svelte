@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Select from '../Select.svelte';
 	import { settings, attachmentDirFor, cleanFolder, type AttachmentBase } from '$lib/stores/settings';
 
 	const BASES: { value: AttachmentBase; label: string }[] = [
@@ -35,11 +36,7 @@
 		<span class="lbl">Save pasted files in</span>
 		<span class="hint">A note outside every project uses the vault root. New pastes only</span>
 	</div>
-	<select class="input sel" value={att.base} onchange={(e) => patch({ base: e.currentTarget.value as AttachmentBase })}>
-		{#each BASES as b (b.value)}
-			<option value={b.value}>{b.label}</option>
-		{/each}
-	</select>
+	<Select boxed value={att.base} options={BASES} label="Save pasted files in" onchange={(base) => patch({ base })} />
 </div>
 <div class="row">
 	<div class="txt"><span class="lbl">Folder</span><span class="hint">Inside that. Empty saves there directly</span></div>
@@ -56,11 +53,6 @@
 {/each}
 
 <style>
-	select.input.sel {
-		font-family: var(--font-ui);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
 	.path {
 		font-size: 12px;
 		color: var(--accent);

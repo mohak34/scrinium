@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { activePath } from '$lib/stores/vault';
 	import { SHARE_LIFETIMES, expiryLabel } from '$lib/shareExpiry';
+	import Select from './Select.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -133,9 +134,13 @@
 					<input type="checkbox" bind:checked={usePassword} />
 					Password protect
 				</label>
-				<select class="life" bind:value={lifetime} aria-label="Link lifetime">
-					{#each SHARE_LIFETIMES as l (l.label)}<option value={l.days}>{l.label}</option>{/each}
-				</select>
+				<Select
+					boxed
+					value={String(lifetime)}
+					options={SHARE_LIFETIMES.map((l) => ({ value: String(l.days), label: l.label }))}
+					label="Link lifetime"
+					onchange={(v) => (lifetime = v === 'null' ? null : Number(v))}
+				/>
 			</div>
 			{#if usePassword}
 				<input
@@ -294,15 +299,6 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
-	}
-	.life {
-		background: var(--surface);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		color: var(--on-surface);
-		font: inherit;
-		font-size: var(--font-ui-small);
-		padding: 4px 6px;
 	}
 	.pw {
 		background: var(--surface);

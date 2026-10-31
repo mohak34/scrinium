@@ -376,7 +376,12 @@ State channels you will touch:
   `markdownSetup.ts` or `@codemirror/lang-markdown`: any of them ships the
   whole editor to the print page and the server.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
-  Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
+  Sidebar, TabBar, ShortcutHelp (the `?` overlay), Select and DatePicker
+  (the app's own select and date/time field; no native `<select>` or date
+  input, they ignore the theme. Select opens ContextMenu under its button.
+  Both popups claim their keys in the window capture phase, and the
+  settings dialog and bins view leave Esc to an open `.ctx-menu` or
+  `.date-pop`), ReminderToasts (mounted
   in the root layout except on login and share pages; polls
   `POST /api/tasks/due` every 30 s while the tab is visible).
   CommandPalette is mounted in the root layout too, so Ctrl+K works on

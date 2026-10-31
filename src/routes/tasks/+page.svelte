@@ -14,7 +14,6 @@
 		isOverdue,
 		isDueToday,
 		dueLabel,
-		parseDueInput,
 		stampShort,
 		daysSince,
 		STALE_DAYS,
@@ -25,6 +24,7 @@
 	} from '$lib/stores/tasks';
 	import { projectName, selectTasks } from '$lib/taskModel';
 	import { colorVar, projectLabel, projectStyle, type ProjectKey, type ProjectView } from '$lib/projects';
+	import DatePicker from '$lib/components/DatePicker.svelte';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 	import AppActions from '$lib/components/AppActions.svelte';
@@ -33,7 +33,7 @@
 	import { keyNav } from '$lib/keyNav';
 
 	let newTitle = $state('');
-	let newDue = $state('');
+	let newDue = $state<number | null>(null);
 	let adding = $state(false);
 	let query = $state('');
 	let searching = $state(false);
@@ -154,7 +154,7 @@
 		if (!title || adding) return;
 		adding = true;
 		try {
-			const due = parseDueInput(newDue);
+			const due = newDue;
 			// A dated task is already planned; undated ones land in the Inbox.
 			const row = await createTask({
 				title,
@@ -164,7 +164,7 @@
 			});
 			if (row) {
 				newTitle = '';
-				newDue = '';
+				newDue = null;
 				if (filter === 'completed') filter = 'all';
 			}
 		} finally {
@@ -264,7 +264,7 @@
 					if (e.key === 'Enter') void handleAdd();
 				}}
 			/>
-			<input class="ctl" type="date" bind:value={newDue} aria-label="Due date" />
+			<DatePicker value={newDue} time="none" label="Due date" placeholder="Due" onchange={(v) => (newDue = v)} />
 			{#if newTitle.trim()}
 				<button class="add-btn" disabled={adding} onclick={() => void handleAdd()}>Add</button>
 			{/if}
@@ -554,23 +554,6 @@
 	}
 	.title-in::placeholder {
 		color: var(--text-3);
-	}
-	.ctl {
-		height: 30px;
-		padding: 0 8px;
-		border: 1px solid transparent;
-		border-radius: var(--r);
-		background: none;
-		color: var(--text-2);
-		font: var(--fs) var(--font-ui);
-		color-scheme: dark;
-		cursor: pointer;
-		outline: none;
-	}
-	.ctl:hover,
-	.ctl:focus {
-		background: var(--hover);
-		color: var(--text);
 	}
 	.add-btn {
 		height: 28px;

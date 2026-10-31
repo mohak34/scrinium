@@ -19,12 +19,36 @@
 		width?: number;
 		items: ContextMenuItem[];
 		onClose: () => void;
+		// The control that opened the menu: pressing it again toggles the
+		// menu shut instead of closing and reopening it.
+		anchor?: HTMLElement;
 	}
-	let { x, y, width, items, onClose }: Props = $props();
+	let { x, y, width, items, onClose, anchor }: Props = $props();
 
 	let menuEl = $state<HTMLDivElement>();
 	let left = $state(0);
 	let top = $state(0);
+
+	// Keyboard: focus lands on the current item (or the first), arrows,
+	// Home and End move between items, Enter picks.
+	$effect(() => {
+		const start = menuEl?.querySelector<HTMLElement>('.ctx-item.current') ?? menuEl?.querySelector<HTMLElement>('.ctx-item');
+		start?.focus({ preventScroll: true });
+		start?.scrollIntoView({ block: 'nearest' });
+	});
+	function moveFocus(e: KeyboardEvent): boolean {
+		const list = [...(menuEl?.querySelectorAll<HTMLElement>('.ctx-item') ?? [])];
+		const at = list.indexOf(document.activeElement as HTMLElement);
+		const next =
+			e.key === 'ArrowDown' ? (at + 1) % list.length
+			: e.key === 'ArrowUp' ? (at - 1 + list.length) % list.length
+			: e.key === 'Home' ? 0
+			: e.key === 'End' ? list.length - 1
+			: -1;
+		if (next < 0) return false;
+		list[next]?.focus();
+		return true;
+	}
 
 	$effect(() => {
 		if (!menuEl) return;
@@ -35,28 +59,44 @@
 
 	$effect(() => {
 		const onPointerDown = (e: PointerEvent) => {
-			if (menuEl && !menuEl.contains(e.target as Node)) onClose();
+			const t = e.target as Node;
+			if (menuEl?.contains(t)) return;
+			if (anchor?.contains(t)) {
+				// The anchor's own click would reopen the menu right after.
+				e.preventDefault();
+				anchor.addEventListener('click', (c) => c.stopImmediatePropagation(), { capture: true, once: true });
+			}
+			onClose();
 		};
+		// Captured and claimed, so the keys the menu uses reach nothing
+		// under it (the task drawer, a dialog's shortcuts).
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') onClose();
+			else if (!moveFocus(e)) return;
+			e.preventDefault();
+			e.stopPropagation();
+		};
+		// A long menu scrolls itself; any other scroll moves the page under it.
+		const onScroll = (e: Event) => {
+			if (!menuEl?.contains(e.target as Node)) onClose();
 		};
 		window.addEventListener('pointerdown', onPointerDown, true);
-		window.addEventListener('keydown', onKey);
+		window.addEventListener('keydown', onKey, true);
 		window.addEventListener('blur', onClose);
 		window.addEventListener('resize', onClose);
-		window.addEventListener('scroll', onClose, true);
+		window.addEventListener('scroll', onScroll, true);
 		return () => {
 			window.removeEventListener('pointerdown', onPointerDown, true);
-			window.removeEventListener('keydown', onKey);
+			window.removeEventListener('keydown', onKey, true);
 			window.removeEventListener('blur', onClose);
 			window.removeEventListener('resize', onClose);
-			window.removeEventListener('scroll', onClose, true);
+			window.removeEventListener('scroll', onScroll, true);
 		};
 	});
 </script>
 
 <div class="ctx-menu" role="menu" style="left: {left}px; top: {top}px" style:width={width ? `${width}px` : undefined} bind:this={menuEl}>
-	{#each items as item (item.label)}
+	{#each items as item, i (i)}
 		{#if item.divider}<div class="ctx-sep" role="separator"></div>{/if}
 		<button
 			class="ctx-item"
@@ -72,7 +112,7 @@
 			{#if item.icon}
 				<span class="material-symbols-outlined" class:fill={item.color} style:color={item.color}>{item.icon}</span>
 			{/if}
-			{item.label}
+			<span class="ctx-label">{item.label}</span>
 		</button>
 	{/each}
 </div>
@@ -89,6 +129,9 @@
 		box-shadow: var(--shadow-pop);
 		display: flex;
 		flex-direction: column;
+		max-width: min(360px, calc(100vw - 16px));
+		max-height: calc(100vh - 16px);
+		overflow-y: auto;
 	}
 	.ctx-item {
 		display: flex;
@@ -105,12 +148,23 @@
 		font-family: var(--font-ui);
 		cursor: pointer;
 	}
+	.ctx-item:focus-visible {
+		outline: none;
+		background: var(--surface-container-high);
+		color: var(--on-surface);
+	}
 	.ctx-item:hover {
 		background: var(--surface-container-high);
 		color: var(--on-surface);
 	}
 	.ctx-item:hover .material-symbols-outlined:not(.fill) {
 		color: var(--on-surface);
+	}
+	.ctx-label {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.ctx-sep {
 		height: 1px;

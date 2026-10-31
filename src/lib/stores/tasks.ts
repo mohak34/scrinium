@@ -371,22 +371,6 @@ export function stampShort(ts: number | null): string {
 	}
 }
 
-/** date-input value (YYYY-MM-DD) for a due timestamp, '' when unset. */
-export function dueInputValue(dueAt: number | null): string {
-	if (dueAt == null) return '';
-	const d = new Date(dueAt);
-	const m = String(d.getMonth() + 1).padStart(2, '0');
-	const day = String(d.getDate()).padStart(2, '0');
-	return `${d.getFullYear()}-${m}-${day}`;
-}
-
-/** Parse a date-input value to a local-midnight timestamp, null when cleared. */
-export function parseDueInput(v: string): number | null {
-	if (!v) return null;
-	const d = new Date(`${v}T00:00:00`);
-	return Number.isNaN(d.getTime()) ? null : d.getTime();
-}
-
 /** Time-input value (HH:MM) for a due timestamp, '' when unset or midnight. */
 export function dueTimeValue(dueAt: number | null): string {
 	if (dueAt == null) return '';
@@ -395,28 +379,6 @@ export function dueTimeValue(dueAt: number | null): string {
 	const h = String(d.getHours()).padStart(2, '0');
 	const m = String(d.getMinutes()).padStart(2, '0');
 	return `${h}:${m}`;
-}
-
-/** Combine date + optional time inputs to a local timestamp. */
-export function combineDateTime(dateStr: string, timeStr: string): number | null {
-	if (!dateStr) return null;
-	const d = new Date(`${dateStr}T${timeStr || '00:00'}:00`);
-	return Number.isNaN(d.getTime()) ? null : d.getTime();
-}
-
-/** datetime-local input value (YYYY-MM-DDTHH:MM) for a timestamp. */
-export function dateTimeInputValue(ts: number | null): string {
-	if (ts == null) return '';
-	const d = new Date(ts);
-	const p = (n: number) => String(n).padStart(2, '0');
-	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/** Parse a datetime-local input value to a timestamp, null when cleared. */
-export function parseDateTimeInput(v: string): number | null {
-	if (!v) return null;
-	const d = new Date(v);
-	return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
 
 // --- Linked notes (many per task) ---

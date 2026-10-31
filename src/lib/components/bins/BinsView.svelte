@@ -39,7 +39,8 @@
 		// Modal like the settings dialog: app shortcuts never fire underneath.
 		const onKey = (e: KeyboardEvent) => {
 			e.stopPropagation();
-			if (e.key === 'Escape') {
+			// An open menu or date picker takes this Esc itself.
+			if (e.key === 'Escape' && !document.querySelector('.ctx-menu, .date-pop')) {
 				e.preventDefault();
 				close();
 			}

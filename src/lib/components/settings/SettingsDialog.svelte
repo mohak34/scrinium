@@ -63,7 +63,8 @@
 		// still run, so typing and button activation work as usual.
 		const onKey = (e: KeyboardEvent) => {
 			e.stopPropagation();
-			if (e.key === 'Escape') {
+			// An open menu or date picker takes this Esc itself.
+			if (e.key === 'Escape' && !document.querySelector('.ctx-menu, .date-pop')) {
 				e.preventDefault();
 				close();
 			}
