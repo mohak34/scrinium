@@ -728,8 +728,13 @@ export async function manifestNotes(): Promise<NoteManifestEntry[]> {
 	return entries;
 }
 
+// Folders are read in parallel; only the root goes through safeResolve, as
+// the walk never follows links out of it.
 export async function listTree(relDir: string = ''): Promise<VaultEntry[]> {
-	const fullPath = safeResolve(relDir);
+	return walkTree(safeResolve(relDir), relDir);
+}
+
+async function walkTree(fullPath: string, relDir: string): Promise<VaultEntry[]> {
 	let dirents;
 	try {
 		dirents = await fs.readdir(fullPath, { withFileTypes: true });
@@ -738,22 +743,20 @@ export async function listTree(relDir: string = ''): Promise<VaultEntry[]> {
 		throw e;
 	}
 
-	const entries: VaultEntry[] = [];
-	for (const dirent of dirents) {
-		if (dirent.name.startsWith('.')) continue; // skip dotfiles/dirs
-		const childRelPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
-
-		if (dirent.isDirectory()) {
-			entries.push({
-				name: dirent.name,
-				path: childRelPath,
-				type: 'directory',
-				children: await listTree(childRelPath)
-			});
-		} else {
-			entries.push({ name: dirent.name, path: childRelPath, type: 'file' });
-		}
-	}
+	const entries: VaultEntry[] = await Promise.all(
+		dirents
+			.filter((d) => !d.name.startsWith('.')) // skip dotfiles/dirs
+			.map(async (dirent): Promise<VaultEntry> => {
+				const childRelPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
+				if (!dirent.isDirectory()) return { name: dirent.name, path: childRelPath, type: 'file' };
+				return {
+					name: dirent.name,
+					path: childRelPath,
+					type: 'directory',
+					children: await walkTree(path.join(fullPath, dirent.name), childRelPath)
+				};
+			})
+	);
 
 	// directories first, then alphabetical
 	entries.sort((a, b) => {
