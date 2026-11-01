@@ -654,7 +654,10 @@ export function insertIntoNote(path: string, pos: number, insert: string): Promi
 export async function renameNote(oldPath: string, newPath: string): Promise<boolean> {
 	if (oldPath === newPath) return true;
 	const ok = await afterSaved(async () => {
-		// Wikilinks resolve by name, so the fix needs the notes before and after.
+		// Wikilinks resolve by name, so the fix needs the notes before and
+		// after, as the server has them now: a note another device added can
+		// change what a bare name points to.
+		await loadTree().catch(() => {});
 		const moved = movedBy(oldPath, newPath);
 		const live = notePathsFromTree(get(tree));
 		const archived = wikiResolver(get(archiveEntries).flatMap((e) => e.notes));
