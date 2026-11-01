@@ -58,6 +58,7 @@
 	import { drag, fileDrop, fileDropDir, beginDrag, type DragSource, type DropTarget } from './sidebarDrag';
 	import { filesFromDrop, uploadFiles, type Upload } from '$lib/upload';
 	import { goto } from '$app/navigation';
+	import { notePathsFromTree, wikiResolver, wikiTargetFor } from '$lib/editor/wikilinks';
 	import { createRequest, renameRequest, styleRequest } from '$lib/stores/actions';
 	import AppSwitcher from './AppSwitcher.svelte';
 	import AppActions from './AppActions.svelte';
@@ -536,6 +537,8 @@
 		}
 		const { entry } = menu;
 		const rename: ContextMenuItem[] = [{ label: 'Rename', icon: 'edit', action: () => (renameTarget = { path: entry.path }) }];
+		const copy = (text: string) => () => void navigator.clipboard?.writeText(text).catch(() => {});
+		const copyPath: ContextMenuItem = { label: 'Copy path', icon: 'content_copy', divider: true, action: copy(entry.path) };
 		const removal: ContextMenuItem[] = [
 			{ label: 'Archive', icon: 'inventory_2', divider: true, action: () => void archivePath(entry.path) },
 			{ label: 'Delete', icon: 'delete', danger: true, action: () => void deletePath(entry.path) }
@@ -543,10 +546,13 @@
 		if (entry.type === 'file') {
 			// Notes download as plain text; other assets open in the preview
 			// overlay instead, so only .md entries get pin and export rows.
-			if (!/\.md$/i.test(entry.path)) return [...rename, ...removal];
+			if (!/\.md$/i.test(entry.path)) return [...rename, copyPath, ...removal];
+			const link = `[[${wikiTargetFor(entry.path, wikiResolver(notePathsFromTree($tree)))}]]`;
 			return [
 				...rename,
 				...pinItems(entry.path),
+				copyPath,
+				{ label: 'Copy link', icon: 'link', action: copy(link) },
 				{
 					label: 'Download as .md',
 					icon: 'download',
@@ -566,7 +572,7 @@
 			...pinItems(entry.path),
 			...(entry.path.includes('/') ? [] : [{ label: 'Make project', icon: 'rocket_launch', action: () => void makeProject(entry.path) }])
 		];
-		return [...create(entry.path), { ...first, divider: true }, ...rest, ...removal];
+		return [...create(entry.path), { ...first, divider: true }, ...rest, copyPath, ...removal];
 	});
 
 	// Project headers and pin rows rename in place here; the tree renames its own rows.
