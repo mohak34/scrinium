@@ -21,12 +21,12 @@ export const GET: RequestHandler = async ({ locals, url, setHeaders }) => {
 	try {
 		const access = await getGoogleAccessToken(userId);
 		if ('needsConnect' in access) return json({ events: [], needsConnect: true });
-		const events = await fetchCalendarEvents(
+		const { events, calendars } = await fetchCalendarEvents(
 			access.token,
 			new Date(from).toISOString(),
 			new Date(to).toISOString()
 		);
-		return json({ events });
+		return json({ events, calendars: calendars.map(({ name, color }) => ({ name, color })) });
 	} catch (e) {
 		if (e instanceof GoogleAuthError) return json({ events: [], needsConnect: true });
 		console.error('[calendar]', e);
