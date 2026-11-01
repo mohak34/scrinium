@@ -65,9 +65,8 @@
 	>
 		<span class="material-symbols-outlined">more_horiz</span>
 	</button>
-	<span class="vsep"></span>
-	<button class="btn share" onclick={() => (shareOpen = true)}>
-		<span class="material-symbols-outlined">share</span>Share
+	<button class="btn" title="Share" onclick={() => (shareOpen = true)}>
+		<span class="material-symbols-outlined">share</span>
 	</button>
 	<button
 		class="btn"
@@ -146,23 +145,5 @@
 	}
 	.btn .material-symbols-outlined {
 		font-size: 18px;
-	}
-	.btn.share {
-		padding: 0 12px 0 10px;
-		margin-right: 4px;
-		background: var(--accent-fill);
-		color: var(--on-accent);
-	}
-	.btn.share:hover {
-		background: var(--accent-fill-hi);
-	}
-	.btn.share .material-symbols-outlined {
-		font-size: 17px;
-	}
-	.vsep {
-		width: 1px;
-		height: 18px;
-		background: var(--line-2);
-		margin: 0 6px;
 	}
 </style>
