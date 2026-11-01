@@ -95,9 +95,12 @@ export const fileOrder = storedPaths(ORDER_STORAGE, loadPaths(ORDER_STORAGE) ?? 
 
 export function inFileOrder(entries: VaultEntry[], order: string[]): VaultEntry[] {
 	const rank = new Map(order.map((p, i) => [p, i]));
-	const of = (e: VaultEntry) => (e.type === 'directory' ? -1 : (rank.get(e.path) ?? Infinity));
+	// Folders, then hand-placed files, then notes, then attachments (PDFs,
+	// images) so they never land between notes by name.
+	const of = (e: VaultEntry) =>
+		e.type === 'directory' ? -2 : (rank.get(e.path) ?? (/\.md$/i.test(e.name) ? Number.MAX_VALUE : Infinity));
 	// Stable, so equal ranks keep the server's folders-then-name order.
-	return [...entries].sort((a, b) => (of(a) === of(b) ? 0 : of(a) - of(b)));
+	return [...entries].sort((a, b) => (of(a) === of(b) ? 0 : of(a) < of(b) ? -1 : 1));
 }
 
 // Drag between two files: puts `path` right before or after `at` among its

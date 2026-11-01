@@ -10,6 +10,8 @@
 	import NoteBar from '$lib/components/NoteBar.svelte';
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import NoteTasks from '$lib/components/NoteTasks.svelte';
+	import NoteFiles from '$lib/components/NoteFiles.svelte';
+	import { isImagePath } from '$lib/attachments';
 	import type CodeEditor from '$lib/editor/CodeEditor.svelte';
 	import {
 		activePath,
@@ -131,6 +133,17 @@
 	let resizing = $state(false);
 	let shareOpen = $state(false);
 	let imagePreview = $state<string | null>(null);
+
+	// A vault file from the tree or the note panel: PDFs open in the side
+	// pane, images in the preview, anything else in a new tab (the asset
+	// route downloads what it won't show inline).
+	function openAsset(path: string) {
+		if (isPdfPath(path)) pdfPath.set(path);
+		else if (isImagePath(path)) {
+			imagePreview = path;
+			zoom = 100;
+		} else window.open('/api/assets/' + path.split('/').map(encodeURIComponent).join('/'), '_blank', 'noopener');
+	}
 	let zoom = $state(100);
 
 	const MIN_ZOOM = 10;
@@ -428,14 +441,7 @@
 		<Sidebar
 			onSelect={openNote}
 			onToggleCollapse={toggleCollapse}
-			onOpenAsset={(path) => {
-				if (isPdfPath(path)) {
-					pdfPath.set(path);
-					return;
-				}
-				imagePreview = path;
-				zoom = 100;
-			}}
+			onOpenAsset={openAsset}
 		/>
 			<div
 				class="resize-handle"
@@ -508,6 +514,7 @@
 					{/key}
 					<Backlinks onSelect={openNote} />
 					<NoteTasks />
+					<NoteFiles content={panelContent} onOpen={openAsset} />
 					<Tags content={panelContent} />
 					<FileInfo content={panelContent} />
 				{/if}

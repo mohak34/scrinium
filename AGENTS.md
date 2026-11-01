@@ -413,7 +413,11 @@ State channels you will touch:
   space means the section's folder). A file dropped on the top or bottom
   half of another file lands right before or after it, moving folders if
   needed; that hand-placed order lives in `fileOrder` (localStorage, like
-  pins, in stores/vault.ts) and `inFileOrder` applies it, folders first.
+  pins, in stores/vault.ts) and `inFileOrder` applies it: folders, then
+  placed files, then notes, then attachments, so a PDF never sorts in
+  between notes. A click on an attachment opens a PDF in the pane, an
+  image in the preview and anything else in a new tab (`openAsset` on
+  the root page).
   Notes dropped on the Pinned list pin everywhere and on their own
   project's pins pin there. Nothing is inserted mid-drag, so the tree never
   shifts: an empty list is reached through rows already on screen, the
@@ -512,7 +516,7 @@ State channels you will touch:
   `AppActions.svelte` (Archive/Trash/Settings/Sign out buttons: notes sidebar, Tasks
   sidebar, Board footer via `PageFooter actions`; not on Calendar),
   `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,
-  NoteTasks, Tags, FileInfo in that order), `PageFooter.svelte`.
+  NoteTasks, NoteFiles (the files the note links or embeds), Tags, FileInfo in that order), `PageFooter.svelte`.
 - Tasks: `src/lib/taskModel.ts` is the single list of statuses (`inbox`,
   `todo` = "This week", `doing`, `waiting`, `done`) and priorities,
   shared by the API validation and the UI. Tasks group only by project
