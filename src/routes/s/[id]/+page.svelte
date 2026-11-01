@@ -91,9 +91,11 @@
 				failed = body?.message || 'This link is invalid or was revoked.';
 				return;
 			}
+			const next = (await res.json()) as SharePage;
+			if (asked !== id) return;
 			message = '';
 			password = '';
-			unlocked = (await res.json()) as SharePage;
+			unlocked = next;
 		} finally {
 			busy = false;
 		}
