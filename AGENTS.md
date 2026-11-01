@@ -338,7 +338,8 @@ State channels you will touch:
   audio, video and plain text are served inline, everything else as an
   `octet-stream` download, all under `nosniff` + CSP `sandbox` - a vault
   HTML/SVG served inline would run with the session). Uploads are raw
-  bodies (`POST`/`PUT /api/attachments?name=&folder=`, any type, 100 MB)
+  bodies (`POST`/`PUT /api/attachments?name=&folder=`, any type, 100 MB;
+  no `folder` means `attachments`, `folder=` the vault root)
   streamed to disk by `writeAssetStream` in vault.ts; never buffer one in
   memory, the VPS has 1 GB. SvelteKit drops bodies without a
   `Content-Type`, so uploaders always send one. The 100 MB cap must stay
@@ -446,6 +447,13 @@ State channels you will touch:
   between notes. A click on an attachment opens a PDF in the pane, an
   image in the preview and anything else in a new tab (`openAsset` on
   the root page).
+  Files and folders dragged in from the computer (native drag events, not
+  `sidebarDrag`'s pointer drag) upload into the folder under the pointer
+  (`fileDropDir`, highlighted through the `fileDrop` store), keeping the
+  dropped folders' structure; "Upload files..." in a folder, section or
+  blank-space menu picks files instead. `src/lib/upload.ts` sends notes
+  through the notes API and everything else through `/api/attachments`,
+  numbering a taken name instead of replacing it.
   Notes dropped on the Pinned list pin everywhere and on their own
   project's pins pin there. Nothing is inserted mid-drag, so the tree never
   shifts: an empty list is reached through rows already on screen, the

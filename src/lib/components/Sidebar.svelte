@@ -55,7 +55,8 @@
 		type ProjectKey,
 		type ProjectView
 	} from '$lib/projects';
-	import { drag, beginDrag, type DragSource, type DropTarget } from './sidebarDrag';
+	import { drag, fileDrop, fileDropDir, beginDrag, type DragSource, type DropTarget } from './sidebarDrag';
+	import { filesFromDrop, uploadFiles, type Upload } from '$lib/upload';
 	import { goto } from '$app/navigation';
 	import { createRequest, renameRequest, styleRequest } from '$lib/stores/actions';
 	import AppSwitcher from './AppSwitcher.svelte';
@@ -366,7 +367,39 @@
 		beginDrag(e, { path, kind, fromPins, project: projectOf(path, projectSet) ?? '' }, onDrop);
 	}
 
-	const dropTarget = $derived($drag?.target ?? null);
+	const dropTarget = $derived($drag?.target ?? $fileDrop);
+
+	// Files and folders dragged in from the computer upload into the folder
+	// under the pointer, or the shown project outside every section.
+	const isFileDrag = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+	function fileDragOver(e: DragEvent) {
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+		e.dataTransfer!.dropEffect = 'copy';
+		fileDrop.set({ kind: 'move', dir: fileDropDir(e.clientX, e.clientY) ?? homeDir });
+	}
+	function fileDragLeave(e: DragEvent) {
+		if (!(e.currentTarget as Node).contains(e.relatedTarget as Node | null)) fileDrop.set(null);
+	}
+	function fileDropped(e: DragEvent) {
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+		fileDrop.set(null);
+		const dir = fileDropDir(e.clientX, e.clientY) ?? homeDir;
+		void filesFromDrop(e.dataTransfer!).then((files) => upload(dir, files));
+	}
+	async function upload(dir: string | null, files: Upload[]) {
+		if (!files.length) return;
+		await uploadFiles(dir, files);
+		if (dir) expandDir(dir);
+	}
+
+	let fileInput = $state<HTMLInputElement>();
+	let pickDir: string | null = null;
+	function pickFiles(dir: string | null) {
+		pickDir = dir;
+		fileInput?.click();
+	}
 	const pinBefore = $derived(dropTarget?.kind === 'pin' ? dropTarget.before : undefined);
 	// Whether a drop at the end of this pin list is the target (draws its
 	// insertion line): the global list (undefined), or a project's, which
@@ -462,7 +495,8 @@
 		const newProject = { label: 'New project...', icon: 'add', action: () => newProjectOpen.set(true) };
 		const create = (dir: string | null): ContextMenuItem[] => [
 			{ label: 'New note', icon: 'note_add', action: () => startCreate(dir, 'note') },
-			{ label: 'New folder', icon: 'create_new_folder', action: () => startCreate(dir, 'folder') }
+			{ label: 'New folder', icon: 'create_new_folder', action: () => startCreate(dir, 'folder') },
+			{ label: 'Upload files...', icon: 'upload', action: () => pickFiles(dir) }
 		];
 		if (menu.kind === 'view') {
 			const pick = (v: ProjectView) => () => setView(v);
@@ -632,7 +666,21 @@
 		e.preventDefault();
 		menu = { x: e.clientX, y: e.clientY, kind: 'blank' };
 	}}
+	ondragover={fileDragOver}
+	ondragleave={fileDragLeave}
+	ondrop={fileDropped}
 >
+	<input
+		type="file"
+		multiple
+		hidden
+		bind:this={fileInput}
+		onchange={(e) => {
+			const input = e.currentTarget;
+			void upload(pickDir, Array.from(input.files ?? [], (file) => ({ file, rel: file.name })));
+			input.value = '';
+		}}
+	/>
 	<div class="header">
 		<AppSwitcher current="notes" />
 		<span class="sp"></span>

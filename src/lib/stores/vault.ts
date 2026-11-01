@@ -144,7 +144,7 @@ export function closeTab(path: string) {
 	}
 }
 
-const encPath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
+export const encPath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
 
 export interface SearchResult {
 	path: string;

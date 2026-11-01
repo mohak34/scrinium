@@ -7,11 +7,12 @@ import { MAX_UPLOAD_BYTES } from '$lib/server/assets';
 
 // Client picks the folder (per its attachment settings); we only trust it
 // after re-validation here. A folder must be a relative subpath of safe
-// segments - no traversal, no dotfiles. '' means vault root.
+// segments - no traversal, no dotfiles. No folder means "attachments", ''
+// the vault root.
 function validateFolder(raw: string | null): string {
-	if (raw == null || raw === '') return 'attachments';
+	if (raw == null) return 'attachments';
 	const segs = raw.split('/').filter(Boolean);
-	if (!segs.length) return 'attachments';
+	if (!segs.length) return '';
 	for (const s of segs) {
 		if (s === '.' || s === '..' || s.startsWith('.') || /[\\:*?"<>|]/.test(s)) {
 			throw error(400, 'Invalid folder');
