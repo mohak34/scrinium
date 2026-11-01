@@ -128,6 +128,7 @@ interface GoogleEvent {
 	iCalUID?: string;
 	status?: string;
 	summary?: string;
+	colorId?: string;
 	start?: { dateTime?: string; date?: string };
 	end?: { dateTime?: string; date?: string };
 }
@@ -150,6 +151,18 @@ async function listEvents(token: string, cal: CalendarRef, timeMin: string, time
 	}
 }
 
+// Google's palette for colors picked on a single event, keyed by colorId.
+// Optional: without it events keep their calendar's color.
+async function eventColors(token: string): Promise<Record<string, string>> {
+	const data = await google<{ event?: Record<string, { background?: string }> }>(
+		token,
+		new URL(`${API}/colors`)
+	).catch(() => null);
+	const out: Record<string, string> = {};
+	for (const [id, c] of Object.entries(data?.event ?? {})) if (c.background) out[id] = c.background;
+	return out;
+}
+
 // Events from every selected calendar in [timeMin, timeMax). The primary
 // calendar must load; a failing secondary calendar (unsubscribed, shared
 // access removed) is skipped so one bad calendar never blanks the overlay.
@@ -159,7 +172,7 @@ export async function fetchCalendarEvents(
 	timeMin: string,
 	timeMax: string
 ): Promise<CalendarEvent[]> {
-	const calendars = await listCalendars(token);
+	const [calendars, colors] = await Promise.all([listCalendars(token), eventColors(token)]);
 	if (!calendars.length) calendars.push({ id: 'primary', name: 'Google', color: null });
 	const results = await Promise.allSettled(
 		calendars.map((c) => listEvents(token, c, timeMin, timeMax))
@@ -183,7 +196,7 @@ export async function fetchCalendarEvents(
 			out.push({
 				id: `${cal.id}:${it.id}`,
 				calendar: cal.name,
-				color: cal.color,
+				color: (it.colorId && colors[it.colorId]) || cal.color,
 				title: it.summary?.trim() || '(no title)',
 				start,
 				end,
