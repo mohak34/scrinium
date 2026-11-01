@@ -89,7 +89,7 @@ async function google<T>(token: string, url: URL): Promise<T> {
 	return (await res.json()) as T;
 }
 
-interface CalendarRef {
+export interface CalendarRef {
 	id: string;
 	name: string;
 	color: string | null;
@@ -166,12 +166,13 @@ async function eventColors(token: string): Promise<Record<string, string>> {
 // Events from every selected calendar in [timeMin, timeMax). The primary
 // calendar must load; a failing secondary calendar (unsubscribed, shared
 // access removed) is skipped so one bad calendar never blanks the overlay.
-// An invite that sits on two calendars shows once.
+// An invite that sits on two calendars shows once. The calendars come back
+// too, so the page can offer one show/hide switch per calendar.
 export async function fetchCalendarEvents(
 	token: string,
 	timeMin: string,
 	timeMax: string
-): Promise<CalendarEvent[]> {
+): Promise<{ events: CalendarEvent[]; calendars: CalendarRef[] }> {
 	const [calendars, colors] = await Promise.all([listCalendars(token), eventColors(token)]);
 	if (!calendars.length) calendars.push({ id: 'primary', name: 'Google', color: null });
 	const results = await Promise.allSettled(
@@ -204,7 +205,7 @@ export async function fetchCalendarEvents(
 			});
 		}
 	});
-	return out;
+	return { events: out, calendars };
 }
 
 // Cheap connection probe for Settings > Account: a valid token that can

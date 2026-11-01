@@ -15,7 +15,7 @@
 	} from '$lib/stores/tasks';
 	import { projectName, selectTasks } from '$lib/taskModel';
 	import { connectCalendar } from '$lib/auth-client';
-	import { eventOnDay, eventStart, type CalendarEvent } from '$lib/calendar';
+	import { eventOnDay, eventStart, type CalendarEvent, type CalendarSource } from '$lib/calendar';
 	import AppSwitcher from '$lib/components/AppSwitcher.svelte';
 	import PageFooter from '$lib/components/PageFooter.svelte';
 
@@ -26,6 +26,11 @@
 	let viewMonth = $state(today.getMonth());
 	let selected = $state(dayKey(today.getFullYear(), today.getMonth(), today.getDate()));
 	let gev = $state<CalendarEvent[]>([]);
+	let calendars = $state<CalendarSource[]>([]);
+	// Calendars switched off in the header, by name; kept per browser.
+	const HIDDEN_KEY = 'scrinium:hiddenCalendars';
+	let hidden = $state<string[]>([]);
+	let gridH = $state(0);
 	let calendarState = $state<'loading' | 'connected' | 'disconnected' | 'error'>('loading');
 	// Bumped on focus and on a timer so events added elsewhere (phone, an
 	// agent) show up without a reload.
@@ -40,8 +45,13 @@
 		const [from, to] = gridRange(y, m);
 		const res = await fetch(`/api/calendar/events?from=${from}&to=${to}`, { cache: 'no-store', signal });
 		if (!res.ok) throw new Error(`calendar ${res.status}`);
-		const data = (await res.json()) as { events: CalendarEvent[]; needsConnect?: boolean };
+		const data = (await res.json()) as {
+			events: CalendarEvent[];
+			calendars?: CalendarSource[];
+			needsConnect?: boolean;
+		};
 		if (!data.needsConnect) monthEvents.set(`${y}-${m}`, data.events);
+		if (data.calendars) calendars = data.calendars;
 		return data;
 	}
 
@@ -124,6 +134,20 @@
 			{ label: 'Jump to today', hint: 'Calendar', run: goToday }
 		])
 	);
+
+	onMount(() => {
+		try {
+			const saved: unknown = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '[]');
+			if (Array.isArray(saved)) hidden = saved.filter((x): x is string => typeof x === 'string');
+		} catch {
+			hidden = [];
+		}
+	});
+
+	function toggleCalendar(name: string) {
+		hidden = hidden.includes(name) ? hidden.filter((x) => x !== name) : [...hidden, name];
+		localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
+	}
 
 	onMount(() => {
 		void loadTasks();
@@ -209,7 +233,7 @@
 
 	// Multi-day events show on every day they cover.
 	const eventsByDay = $derived.by(() => {
-		const sorted = [...gev].sort((a, b) => eventStart(a) - eventStart(b));
+		const sorted = gev.filter((e) => !hidden.includes(e.calendar)).sort((a, b) => eventStart(a) - eventStart(b));
 		const map = new Map<string, CalendarEvent[]>();
 		for (const c of cells) {
 			const day = new Date(c.y, c.m, c.d);
@@ -220,6 +244,33 @@
 	});
 
 	const selectedEvents = $derived(eventsByDay.get(selected) ?? []);
+
+	// Rows a day cell has room for: cell height minus padding and the date,
+	// over the 20px row plus 3px gap. Every cell in the grid is the same size.
+	const rowsFit = $derived(Math.max(1, Math.floor(((gridH - 34) / (cells.length / 7) - 14 - 24 + 3) / 23)));
+
+	type DayItem =
+		| { kind: 'allDay'; e: CalendarEvent }
+		| { kind: 'task'; t: Task }
+		| { kind: 'event'; e: CalendarEvent };
+
+	// All-day events first, then the day's tasks, then the timed schedule.
+	function dayItems(key: string): DayItem[] {
+		const evs = eventsByDay.get(key) ?? [];
+		return [
+			...evs.filter((e) => e.allDay).map((e) => ({ kind: 'allDay' as const, e })),
+			...(byDay.get(key) ?? []).map((t) => ({ kind: 'task' as const, t })),
+			...evs.filter((e) => !e.allDay).map((e) => ({ kind: 'event' as const, e }))
+		];
+	}
+
+	// "10a", "11:30a", "1p": short enough for the cell's time column.
+	function shortTime(ts: number | string): string {
+		const d = new Date(ts);
+		const h = d.getHours() % 12 || 12;
+		const m = d.getMinutes();
+		return `${h}${m ? `:${String(m).padStart(2, '0')}` : ''}${d.getHours() < 12 ? 'a' : 'p'}`;
+	}
 
 	const selectedLabel = $derived.by(() => {
 		const [y, m, d] = selected.split('-').map(Number);
@@ -333,6 +384,17 @@
 			</button>
 			<button class="line" onclick={goToday}>Today</button>
 			<span class="sp"></span>
+			{#each calendars as cal (cal.name)}
+				{@const off = hidden.includes(cal.name)}
+				<button
+					class="cal"
+					class:off
+					style:--ev={cal.color}
+					aria-pressed={!off}
+					title="{off ? 'Show' : 'Hide'} {cal.name}"
+					onclick={() => toggleCalendar(cal.name)}><i></i>{cal.name}</button
+				>
+			{/each}
 			{#if calendarState === 'disconnected' || connectFailed}
 				<button class="line" onclick={() => void connect()}>
 					<span class="material-symbols-outlined">add_link</span>Connect Google Calendar
@@ -340,14 +402,14 @@
 			{/if}
 		</header>
 
-		<div class="grid" role="grid" aria-label="Task calendar" style="--weeks: {cells.length / 7}">
+		<div class="grid" role="grid" aria-label="Task calendar" style="--weeks: {cells.length / 7}" bind:clientHeight={gridH}>
 			{#each WEEKDAYS as w (w)}
 				<div class="dow">{w}</div>
 			{/each}
 			{#each cells as c, i (c.key)}
 				{@const list = byDay.get(c.key) ?? []}
-				{@const evs = eventsByDay.get(c.key) ?? []}
-				{@const shown = 3}
+				{@const items = dayItems(c.key)}
+				{@const shown = items.length > rowsFit ? rowsFit - 1 : items.length}
 				<div
 					class="day"
 					class:out={!c.inMonth}
@@ -369,35 +431,45 @@
 					ondrop={(e) => void dropOn(c.key, e)}
 					role="gridcell"
 					tabindex="0"
-					aria-label="{new Date(c.y, c.m, c.d).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}, {list.length} tasks, {evs.length} events"
+					aria-label="{new Date(c.y, c.m, c.d).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}, {list.length} tasks, {items.length - list.length} events"
 				>
 					<span class="dn">{c.d}</span>
-					{#each evs.slice(0, shown) as e (e.id)}
-						<span class="ev g" style:--ev={e.color} title="{e.title} ({e.calendar})">
-							{#if !e.allDay && eventStart(e) >= dayStart(c.key)}<span class="tm">{fmtTime(e.start)}</span>{/if}{e.title}
-						</span>
+					{#each items.slice(0, shown) as it (it.kind === 'task' ? it.t.id : it.e.id)}
+						{#if it.kind === 'allDay'}
+							<span class="ev bar" style:--ev={it.e.color} title="{it.e.title} ({it.e.calendar})">{it.e.title}</span>
+						{:else if it.kind === 'event'}
+							<span class="ev" style:--ev={it.e.color} title="{it.e.title} ({it.e.calendar})">
+								<i class="dot"></i>
+								<span class="tm">{eventStart(it.e) >= dayStart(c.key) ? shortTime(it.e.start) : ''}</span>
+								<span class="t">{it.e.title}</span>
+							</span>
+						{:else}
+							{@const t = it.t}
+							<span
+								class="ev task"
+								class:over={isOverdue(t)}
+								class:done={t.status === 'done'}
+								title={t.title}
+								draggable="true"
+								ondragstart={(e) => dragStart(t, e)}
+								ondragend={() => (dragId = null)}
+								role="button"
+								tabindex="-1"
+								onclick={(e) => {
+									e.stopPropagation();
+									selected = c.key;
+									openTask(t.id);
+								}}
+								onkeydown={() => {}}
+							>
+								<span class="material-symbols-outlined ic" class:fill={t.status === 'done'}>{statusIcon(t)}</span>
+								<span class="tm">{dueTimeValue(t.due_at) ? shortTime(t.due_at!) : ''}</span>
+								<span class="t">{t.title}</span>
+							</span>
+						{/if}
 					{/each}
-					{#each list.slice(0, Math.max(0, shown - evs.length)) as t (t.id)}
-						<span
-							class="ev task"
-							class:over={isOverdue(t)}
-							class:done={t.status === 'done'}
-							title={t.title}
-							draggable="true"
-							ondragstart={(e) => dragStart(t, e)}
-							ondragend={() => (dragId = null)}
-							role="button"
-							tabindex="-1"
-							onclick={(e) => {
-								e.stopPropagation();
-								selected = c.key;
-								openTask(t.id);
-							}}
-							onkeydown={() => {}}>{t.title}</span
-						>
-					{/each}
-					{#if list.length + evs.length > shown}
-						<span class="more">{list.length + evs.length - shown} more</span>
+					{#if items.length > shown}
+						<span class="more">{items.length - shown} more</span>
 					{/if}
 				</div>
 			{/each}
@@ -634,55 +706,98 @@
 		font-weight: 600;
 	}
 	.ev {
-		display: flex;
+		display: grid;
+		grid-template-columns: 12px 34px minmax(0, 1fr);
+		gap: 4px;
 		align-items: center;
-		gap: 6px;
-		padding: 0 6px;
+		height: 20px;
+		padding: 0 4px;
 		border-radius: var(--r-sm);
 		color: var(--text);
 		font-size: var(--fs-xs);
 		line-height: 20px;
+		flex-shrink: 0;
+		--ev-c: var(--ev, var(--blue));
+	}
+	.ev .t,
+	.ev.bar {
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		flex-shrink: 0;
 	}
-	.ev.task::before {
-		content: '';
-		flex: none;
-		width: 6px;
-		height: 6px;
-		border: 1.5px solid var(--text-2);
-		border-radius: 2px;
+	.ev .tm {
+		color: var(--text-3);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.ev .dot {
+		justify-self: center;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--ev-c);
+	}
+	.ev .ic {
+		justify-self: center;
+		font-size: 14px;
+		line-height: 1;
+		color: var(--text-3);
+	}
+	.ev.bar {
+		display: block;
+		padding: 0 6px;
+		background: color-mix(in srgb, var(--ev-c) 16%, #000);
+		color: color-mix(in srgb, var(--ev-c) 55%, #fff);
+		box-shadow: inset 2px 0 0 var(--ev-c);
+	}
+	.ev.task {
+		cursor: pointer;
 	}
 	.ev.task:hover {
 		background: var(--hover);
 	}
-	.ev.task.over {
-		color: var(--red);
+	.ev.task.over,
+	.ev.task.over .ic,
+	.ev.task.over .tm {
+		color: color-mix(in srgb, var(--red) 70%, var(--text-3));
 	}
-	.ev.task.over::before {
-		border-color: var(--red);
-	}
-	.ev.task.done {
+	.ev.task.done .t {
 		color: var(--text-3);
 		text-decoration: line-through;
 	}
-	.ev.task.done::before {
-		background: var(--text-3);
-		border-color: var(--text-3);
+	.cal {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 30px;
+		padding: 0 8px;
+		border: none;
+		border-radius: var(--r-md);
+		background: none;
+		color: var(--text-2);
+		font: var(--fs-sm) var(--font-ui);
+		cursor: pointer;
+		white-space: nowrap;
 	}
-	.ev.g {
-		background: color-mix(in srgb, var(--ev, var(--blue)) 13%, transparent);
-		color: #c5d6ff;
-		display: block;
+	.cal i {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--ev, var(--blue));
+		box-shadow: inset 0 0 0 1.5px var(--ev, var(--blue));
 	}
-	.ev.g .tm {
-		color: var(--ev, var(--blue));
-		margin-right: 6px;
+	.cal:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.cal.off {
+		color: var(--text-4);
+	}
+	.cal.off i {
+		background: none;
 	}
 	.more {
-		padding-left: 6px;
+		padding-left: 4px;
 		color: var(--text-3);
 		font-size: var(--fs-xs);
 	}
