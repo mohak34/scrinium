@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { listBin, purgeFromTrash, emptyTrash, binPath } from '$lib/server/vault';
-import { deleteTaskLinksByPrefix } from '$lib/server/db';
+import { deleteTaskLinksByPrefix, history } from '$lib/server/db';
 
 // Trash rows keep their original field names (trashName, deletedAt): the
 // phone app and MCP read them.
@@ -21,14 +21,18 @@ export const DELETE: RequestHandler = async ({ url, request }) => {
 	}
 	if (name) {
 		// Metadata left the cache when the item was trashed; only the task
-		// links that rode along to the trash path are left to drop.
+		// links and history that rode along to the trash path are left to drop.
 		await purgeFromTrash(name);
 		deleteTaskLinksByPrefix(binPath('trash', name));
+		history.drop(binPath('trash', name));
 		return json({ ok: true });
 	}
 	// No name = empty entire trash (explicit action). Require ?all=1 to avoid accidents.
 	if (url.searchParams.get('all') === '1') {
-		for (const name of await emptyTrash()) deleteTaskLinksByPrefix(binPath('trash', name));
+		for (const name of await emptyTrash()) {
+			deleteTaskLinksByPrefix(binPath('trash', name));
+			history.drop(binPath('trash', name));
+		}
 		return json({ ok: true });
 	}
 	throw error(400, 'Missing trashName. Use ?trashName=<name> or ?all=1 to empty trash.');

@@ -6,9 +6,12 @@ import { Decoration, EditorView, type DecorationSet } from '@codemirror/view';
 // through the facade's "dialog" signal, see CodeEditor) is the only hook
 // into a yank, since yanks change no document state to listen for.
 //
+// The same flash, longer and tinted (`cls: 'cm-remote-flash'`), marks the
+// lines a change made elsewhere (an agent) replaced in the open note.
+//
 // Effect payloads are 1-based line numbers, clamped to the doc at apply
 // time so a concurrent edit can never throw the range out of bounds.
-export const addYankFlash = StateEffect.define<{ from: number; to: number }>();
+export const addYankFlash = StateEffect.define<{ from: number; to: number; cls?: string }>();
 export const clearYankFlash = StateEffect.define<void>();
 
 // Matches the vim confirmation text ("1 lines yanked", "3 lines yanked").
@@ -16,6 +19,7 @@ export const YANK_NOTICE = /(\d+) lines yanked/;
 
 // Flash lifetime. Short confirm blink, not a lingering mark.
 export const YANK_FLASH_MS = 200;
+export const REMOTE_FLASH_MS = 1500;
 
 export const yankFlashField = StateField.define<DecorationSet>({
 	create: () => Decoration.none,
@@ -29,7 +33,7 @@ export const yankFlashField = StateField.define<DecorationSet>({
 				const build = new RangeSetBuilder<Decoration>();
 				for (let n = from; n <= to; n++) {
 					const line = tr.state.doc.line(n);
-					build.add(line.from, line.from, Decoration.line({ class: 'cm-yank-flash' }));
+					build.add(line.from, line.from, Decoration.line({ class: e.value.cls ?? 'cm-yank-flash' }));
 				}
 				set = build.finish();
 			} else if (e.is(clearYankFlash)) {
@@ -44,5 +48,6 @@ export const yankFlashField = StateField.define<DecorationSet>({
 // Reuses the selection background: a yank flash reads as "marked", same as
 // a visual selection, with no new theme color to keep in sync.
 export const yankFlashTheme = EditorView.theme({
-	'.cm-yank-flash': { backgroundColor: 'var(--selection-bg)' }
+	'.cm-yank-flash': { backgroundColor: 'var(--selection-bg)' },
+	'.cm-remote-flash': { backgroundColor: 'color-mix(in srgb, var(--accent) 16%, transparent)' }
 });

@@ -281,14 +281,26 @@ async function writePending(keepalive = false): Promise<boolean> {
 	return true;
 }
 
-function putNote(path: string, content: string, keepalive = false): Promise<Response> {
+// Notes whose next PUT is a restore from history (restoreVersion): the
+// server books it as a version of its own. Kept until a PUT lands, so a
+// retried restore never folds into the version before it.
+const restoring = new Set<string>();
+
+async function putNote(path: string, content: string, keepalive = false): Promise<Response> {
 	const version = versions.get(path);
-	return fetch(`/api/notes/${encPath(path)}`, {
+	const restore = restoring.has(path);
+	const res = await fetch(`/api/notes/${encPath(path)}`, {
 		method: 'PUT',
-		headers: { 'Content-Type': 'text/plain', ...(version && { 'If-Match': version }) },
+		headers: {
+			'Content-Type': 'text/plain',
+			...(version && { 'If-Match': version }),
+			...(restore && { 'X-Note-Restore': '1' })
+		},
 		body: content,
 		keepalive
 	});
+	if (res.ok) restoring.delete(path);
+	return res;
 }
 
 // Record a save's version. A version-checked save also says where the text
@@ -469,14 +481,14 @@ function display(path: string, content: string) {
 }
 
 // Pick up a change made to the open note elsewhere (an agent, the phone,
-// another tab); called when the window gets focus. Skipped while the note
-// has unsaved text: that saves over the other change, which is kept as a
-// conflict copy. A note gone elsewhere closes, with nothing unsaved lost.
+// another tab); the page calls it every few seconds and on window focus.
+// Skipped while the note has unsaved text: that saves over the other
+// change, which is kept as a conflict copy (and in the note's history).
+// A note gone elsewhere closes, with nothing unsaved lost.
 export function refreshShown(): Promise<void> {
 	return enqueue(async () => {
-		if (!(await writePending())) return;
 		const path = shown;
-		if (!path || !versions.has(path)) return;
+		if (!path || pending.has(path) || !versions.has(path)) return;
 		const res = await fetch(`/api/notes/${encPath(path)}`).catch(() => null);
 		if (!res || shown !== path || pending.has(path)) return;
 		if (res.status === 404) {
@@ -603,7 +615,7 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 		if (host) {
 			const content = host.read();
 			const out = next(content);
-			if (!out || out === content) return false;
+			if (out === null || out === content) return false;
 			host.write(out);
 			return true;
 		}
@@ -614,7 +626,7 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 			return false;
 		}
 		const out = next(note.content);
-		if (!out || out === note.content) return false;
+		if (out === null || out === note.content) return false;
 		if (note.version) versions.set(path, note.version);
 		const res = await putNote(path, out).catch(() => null);
 		if (!res?.ok) return false;
@@ -623,6 +635,17 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 	});
 	if (ok) await loadTree();
 	return !!ok;
+}
+
+// Put a version from the note's history back. A write like any other
+// (the open note's editor text is replaced and autosaved), sent with
+// X-Note-Restore so it gets a version of its own.
+// The flag is set once text saved before it is written, so it rides on
+// the restore's own PUT.
+export async function restoreVersion(path: string, content: string): Promise<boolean> {
+	const ok = await rewriteNote(path, () => (restoring.add(path), content));
+	if (!ok) restoring.delete(path);
+	return ok;
 }
 
 // Rewrite the note's frontmatter block via a mutate callback (set/delete

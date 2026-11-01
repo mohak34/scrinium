@@ -12,10 +12,11 @@
 		rightOpen: boolean;
 		onTogglePreview: () => void;
 		onToggleRight: () => void;
+		onHistory: () => void;
 		// Bound so the palette's Share command can open the modal too.
 		shareOpen?: boolean;
 	}
-	let { path, rightOpen, onTogglePreview, onToggleRight, shareOpen = $bindable(false) }: Props =
+	let { path, rightOpen, onTogglePreview, onToggleRight, onHistory, shareOpen = $bindable(false) }: Props =
 		$props();
 
 	let menu = $state<{ x: number; y: number } | null>(null);
@@ -27,6 +28,7 @@
 		{ label: 'Rename', icon: 'edit', action: () => renameRequest.set({ path }) },
 		{ label: pinned ? 'Unpin' : 'Pin to sidebar', icon: pinned ? 'keep_off' : 'keep', action: () => togglePin(path) },
 		{ label: 'Copy path', icon: 'content_copy', divider: true, action: () => void navigator.clipboard?.writeText(path).catch(() => {}) },
+		{ label: 'History', icon: 'history', action: onHistory },
 		{ label: 'Archive', icon: 'inventory_2', divider: true, action: () => void archivePath(path) },
 		{ label: 'Move to trash', icon: 'delete', danger: true, action: () => void deletePath(path) }
 	]);

@@ -34,7 +34,15 @@ import { perDoc } from './docRanges';
 	import { syncCell, tableBlockField, tableCommands, tableMenu, tableVim } from './tableBlock';
 	import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
-	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
+	import {
+		addYankFlash,
+		clearYankFlash,
+		yankFlashField,
+		yankFlashTheme,
+		YANK_NOTICE,
+		YANK_FLASH_MS,
+		REMOTE_FLASH_MS
+	} from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
 
@@ -670,8 +678,9 @@ import { perDoc } from './docRanges';
 	// it as a user edit (no spurious save). resetCursor marks a note switch:
 	// the old note's undo history is dropped with its text. dropHistory alone
 	// is for a copy saved elsewhere: undo past it would bring back text the
-	// server no longer has and save it over the other change.
-	export function setDoc(newValue: string, resetCursor = false, dropHistory = resetCursor) {
+	// server no longer has and save it over the other change. flash briefly
+	// marks the lines that changed (a change made elsewhere).
+	export function setDoc(newValue: string, resetCursor = false, dropHistory = resetCursor, flash = false) {
 		if (!view) return;
 		suppressChange = true;
 		if (dropHistory) view.dispatch({ effects: historyCompartment.reconfigure([]) });
@@ -694,6 +703,13 @@ import { perDoc } from './docRanges';
 		});
 		docText = newValue;
 		if (dropHistory) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
+		if (flash && newValue !== old) {
+			const doc = view.state.doc;
+			const line = (pos: number) => doc.lineAt(pos).number;
+			view.dispatch({ effects: addYankFlash.of({ from: line(from), to: line(end), cls: 'cm-remote-flash' }) });
+			clearTimeout(yankTimer);
+			yankTimer = setTimeout(() => view?.dispatch({ effects: clearYankFlash.of() }), REMOTE_FLASH_MS);
+		}
 		// Note switches also take focus so typing starts immediately.
 		if (resetCursor) view.focus();
 		suppressChange = false;

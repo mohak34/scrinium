@@ -89,18 +89,24 @@
 				showInPanels(content);
 			},
 			replace(content) {
-				editorRef?.setDoc(content, false, true);
+				editorRef?.setDoc(content, false, true, true);
 				currentContent = content;
 				showInPanels(content);
 			}
 		})
 	);
 
-	// The open note may have changed elsewhere while the window was away.
+	// The open note may have changed elsewhere (an agent, the phone): check
+	// every few seconds while the tab is visible, and on focus. A check is a
+	// conditional GET, so an unchanged note costs a 304.
 	onMount(() => {
 		const refresh = () => void refreshShown();
+		const timer = setInterval(() => document.visibilityState === 'visible' && refresh(), 3000);
 		window.addEventListener('focus', refresh);
-		return () => window.removeEventListener('focus', refresh);
+		return () => {
+			clearInterval(timer);
+			window.removeEventListener('focus', refresh);
+		};
 	});
 
 	// Loading the active note's content happens here so that ANY activePath
@@ -132,6 +138,7 @@
 	let sidebarWidth = $state(260);
 	let resizing = $state(false);
 	let shareOpen = $state(false);
+	let historyOpen = $state(false);
 	let imagePreview = $state<string | null>(null);
 
 	// A vault file from the tree or the note panel: PDFs open in the side
@@ -301,6 +308,7 @@
 			{ label: 'Pin / unpin note', hint: 'Keep the open note at the top of its project', leader: 'P', run: withNote(togglePin) },
 			{ label: 'Rename note', hint: 'Rename the open note in the file tree', run: withNote((path) => renameRequest.set({ path })) },
 			{ label: 'Share note', hint: 'Public link, optional password', run: withNote(() => (shareOpen = true)) },
+			{ label: 'Note history', hint: 'Past versions, who wrote them, restore', run: withNote(() => (historyOpen = true)) },
 			{
 				label: 'Copy note path',
 				hint: 'Vault path of the open note',
@@ -473,6 +481,7 @@
 				bind:shareOpen
 				onTogglePreview={() => editorRef?.togglePreview()}
 				onToggleRight={toggleRightCollapse}
+				onHistory={() => (historyOpen = true)}
 			/>
 		{/if}
 		<div class="editor-scroll">
@@ -529,6 +538,14 @@
 		{/await}
 	{/if}
 </div>
+
+{#if historyOpen && $activePath}
+	{#await import('$lib/components/HistoryView.svelte') then { default: HistoryView }}
+		{#key $activePath}
+			<HistoryView path={$activePath} current={currentContent} onClose={() => (historyOpen = false)} />
+		{/key}
+	{/await}
+{/if}
 
 {#if imagePreview}
 	<div class="img-overlay" role="presentation">
