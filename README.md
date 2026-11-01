@@ -43,7 +43,7 @@ The app runs at `http://localhost:5173`. It creates the auth tables on first sta
 
 ## Connecting an agent
 
-The MCP server is at `https://<your-host>/api/mcp`. Create a token in **Settings > Agents** and give the agent the URL and the header `Authorization: Bearer <token>`. Each token's **Activity** button lists the last 50 changes the agent made through MCP tools in the last 30 days. Direct API calls, like a `curl` upload, are not listed.
+The MCP server is at `https://<your-host>/api/mcp`. Agents that take a header (Codex, opencode, Claude Code) use a token: create one in **Settings > Agents** and give the agent the URL and the header `Authorization: Bearer <token>`. Apps that only offer OAuth (ChatGPT, claude.ai connectors) take just the URL: they send you to Google sign-in, then to a consent page in Scrinium where you allow or deny the connection. Each token's **Activity** button lists the last 50 changes the agent made through MCP tools in the last 30 days. Direct API calls, like a `curl` upload, are not listed.
 
 The server has these tools:
 

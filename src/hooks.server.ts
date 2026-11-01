@@ -2,7 +2,7 @@ import type { Handle, ServerInit } from '@sveltejs/kit';
 import { redirect } from '@sveltejs/kit';
 import { getMigrations } from 'better-auth/db/migration';
 import { timingSafeEqual } from 'node:crypto';
-import { auth, isAllowedEmail } from '$lib/server/auth';
+import { auth, emailForOAuthToken, isAllowedEmail } from '$lib/server/auth';
 import { emailForBearerToken } from '$lib/server/mobileAuth';
 import { migrateAreasToProjects } from '$lib/server/db';
 import { createFolder, safeResolve } from '$lib/server/vault';
@@ -26,7 +26,7 @@ export const init: ServerInit = async () => {
 	}
 };
 
-const PUBLIC_PATHS =['/login', '/api/auth', '/s', '/api/share'];
+const PUBLIC_PATHS = ['/login', '/api/auth', '/s', '/api/share', '/.well-known'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// Segment-boundary match: '/api/share' must not accidentally publicize
@@ -61,16 +61,27 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	if (!session && !isPublic) {
 		if (event.url.pathname.startsWith('/api')) {
-			// Mobile client fallback: long-lived API token issued by
-			// /api/auth/mobile, sent as `Authorization: Bearer <token>`.
+			// Token fallback, sent as `Authorization: Bearer <token>`: a
+			// long-lived API token (phone, Settings > Agents) or an OAuth
+			// access token from the mcp plugin (ChatGPT, claude.ai).
 			const authz = event.request.headers.get('authorization');
 			const bearer = authz?.match(/^Bearer (.+)$/i)?.[1];
-			const email = bearer ? emailForBearerToken(bearer) : null;
+			const email = bearer
+				? (emailForBearerToken(bearer) ?? (await emailForOAuthToken(event.request.headers)))
+				: null;
 			if (email && isAllowedEmail(email)) {
 				event.locals.email = email;
 				return resolve(event);
 			}
-			return new Response('Unauthorized', { status: 401 });
+			// The header points MCP clients at the OAuth metadata so they can
+			// start the sign-in flow. Behind Caddy url.origin is plain http.
+			const origin = (env.BETTER_AUTH_URL || event.url.origin).replace(/\/+$/, '');
+			return new Response('Unauthorized', {
+				status: 401,
+				headers: {
+					'WWW-Authenticate': `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`
+				}
+			});
 		}
 		throw redirect(302, found ? '/login?error=not_allowed' : '/login');
 	}

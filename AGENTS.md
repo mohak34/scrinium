@@ -475,7 +475,11 @@ State channels you will touch:
   api/{auth,notes,tree,search,assets,attachments,tokens,trash,archive,backlinks,
   tags,tagged,tasks,projects,calendar}.
   `/api/mcp` is the stateless MCP endpoint (streamable HTTP, JSON
-  responses) behind the normal /api gate. Mobile-only
+  responses) behind the normal /api gate, which takes an agent token or an
+  OAuth token from better-auth's `mcp` plugin (auth.ts). OAuth clients find
+  it through `/.well-known/oauth-*` (public) and every authorization stops
+  at `/oauth/consent`; the hooks in auth.ts force that, since the plugin
+  alone skips consent. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
   authed `GET/POST /api/shares` + `PATCH/DELETE /api/shares/[id]` (PATCH

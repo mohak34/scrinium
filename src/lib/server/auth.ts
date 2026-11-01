@@ -1,4 +1,6 @@
 import { betterAuth } from 'better-auth';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
+import { mcp } from 'better-auth/plugins';
 import { env } from '$env/dynamic/private';
 import { db } from './db';
 
@@ -43,6 +45,37 @@ export const auth = betterAuth({
 		}
 	},
 
+	// OAuth for MCP clients that can't send a static token (ChatGPT, claude.ai):
+	// they register themselves, the owner signs in with Google as usual and
+	// approves on /oauth/consent, and the issued token works on /api like an
+	// agent token (hooks.server.ts).
+	plugins: [
+		mcp({
+			loginPage: '/login',
+			resource: `${env.BETTER_AUTH_URL}/api/mcp`,
+			oidcConfig: { loginPage: '/login', consentPage: '/oauth/consent' }
+		})
+	],
+
+	// The plugin only asks for consent when the client sends prompt=consent,
+	// so without this any registered client could get a code from a signed-in
+	// browser silently. Every authorization goes through the consent page.
+	// Its token endpoint also accepts a code still waiting on consent, so
+	// /mcp/token refuses those itself.
+	hooks: {
+		before: createAuthMiddleware(async (ctx) => {
+			if (ctx.path === '/mcp/authorize') {
+				return { context: { query: { ...ctx.query, prompt: 'consent' } } };
+			}
+			if (ctx.path === '/mcp/token' && typeof ctx.body?.code === 'string') {
+				const pending = await ctx.context.internalAdapter.findVerificationValue(ctx.body.code);
+				if (pending && JSON.parse(pending.value).requireConsent) {
+					throw new APIError('UNAUTHORIZED', { error: 'invalid_grant', error_description: 'consent required' });
+				}
+			}
+		})
+	},
+
 	session: {
 		// Refresh the session cookie's expiry on activity so you don't get
 		// booted out mid-session, but keep the ceiling reasonable.
@@ -68,3 +101,12 @@ export const auth = betterAuth({
 		}
 	}
 });
+
+// Email behind an OAuth access token from the mcp plugin, or null when the
+// token is unknown or expired.
+export async function emailForOAuthToken(headers: Headers): Promise<string | null> {
+	const token = await auth.api.getMcpSession({ headers });
+	if (!token) return null;
+	const user = await auth.$context.then((c) => c.internalAdapter.findUserById(token.userId));
+	return user?.email ?? null;
+}
