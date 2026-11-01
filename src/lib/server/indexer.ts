@@ -57,7 +57,7 @@ async function walkAndIndex(dir: string, rel: string) {
 		const full = path.join(dir, dirent.name);
 		if (dirent.isDirectory()) {
 			await walkAndIndex(full, childRel);
-		} else if (dirent.isFile() && dirent.name.endsWith('.md')) {
+		} else if (dirent.isFile() && /\.md$/i.test(dirent.name)) {
 			try {
 				const { mtimeMs } = await fs.stat(full);
 				if (indexedMtime(childRel) === mtimeMs) continue;

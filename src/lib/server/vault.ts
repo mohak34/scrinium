@@ -712,7 +712,7 @@ export async function manifestNotes(): Promise<NoteManifestEntry[]> {
 			const childRelPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
 			if (dirent.isDirectory()) {
 				await walk(childRelPath);
-			} else if (dirent.isFile() && dirent.name.endsWith('.md')) {
+			} else if (dirent.isFile() && /\.md$/i.test(dirent.name)) {
 				const st = await fs.stat(path.join(fullPath, dirent.name));
 				entries.push({
 					path: childRelPath,
