@@ -436,7 +436,8 @@ State channels you will touch:
   X" label live in Sidebar.svelte. Folders pin like notes and list
   before the pinned notes, opening in place with their own tree. A pinned
   note or folder shows only in its pin list, not in the tree; its pin row
-  carries its menu minus Rename. A pin on a folder that became a project
+  carries its menu and renames in place. Note rows, pinned or not, show an
+  Archive button on hover (`.row-act`, styled in Sidebar.svelte). A pin on a folder that became a project
   is not shown; the project's section stands for it.
   `bins/BinsView.svelte` is the full-page Archive / Trash / Review view,
   mounted (and its code loaded) by the root layout only while open,
