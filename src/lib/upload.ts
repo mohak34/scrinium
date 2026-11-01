@@ -1,4 +1,5 @@
 import { encPath, loadTree } from '$lib/stores/vault';
+import { retitle } from '$lib/editor/frontmatter';
 
 // A file from the user's computer and its path under the folder it was
 // dropped on ("notes/a.md" when it came inside a dropped "notes" folder).
@@ -64,10 +65,12 @@ async function uploadNote(folder: string, name: string, file: File): Promise<boo
 	const content = await file.text();
 	for (let n = 0; n < 100; n++) {
 		const path = [folder, `${stem}${n ? `-${n}` : ''}.md`].filter(Boolean).join('/');
+		// A numbered copy is retitled after its filename, or title sync would
+		// try to rename it back onto the taken name.
 		const res = await fetch(`/api/notes/${encPath(path)}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'text/plain', 'If-None-Match': '*' },
-			body: content
+			body: retitle(content, name, path)
 		}).catch(() => null);
 		if (res?.status !== 409) return !!res?.ok;
 	}
