@@ -163,9 +163,10 @@ export async function searchNotes(
 	return res.json();
 }
 
-export async function loadTree() {
-	const res = await fetch('/api/tree');
-	if (res.ok) tree.set(await res.json());
+export async function loadTree(): Promise<boolean> {
+	const res = await fetch('/api/tree').catch(() => null);
+	if (res?.ok) tree.set(await res.json());
+	return !!res?.ok;
 }
 
 export async function loadNote(path: string): Promise<string> {
@@ -530,18 +531,18 @@ async function executeTitleSync() {
 	clearTimeout(titleSyncTimer);
 	if (!pending) return;
 	const sanitized = sanitizeTitleForFilename(pending.title);
-	if (!sanitized) return;
-	// Moves already queued run first: the note follows its folder, and a
-	// note renamed by hand or deleted meanwhile keeps that.
+	if (!sanitized || pending.path.split('/').pop() === `${sanitized}.md`) return;
+	// The paths are read in the queue, after moves queued before it: the
+	// note follows its folder, and a note renamed by hand or deleted
+	// meanwhile keeps that.
 	const ref = trackPath(pending.path);
-	await enqueue(async () => {});
-	const path = ref.get();
-	ref.done();
-	if (!path || path.split('/').pop() !== pending.path.split('/').pop()) return;
-	const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
-	const newPath = dir ? `${dir}/${sanitized}.md` : `${sanitized}.md`;
-	if (newPath === path) return;
-	const ok = await renameNote(path, newPath);
+	const ok = await afterSaved(() => {
+		const path = ref.get();
+		if (!path || path.split('/').pop() !== pending.path.split('/').pop()) return Promise.resolve(true);
+		const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
+		return moveNow(path, dir ? `${dir}/${sanitized}.md` : `${sanitized}.md`);
+	}).finally(ref.done);
+	await loadTree();
 	if (!ok) saveStatus.set('error');
 }
 
@@ -660,65 +661,69 @@ export function insertIntoNote(path: string, pos: number, insert: string): Promi
 // old path when the rename fails).
 export async function renameNote(oldPath: string, newPath: string): Promise<boolean> {
 	if (oldPath === newPath) return true;
-	const ok = await afterSaved(async () => {
-		// Wikilinks resolve by name, so the fix needs the notes before and
-		// after, as the server has them now: a note another device added can
-		// change what a bare name points to.
-		await loadTree().catch(() => {});
-		const moved = movedBy(oldPath, newPath);
-		const live = notePathsFromTree(get(tree));
-		const archived = wikiResolver(get(archiveEntries).flatMap((e) => e.notes));
-		const wiki = {
-			before: liveOverArchived(wikiResolver(live), archived),
-			after: liveOverArchived(wikiResolver(live.map(moved)), archived)
-		};
-		const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
-			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ newPath })
-		}).catch(() => null);
-		if (!res?.ok) return false;
-		const body: { versions?: Record<string, string>; previous?: Record<string, string> } | null = await res
-			.json()
-			.catch(() => null);
-		for (const [p, v] of [...versions]) {
-			versions.delete(p);
-			versions.set(moved(p), v);
-		}
-		// A note this tab held an older copy of keeps that version, so its
-		// next save is kept beside the other change instead of over it.
-		for (const [p, v] of Object.entries(body?.versions ?? {})) {
-			const held = versions.get(p);
-			if (held === undefined || held === body?.previous?.[p]) versions.set(p, v);
-		}
-		// A heading-to-filename rename queued for a note that moved follows
-		// it when only its folder changed; a new filename was picked by
-		// hand, so the queued one is dropped.
-		const sync = pendingTitleSync;
-		if (sync && moved(sync.path) !== sync.path) {
-			cancelTitleSync();
-			const to = moved(sync.path);
-			if (to.split('/').pop() === sync.path.split('/').pop()) queueTitleSync(to, sync.title);
-		}
-		remapPending(oldPath, newPath, wiki);
-		for (const r of tracked) if (r.path) r.path = moved(r.path);
-		const before = shown;
-		if (shown) shown = moved(shown);
-		// The server fixed the links the move broke (and the title, when it
-		// was the old filename); the open note
-		// gets the same fix in its live text (which may hold links typed
-		// during the request), autosaved like typing, so the next save never
-		// puts the old links back.
-		if (before && shown && editorHost) {
-			const text = editorHost.read();
-			const out = relinkNote(retitle(text, before, shown), before, shown, moved, wiki);
-			if (out !== text) editorHost.write(out);
-		}
-		followMove(oldPath, newPath);
-		return true;
-	});
+	const ok = await afterSaved(() => moveNow(oldPath, newPath));
 	await loadTree();
 	return !!ok;
+}
+
+// The rename itself, run inside the save queue.
+async function moveNow(oldPath: string, newPath: string): Promise<boolean> {
+	if (oldPath === newPath) return true;
+	// Wikilinks resolve by name, so the fix needs the notes before and
+	// after, as the server has them now: a note another device added can
+	// change what a bare name points to.
+	if (!(await loadTree().catch(() => false))) return false;
+	const moved = movedBy(oldPath, newPath);
+	const live = notePathsFromTree(get(tree));
+	const archived = wikiResolver(get(archiveEntries).flatMap((e) => e.notes));
+	const wiki = {
+		before: liveOverArchived(wikiResolver(live), archived),
+		after: liveOverArchived(wikiResolver(live.map(moved)), archived)
+	};
+	const res = await fetch(`/api/notes/${encPath(oldPath)}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ newPath })
+	}).catch(() => null);
+	if (!res?.ok) return false;
+	const body: { versions?: Record<string, string>; previous?: Record<string, string> } | null = await res
+		.json()
+		.catch(() => null);
+	for (const [p, v] of [...versions]) {
+		versions.delete(p);
+		versions.set(moved(p), v);
+	}
+	// A note this tab held an older copy of keeps that version, so its
+	// next save is kept beside the other change instead of over it.
+	for (const [p, v] of Object.entries(body?.versions ?? {})) {
+		const held = versions.get(p);
+		if (held === undefined || held === body?.previous?.[p]) versions.set(p, v);
+	}
+	// A heading-to-filename rename queued for a note that moved follows
+	// it when only its folder changed; a new filename was picked by
+	// hand, so the queued one is dropped.
+	const sync = pendingTitleSync;
+	if (sync && moved(sync.path) !== sync.path) {
+		cancelTitleSync();
+		const to = moved(sync.path);
+		if (to.split('/').pop() === sync.path.split('/').pop()) queueTitleSync(to, sync.title);
+	}
+	remapPending(oldPath, newPath, wiki);
+	for (const r of tracked) if (r.path) r.path = moved(r.path);
+	const before = shown;
+	if (shown) shown = moved(shown);
+	// The server fixed the links the move broke (and the title, when it
+	// was the old filename); the open note
+	// gets the same fix in its live text (which may hold links typed
+	// during the request), autosaved like typing, so the next save never
+	// puts the old links back.
+	if (before && shown && editorHost) {
+		const text = editorHost.read();
+		const out = relinkNote(retitle(text, before, shown), before, shown, moved, wiki);
+		if (out !== text) editorHost.write(out);
+	}
+	followMove(oldPath, newPath);
+	return true;
 }
 
 // The active note, tabs and pins follow a note or folder to its new path.
