@@ -615,7 +615,7 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 		if (host) {
 			const content = host.read();
 			const out = next(content);
-			if (!out || out === content) return false;
+			if (out === null || out === content) return false;
 			host.write(out);
 			return true;
 		}
@@ -626,7 +626,7 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 			return false;
 		}
 		const out = next(note.content);
-		if (!out || out === note.content) return false;
+		if (out === null || out === note.content) return false;
 		if (note.version) versions.set(path, note.version);
 		const res = await putNote(path, out).catch(() => null);
 		if (!res?.ok) return false;
