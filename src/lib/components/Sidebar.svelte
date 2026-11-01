@@ -73,7 +73,7 @@
 	// rename by the title.
 	type MenuOn =
 		| { kind: 'blank' }
-		| { kind: 'entry'; entry: VaultEntry; pinRow: boolean }
+		| { kind: 'entry'; entry: VaultEntry }
 		| { kind: 'section'; key: ProjectKey }
 		| { kind: 'view'; width: number };
 	let menu = $state<({ x: number; y: number } & MenuOn) | null>(null);
@@ -274,7 +274,7 @@
 	}
 
 	function onEntryContextMenu(entry: VaultEntry, x: number, y: number) {
-		menu = { x, y, kind: 'entry', entry, pinRow: false };
+		menu = { x, y, kind: 'entry', entry };
 	}
 
 	// Keyboard-first tree navigation. Arrows always work; h/j/k/l are vim
@@ -497,10 +497,8 @@
 				{ label: 'Remove project', icon: 'folder_off', action: () => void dropProject(key) }
 			];
 		}
-		const { entry, pinRow } = menu;
-		const rename: ContextMenuItem[] = pinRow
-			? []
-			: [{ label: 'Rename', icon: 'edit', action: () => (renameTarget = { path: entry.path }) }];
+		const { entry } = menu;
+		const rename: ContextMenuItem[] = [{ label: 'Rename', icon: 'edit', action: () => (renameTarget = { path: entry.path }) }];
 		const removal: ContextMenuItem[] = [
 			{ label: 'Archive', icon: 'inventory_2', divider: true, action: () => void archivePath(entry.path) },
 			{ label: 'Delete', icon: 'delete', danger: true, action: () => void deletePath(entry.path) }
@@ -534,15 +532,18 @@
 		return [...create(entry.path), { ...first, divider: true }, ...rest, ...removal];
 	});
 
+	// Project headers and pin rows rename in place here; the tree renames its own rows.
 	let renameName = $state('');
 	$effect(() => {
-		if (renameTarget && projectSet.has(renameTarget.path)) renameName = renameTarget.path;
+		const p = renameTarget?.path;
+		if (p && projectSet.has(p)) renameName = p;
+		else if (p && pinEntries.has(p)) renameName = pinName(p);
 	});
-	function commitProjectRename(key: string) {
-		if (renameTarget?.path !== key) return;
+	function commitInlineRename(path: string) {
+		if (renameTarget?.path !== path) return;
+		renameTarget = null;
 		const name = renameName.trim();
-		if (name && name !== key) void commitRename(key, name);
-		else renameTarget = null;
+		if (name) void commitRename(path, name);
 	}
 </script>
 
@@ -550,6 +551,19 @@
 	{@const entry = pinEntries.get(p)!}
 	{@const isDir = entry.type === 'directory'}
 	{@const open = isDir && !$collapsedDirs.has(p)}
+	{#if renameTarget?.path === p}
+		<input
+			class="rename-input pin"
+			bind:value={renameName}
+			{@attach (el) => el.select()}
+			onkeydown={(e) => {
+				if (e.key === 'Enter') commitInlineRename(p);
+				if (e.key === 'Escape') renameTarget = null;
+			}}
+			onblur={() => commitInlineRename(p)}
+		/>
+	{:else}
+	<div class="row-wrap">
 	<button
 		class="pin-row"
 		class:dir={isDir}
@@ -566,7 +580,7 @@
 		oncontextmenu={(e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			menu = { x: e.clientX, y: e.clientY, kind: 'entry', entry, pinRow: true };
+			menu = { x: e.clientX, y: e.clientY, kind: 'entry', entry };
 		}}
 	>
 		{#if key !== undefined}
@@ -585,6 +599,13 @@
 			<span class="material-symbols-outlined chev">{open ? 'expand_more' : 'chevron_right'}</span>
 		{/if}
 	</button>
+	{#if !isDir}
+		<button class="row-act" tabindex="-1" title="Archive" onclick={() => void archivePath(p)}>
+			<span class="material-symbols-outlined">inventory_2</span>
+		</button>
+	{/if}
+	</div>
+	{/if}
 	{#if open}
 		<div class="pin-tree" data-pin-tree={p}>
 		<FileTree
@@ -694,10 +715,10 @@
 						bind:value={renameName}
 						{@attach (el) => el.select()}
 						onkeydown={(e) => {
-							if (e.key === 'Enter') commitProjectRename(s.key!);
+							if (e.key === 'Enter') commitInlineRename(s.key!);
 							if (e.key === 'Escape') renameTarget = null;
 						}}
-						onblur={() => commitProjectRename(s.key!)}
+						onblur={() => commitInlineRename(s.key!)}
 					/>
 				{:else}
 					<div
@@ -1123,6 +1144,52 @@
 		color: var(--text);
 		font: 500 var(--fs-sm) var(--font-ui);
 		outline: none;
+	}
+	.rename-input.pin {
+		width: 100%;
+		height: 29px;
+		margin: 0;
+		font: var(--fs) var(--font-ui);
+	}
+	/* Hover archive button on note rows, here and in FileTree. It sits beside
+	   the row button (buttons can't nest) and the row makes room for it. */
+	.row-wrap,
+	aside :global(li.note) {
+		position: relative;
+	}
+	aside :global(.row-act) {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		display: none;
+		align-items: center;
+		justify-content: center;
+		width: 21px;
+		height: 21px;
+		padding: 0;
+		border: none;
+		border-radius: var(--r);
+		background: none;
+		color: var(--text-3);
+		cursor: pointer;
+	}
+	aside :global(.row-act .material-symbols-outlined) {
+		font-size: 16px;
+	}
+	aside :global(.row-act:hover) {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.row-wrap:hover > :global(.row-act),
+	aside :global(li.note:hover > .row-act) {
+		display: flex;
+	}
+	.row-wrap:hover > .pin-row,
+	aside :global(li.note:hover > .file) {
+		padding-right: 30px;
+	}
+	:global(html.sidebar-dragging) aside :global(.row-act) {
+		display: none !important;
 	}
 	.footer {
 		display: flex;

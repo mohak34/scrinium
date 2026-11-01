@@ -436,7 +436,8 @@ State channels you will touch:
   X" label live in Sidebar.svelte. Folders pin like notes and list
   before the pinned notes, opening in place with their own tree. A pinned
   note or folder shows only in its pin list, not in the tree; its pin row
-  carries its menu minus Rename. A pin on a folder that became a project
+  carries its menu and renames in place. Note rows, pinned or not, show an
+  Archive button on hover (`.row-act`, styled in Sidebar.svelte). A pin on a folder that became a project
   is not shown; the project's section stands for it.
   `bins/BinsView.svelte` is the full-page Archive / Trash / Review view,
   mounted (and its code loaded) by the root layout only while open,
@@ -517,7 +518,7 @@ State channels you will touch:
 - App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in
   `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
   `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`
-  (crumbs + preview/PDF/more/Share/right-panel toggle), `StatusBar.svelte`,
+  (crumbs + preview/download/print/more/Share/right-panel toggle), `StatusBar.svelte`,
   `AppActions.svelte` (Archive/Trash/Settings/Sign out buttons: notes sidebar, Tasks
   sidebar, Board footer via `PageFooter actions`; not on Calendar),
   `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,

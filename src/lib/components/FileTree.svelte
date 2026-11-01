@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { VaultEntry } from '$lib/stores/vault';
-	import { activePath, fileOrder, inFileOrder, folderNoteCount, pinnedPaths } from '$lib/stores/vault';
+	import { activePath, archivePath, fileOrder, inFileOrder, folderNoteCount, pinnedPaths } from '$lib/stores/vault';
 	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
 	import { drag } from './sidebarDrag';
 	import { fileIcon } from '$lib/attachments';
@@ -108,7 +108,7 @@
 
 <ul style="--depth: {depth}">
 	{#each display as entry (entry.path)}
-		<li class:drop-target={entry.type === 'directory' && dropDir === entry.path}>
+		<li class:note={entry.type === 'file' && /\.md$/i.test(entry.name)} class:drop-target={entry.type === 'directory' && dropDir === entry.path}>
 			{#if entry.type === 'directory'}
 				{#if renameTarget?.path === entry.path}
 					<input
@@ -201,6 +201,9 @@
 					onpointerdown={(e) => onDragStart(e, entry)}
 				>
 					<span class="file-label">{entry.name.replace(/\.md$/, '')}</span>
+				</button>
+				<button class="row-act" tabindex="-1" title="Archive" onclick={() => void archivePath(entry.path)}>
+					<span class="material-symbols-outlined">inventory_2</span>
 				</button>
 			{:else}
 				<div
