@@ -4,6 +4,7 @@
 	import { vimMode, VIM_MODE_LABEL } from '$lib/stores/vim';
 	import { cursorPos } from '$lib/stores/editor';
 	import { stripFrontmatter } from '$lib/editor/frontmatter';
+	import ReminderBell from './ReminderBell.svelte';
 
 	// Bottom strip of the notes view: position and size on the right, then
 	// save state and the vim mode at the far end where the eye lands last.
@@ -29,6 +30,7 @@
 
 <footer class="status">
 	<span class="sp"></span>
+	<ReminderBell />
 	<span>Ln {$cursorPos.line}, Col {$cursorPos.col}</span>
 	<span>{words.toLocaleString()} {words === 1 ? 'word' : 'words'}</span>
 	<span class="save {$saveStatus}" title="Save status"><i></i>{saveLabel[$saveStatus]}</span>
