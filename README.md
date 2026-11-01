@@ -45,7 +45,7 @@ The app runs at `http://localhost:5173`. It creates the auth tables on first sta
 
 The MCP server is at `https://<your-host>/api/mcp`. Agents that take a header (Codex, opencode, Claude Code) use a token: create one in **Settings > Agents** and give the agent the URL and the header `Authorization: Bearer <token>`. Apps that only offer OAuth (ChatGPT, claude.ai connectors) take just the URL: they send you to Google sign-in, then to a consent page in Scrinium where you allow or deny the connection. Each token's **Activity** button lists the last 50 changes the agent made through MCP tools in the last 30 days. Direct API calls, like a `curl` upload, are not listed.
 
-Every save to a note, yours or an agent's, is kept in the note's **History** (the note's `...` menu, or "Note history" in the palette): who wrote each version, a diff against the current text, and Restore. Saves by the same author within 5 minutes fold into one version, and each note keeps its last 50.
+Every save to a note, yours or an agent's, is kept in the note's **History** (the note's `...` menu, or "Note history" in the palette): who wrote each version, a diff against the current text, and Restore. Saves by the same author within 5 minutes fold into one version, and each note keeps its last 50. An open note picks up an agent's change within a few seconds and briefly highlights the changed lines. If you have unsaved typing when the change lands, your text saves to the note and the agent's version is kept as `<name> (conflict).md` and in History.
 
 The server has these tools:
 

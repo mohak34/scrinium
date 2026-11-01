@@ -142,8 +142,10 @@ Scrinium is small, but there are a few footguns specific to it.
    trashed elsewhere gets the text as that copy and the editor follows it,
    so a stale tab never recreates it. The rename response carries the new
    versions of the notes it relinked, so this tab's own moves never
-   conflict. On window focus `refreshShown` loads the open note's newer
-   server copy when nothing is unsaved. Writes without `If-Match` (the
+   conflict. Every 3 s while the tab is visible, and on window focus,
+   `refreshShown` loads the open note's newer server copy (an agent's
+   edit) when the note has nothing unsaved, and the editor flashes the
+   changed lines (`setDoc(..., flash)`, the yank flash's field). Writes without `If-Match` (the
    phone) overwrite; MCP rewrites send a strict `If-Match` and retry. A client path that PUTs a note goes through
    `putNote` and `saved`, or it loses track of the version.
 8. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
@@ -309,7 +311,8 @@ State channels you will touch:
   inside a per-match loop),
   yankFlash.ts (mini.nvim-style yank flash: line deco from the vim
   "<N> lines yanked" status notice via the facade dialog signal, read off
-  live selection state so a stale range can never paint),
+  live selection state so a stale range can never paint; also the longer
+  `cm-remote-flash` over lines a change from elsewhere replaced),
   formatting.ts.
 - `src/lib/server/` — vault.ts (filesystem, path-traversal-safe with
   symlinks followed - `safeResolve` refuses a link out of the vault and

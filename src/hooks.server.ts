@@ -44,8 +44,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// Local previews with a throwaway vault, where Google sign-in can't
 	// reach: `bun run dev` with DEV_LOGIN_EMAIL set signs every request in
-	// as that email. `dev` is false in builds, so production never does.
-	if (dev && env.DEV_LOGIN_EMAIL) {
+	// as that email. Bearer requests still take the token path, so an agent
+	// token can be tried against a preview. `dev` is false in builds, so
+	// production never does.
+	if (dev && env.DEV_LOGIN_EMAIL && !event.request.headers.has('authorization')) {
 		event.locals.session = null;
 		event.locals.email = env.DEV_LOGIN_EMAIL;
 		event.locals.agent = null;

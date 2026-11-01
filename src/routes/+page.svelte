@@ -89,18 +89,24 @@
 				showInPanels(content);
 			},
 			replace(content) {
-				editorRef?.setDoc(content, false, true);
+				editorRef?.setDoc(content, false, true, true);
 				currentContent = content;
 				showInPanels(content);
 			}
 		})
 	);
 
-	// The open note may have changed elsewhere while the window was away.
+	// The open note may have changed elsewhere (an agent, the phone): check
+	// every few seconds while the tab is visible, and on focus. A check is a
+	// conditional GET, so an unchanged note costs a 304.
 	onMount(() => {
 		const refresh = () => void refreshShown();
+		const timer = setInterval(() => document.visibilityState === 'visible' && refresh(), 3000);
 		window.addEventListener('focus', refresh);
-		return () => window.removeEventListener('focus', refresh);
+		return () => {
+			clearInterval(timer);
+			window.removeEventListener('focus', refresh);
+		};
 	});
 
 	// Loading the active note's content happens here so that ANY activePath

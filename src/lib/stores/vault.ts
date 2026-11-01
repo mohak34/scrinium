@@ -478,14 +478,14 @@ function display(path: string, content: string) {
 }
 
 // Pick up a change made to the open note elsewhere (an agent, the phone,
-// another tab); called when the window gets focus. Skipped while the note
-// has unsaved text: that saves over the other change, which is kept as a
-// conflict copy. A note gone elsewhere closes, with nothing unsaved lost.
+// another tab); the page calls it every few seconds and on window focus.
+// Skipped while the note has unsaved text: that saves over the other
+// change, which is kept as a conflict copy (and in the note's history).
+// A note gone elsewhere closes, with nothing unsaved lost.
 export function refreshShown(): Promise<void> {
 	return enqueue(async () => {
-		if (!(await writePending())) return;
 		const path = shown;
-		if (!path || !versions.has(path)) return;
+		if (!path || pending.has(path) || !versions.has(path)) return;
 		const res = await fetch(`/api/notes/${encPath(path)}`).catch(() => null);
 		if (!res || shown !== path || pending.has(path)) return;
 		if (res.status === 404) {
