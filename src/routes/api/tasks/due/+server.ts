@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { listDueReminders, markRemindersNotified } from '$lib/server/db';
+import { listDueReminders, listFiredReminders, markRemindersNotified } from '$lib/server/db';
 
 // Returns reminders that just became due and marks them fired in the same
 // call, so a second tab polling a moment later won't double-notify.
@@ -13,3 +13,6 @@ export const POST: RequestHandler = async () => {
 	);
 	return json(due);
 };
+
+// Every fired reminder still open, for the reminder inbox.
+export const GET: RequestHandler = async () => json(listFiredReminders());

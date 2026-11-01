@@ -6,6 +6,7 @@
 	import { startCreate } from '$lib/stores/actions';
 	import { openSettings, type SettingsPage } from '$lib/stores/settingsDialog';
 	import { openBins } from '$lib/stores/bins';
+	import { reminders, remindersOpen } from '$lib/stores/reminders';
 	import { settings } from '$lib/stores/settings';
 	import { pageCommands, shortcutHelpOpen, type PaletteCommand } from '$lib/stores/palette';
 	import {
@@ -110,6 +111,9 @@
 			hint,
 			run: () => openSettings(key)
 		})),
+		...($reminders.length > 0
+			? [{ label: 'Show reminders', hint: `${$reminders.length} waiting`, run: () => remindersOpen.set(true) }]
+			: []),
 		{ label: 'Keyboard shortcuts', hint: '?', run: () => shortcutHelpOpen.set(true) },
 		{
 			label: $settings.editor.vimMotions ? 'Turn vim motions off' : 'Turn vim motions on',

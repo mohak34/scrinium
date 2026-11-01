@@ -747,6 +747,18 @@ export function listDueReminders(now: number): TaskRow[] {
 		.all(now) as TaskRow[];
 }
 
+// Reminders that fired and still wait on the user: the task is open and its
+// reminder was neither cleared nor moved (a new time re-arms it).
+export function listFiredReminders(): TaskRow[] {
+	return db
+		.prepare(
+			`SELECT ${TASK_COLS} FROM tasks
+			 WHERE remind_at IS NOT NULL AND notified_at IS NOT NULL AND status != 'done'
+			 ORDER BY remind_at ASC`
+		)
+		.all() as TaskRow[];
+}
+
 export function markRemindersNotified(ids: string[], now: number) {
 	if (ids.length === 0) return;
 	const stmt = db.prepare(`UPDATE tasks SET notified_at = ? WHERE id = ? AND notified_at IS NULL`);

@@ -381,9 +381,13 @@ State channels you will touch:
   input, they ignore the theme. Select opens ContextMenu under its button.
   Both popups claim their keys in the window capture phase, and the
   settings dialog and bins view leave Esc to an open `.ctx-menu` or
-  `.date-pop`), ReminderToasts (mounted
-  in the root layout except on login and share pages; polls
-  `POST /api/tasks/due` every 30 s while the tab is visible).
+  `.date-pop`), ReminderToasts (the top-right
+  reminder panel, mounted in the root layout except on login and share
+  pages; every 30 s while the tab is visible it fires what came due with
+  `POST /api/tasks/due`, which opens the panel, and reloads every fired
+  reminder still open with `GET`. A reminder stays until done, snoozed (a
+  new `remind_at` re-arms it) or cleared (`remind_at` null); closing the
+  panel leaves them on ReminderBell in the bottom bars, `stores/reminders.ts`).
   CommandPalette is mounted in the root layout too, so Ctrl+K works on
   every app page (`stores/palette.ts`). It searches notes and tasks, adds
   an Inbox task from the query, and holds the global commands; a page adds
