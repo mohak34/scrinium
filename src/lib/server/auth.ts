@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { mcp } from 'better-auth/plugins';
 import { env } from '$env/dynamic/private';
-import { db } from './db';
+import { db, touchOAuthApp } from './db';
 
 const allowedEmails = (env.ALLOWED_EMAILS || '')
 	.split(',')
@@ -119,11 +119,13 @@ export const auth = betterAuth({
 	}
 });
 
-// Email behind an OAuth access token from the mcp plugin, or null when the
-// token is unknown or expired.
-export async function emailForOAuthToken(headers: Headers): Promise<string | null> {
+// Who sent an OAuth access token from the mcp plugin, or null when the
+// token is unknown or expired. Marks the app as used for Settings > Agents.
+export async function oauthCaller(headers: Headers): Promise<{ email: string; agent: string } | null> {
 	const token = await auth.api.getMcpSession({ headers });
 	if (!token) return null;
 	const user = await auth.$context.then((c) => c.internalAdapter.findUserById(token.userId));
-	return user?.email ?? null;
+	if (!user) return null;
+	touchOAuthApp(token.clientId);
+	return { email: user.email, agent: `oauth:${token.clientId}` };
 }
