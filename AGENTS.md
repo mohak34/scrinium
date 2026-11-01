@@ -453,7 +453,9 @@ State channels you will touch:
   dropped folders' structure; "Upload files..." in a folder, section or
   blank-space menu picks files instead. `src/lib/upload.ts` sends notes
   through the notes API and everything else through `/api/attachments`,
-  numbering a taken name instead of replacing it.
+  numbering a taken name instead of replacing it. Files upload before
+  notes, and each note's markdown links to a file the server renamed
+  (sanitized or numbered) are fixed with `relinkNote` first.
   Notes dropped on the Pinned list pin everywhere and on their own
   project's pins pin there. Nothing is inserted mid-drag, so the tree never
   shifts: an empty list is reached through rows already on screen, the
