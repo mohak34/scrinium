@@ -237,8 +237,9 @@ const SCOPE_SQL: Record<SearchScope, string> = {
 	all: ''
 };
 
-// `folder` keeps only notes inside that folder (a project's search).
-export function searchNotes(q: string, scope: SearchScope = 'vault', folder?: string): SearchResult[] {
+// `folders` keeps only notes inside one of those folders (a project's
+// search; archived notes are matched by their ".archive/..." folders).
+export function searchNotes(q: string, scope: SearchScope = 'vault', folders?: string[]): SearchResult[] {
 	// Quote each whitespace-separated token so arbitrary user input can't break
 	// the FTS5 MATCH syntax. A trailing * turns a term into a prefix query, so
 	// partial words ("lis") still match whole tokens ("list"). Run both an exact
@@ -256,9 +257,9 @@ export function searchNotes(q: string, scope: SearchScope = 'vault', folder?: st
 
 	type Row = { path: string; title: string; rank: number; snip: string | null };
 	const sel = `SELECT path, title, rank, snippet(note_fts, 2, '\u258D', '\u258D', ' \u2026 ', 28) AS snip
-		 FROM note_fts WHERE note_fts MATCH ? ${SCOPE_SQL[scope]} ${folder ? `AND ${under('path')}` : ''}
+		 FROM note_fts WHERE note_fts MATCH ? ${SCOPE_SQL[scope]} ${folders ? `AND (${folders.map(() => under('path')).join(' OR ') || '0'})` : ''}
 		 ORDER BY rank LIMIT 30`;
-	const args = [...(scope === 'all' ? [] : underArgs('.archive')), ...(folder ? underArgs(folder) : [])];
+	const args = [...(scope === 'all' ? [] : underArgs('.archive')), ...(folders ?? []).flatMap(underArgs)];
 	const rows = db.prepare(sel).all(exact, ...args) as Row[];
 	const extra = db.prepare(sel).all(prefixed, ...args) as Row[];
 
@@ -281,10 +282,10 @@ export function searchNotes(q: string, scope: SearchScope = 'vault', folder?: st
 		}));
 }
 
-export function listRecentNotes(limit = 15) {
+export function listRecentNotes(limit = 15, folder?: string) {
 	return db
-		.prepare(`SELECT path, title FROM note_meta ORDER BY updated_at DESC LIMIT ?`)
-		.all(limit) as { path: string; title: string }[];
+		.prepare(`SELECT path, title FROM note_meta ${folder ? `WHERE ${under('path')}` : ''} ORDER BY updated_at DESC LIMIT ?`)
+		.all(...(folder ? underArgs(folder) : []), limit) as { path: string; title: string }[];
 }
 
 // Standalone tasks section (separate from note checklists). Due dates are

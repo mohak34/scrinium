@@ -43,12 +43,13 @@ The app runs at `http://localhost:5173`. It creates the auth tables on first sta
 
 ## Connecting an agent
 
-The MCP server is at `https://<your-host>/api/mcp`. Create a token in **Settings > Agents** and give the agent the URL and the header `Authorization: Bearer <token>`. Each token's **Activity** button lists the agent's changes from the last 30 days.
+The MCP server is at `https://<your-host>/api/mcp`. Create a token in **Settings > Agents** and give the agent the URL and the header `Authorization: Bearer <token>`. Each token's **Activity** button lists the last 50 changes the agent made through MCP tools in the last 30 days. Direct API calls, like a `curl` upload, are not listed.
 
 The server has these tools:
 
-- Notes: `list_notes`, `search_notes`, `read_note`, `create_note`, `update_note`, `edit_note`, `append_to_note`, `move_note`, `create_folder`, `delete_note`, `list_trash`, `restore_from_trash`, `archive_note`, `list_archive`, `unarchive_note`, `share_note` (`search_notes` takes `include_archived` and `folder`)
-- Attachments: `upload_attachment`, `read_attachment`
+- Notes: `list_notes`, `search_notes`, `read_note`, `create_note`, `update_note`, `edit_note`, `append_to_note`, `move_note`, `create_folder`, `delete_note`, `list_trash`, `restore_from_trash`, `archive_note`, `list_archive`, `unarchive_note` (`search_notes` takes `include_archived` and `folder`)
+- Shares: `share_note`, `list_shares`, `revoke_share`, `set_share_password`
+- Files: `list_files`, `upload_attachment`, `read_attachment`
 - Tags and links: `list_tags`, `find_notes_by_tag`, `get_backlinks`
 - Tasks: `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`, `link_task_to_note`, `unlink_task_from_note`, `get_agenda`
 - Projects: `list_projects`, `create_project`, `remove_project` (`list_tasks` takes `project`, `""` for Quotidian)
