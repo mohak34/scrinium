@@ -64,15 +64,24 @@ export function stripFrontmatter(text: string): string {
 	return text.slice(parseFrontmatter(text)?.bodyStart ?? 0);
 }
 
-/** First `# ` heading at or after `from`, with its line index. */
+/** First `# ` heading at or after `from` outside code fences, with its line index. */
 function firstHeading(text: string, from: number): { line: number; title: string } | null {
 	let start = 0;
+	let fence = '';
 	for (let i = 0; start <= text.length; i++) {
 		const nl = text.indexOf('\n', start);
 		const end = nl < 0 ? text.length : nl;
 		if (end >= from) {
-			const m = text.slice(start, end).match(/^#\s+(.+?)\s*$/);
-			if (m && m[1].trim()) return { line: i, title: m[1].trim() };
+			const line = text.slice(start, end);
+			const f = line.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
+			if (fence) {
+				if (f && f[0] === fence[0] && f.length >= fence.length && !line.trim().slice(f.length)) fence = '';
+			} else if (f) {
+				fence = f;
+			} else {
+				const m = line.match(/^#\s+(.+?)\s*$/);
+				if (m && m[1].trim()) return { line: i, title: m[1].trim() };
+			}
 		}
 		if (nl < 0) break;
 		start = nl + 1;
@@ -100,9 +109,9 @@ export function effectiveTitle(content: string, fallback: string): string {
 	return firstHeading(content, fm?.bodyStart ?? 0)?.title.slice(0, 200) ?? fallback;
 }
 
-/** Bare YAML scalar unless quoting is required (`#`, `:`, edges...). */
+/** Bare YAML scalar unless quoting is required (`#`, `:`, edges, or a word YAML reads as a non-string like `true` or `12`). */
 function yamlScalar(s: string): string {
-	if (/^[A-Za-z0-9 _\-/().]+$/.test(s) && !/^\s|\s$/.test(s)) return s;
+	if (/^[A-Za-z0-9 _\-/().]+$/.test(s) && !/^\s|\s$/.test(s) && typeof parseDocument(s).toJS() === 'string') return s;
 	return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
@@ -124,15 +133,50 @@ export function setEffectiveTitle(content: string, newTitle: string): string | n
 			return lines.join('\n');
 		}
 		const fmLines = fm.raw.split('\n');
-		const idx = fmLines.findIndex((l) => /^\s*title\s*:/.test(l));
+		// The top-level key only, never a nested `author.title:`.
+		const idx = fmLines.findIndex((l) => /^title\s*:/.test(l));
 		if (idx === -1) return null;
-		fmLines[idx] = `title: ${yamlScalar(newTitle)}`;
+		// A folded or multi-line title continues on the lines indented
+		// deeper than its key; they go with it.
+		const indent = (l: string) => l.length - l.trimStart().length;
+		const key = indent(fmLines[idx]);
+		let end = idx + 1;
+		for (let j = idx + 1; j < fmLines.length; j++) {
+			if (!fmLines[j].trim()) continue;
+			if (indent(fmLines[j]) <= key) break;
+			end = j + 1;
+		}
+		fmLines.splice(idx, end - idx, `${fmLines[idx].slice(0, key)}title: ${yamlScalar(newTitle)}`);
 		return fmLines.join('\n') + content.slice(fm.raw.length);
 	}
 	const h = firstHeading(content, 0);
 	if (!h) return null;
 	lines[h.line] = `# ${newTitle}`;
 	return lines.join('\n');
+}
+
+/** A title as a filename stem, null when nothing usable is left. */
+export function sanitizeTitleForFilename(title: string): string | null {
+	let name = title.trim().replace(/[\\/:*?"<>|]/g, '').replace(/^\.+/, '').trim();
+	if (!name || name === '.' || name === '..' || name.startsWith('.')) return null;
+	// Cap length to keep filesystem happy
+	if (name.length > 100) name = name.slice(0, 100).trim();
+	return name;
+}
+
+/**
+ * A note renamed to a new filename takes the new name as its title when
+ * its title was the old filename. A title that already differed (the
+ * heading-to-filename sync renamed it, or the author chose another) is
+ * left alone, so the two sync directions never undo each other. Applied
+ * by the server on every move and by the editor to its live copy.
+ */
+export function retitle(content: string, oldPath: string, newPath: string): string {
+	const stem = (p: string) => (/\.md$/i.test(p) ? p.slice(p.lastIndexOf('/') + 1, -3) : null);
+	const [was, now] = [stem(oldPath), stem(newPath)];
+	if (was === null || now === null || was === now) return content;
+	if (sanitizeTitleForFilename(effectiveTitle(content, '')) !== was) return content;
+	return setEffectiveTitle(content, now) ?? content;
 }
 
 /**

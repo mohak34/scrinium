@@ -57,6 +57,27 @@ function isRangeActive(state: EditorState, from: number, to: number): boolean {
 	return cursorLine >= startLine - 1 && cursorLine <= endLine + 1;
 }
 
+// The blocks isRangeActive reveals at the cursor, as "from,from,...":
+// those meeting the cursor line or a line next to it, by binary search.
+function activeBlocks(state: EditorState): string {
+	if (isPreviewMode()) return '';
+	const { doc } = state;
+	const line = doc.lineAt(state.selection.main.head).number;
+	const lo = doc.line(Math.max(1, line - 1)).from;
+	const hi = doc.line(Math.min(doc.lines, line + 1)).to;
+	const ranges = findMathBlockRanges(state);
+	let a = 0;
+	let b = ranges.length;
+	while (a < b) {
+		const mid = (a + b) >> 1;
+		if (ranges[mid].to >= lo) b = mid;
+		else a = mid + 1;
+	}
+	const out: number[] = [];
+	for (let i = a; i < ranges.length && ranges[i].from <= hi; i++) out.push(ranges[i].from);
+	return out.join();
+}
+
 function pushSourceLines(
 	out: { from: number; to: number; deco: Decoration }[],
 	state: EditorState,
@@ -106,10 +127,14 @@ export const mathBlockField = StateField.define<DecorationSet>({
 		// Active state is line-based, so same-line selection motion
 		// (Left/Right, direction flips) reuses the set instead of churning
 		// layout on every keypress.
+		// Line changes rebuild only when they reveal or hide a block, so moving
+		// through a math-heavy note doesn't redraw every block per line.
 		if (tr.selection) {
 			const before = tr.startState.doc.lineAt(tr.startState.selection.main.head).number;
 			const after = tr.state.doc.lineAt(tr.state.selection.main.head).number;
-			if (before !== after) return buildBlockMathDecorations(tr.state);
+			if (before !== after && activeBlocks(tr.startState) !== activeBlocks(tr.state)) {
+				return buildBlockMathDecorations(tr.state);
+			}
 		}
 		return deco;
 	},

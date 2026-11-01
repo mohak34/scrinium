@@ -1,8 +1,13 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
+import { error } from '@sveltejs/kit';
+import { stat } from 'node:fs/promises';
 import { db, under, underArgs } from './db';
-import { vaultRel } from './vault';
+import { listTree, readNote, safeResolve, vaultRel } from './vault';
 import { renderNoteToHtml } from '$lib/print/renderNote';
 import { resolveAssetUrl } from '$lib/attachments';
+import { effectiveTitle } from '$lib/editor/frontmatter';
+import { findWikilinksInText, notePathsFromTree, wikiResolver } from '$lib/editor/wikilinks';
 
 // Public read-only share links. A share points at a live vault path - opening
 // the link always renders the note's CURRENT content, not a snapshot. Files
@@ -18,6 +23,9 @@ db.exec(`
 	);
 	CREATE INDEX IF NOT EXISTS idx_shares_note_path ON shares(note_path);
 `);
+if (!(db.prepare(`PRAGMA table_info(shares)`).all() as { name: string }[]).some((c) => c.name === 'expires_at')) {
+	db.exec(`ALTER TABLE shares ADD COLUMN expires_at INTEGER`);
+}
 
 // Older rows could hold a non-canonical path ("./a.md") that rename,
 // archive and delete never matched by prefix. Rewrite them once.
@@ -38,6 +46,7 @@ export interface ShareRow {
 	created_at: number;
 	created_by: string | null;
 	password_hash: string | null;
+	expires_at: number | null;
 }
 
 export interface PublicShare {
@@ -45,6 +54,7 @@ export interface PublicShare {
 	notePath: string;
 	createdAt: number;
 	hasPassword: boolean;
+	expiresAt: number | null;
 }
 
 function toPublic(row: ShareRow): PublicShare {
@@ -52,9 +62,12 @@ function toPublic(row: ShareRow): PublicShare {
 		id: row.id,
 		notePath: row.note_path,
 		createdAt: row.created_at,
-		hasPassword: !!row.password_hash
+		hasPassword: !!row.password_hash,
+		expiresAt: row.expires_at
 	};
 }
+
+const expired = (row: ShareRow) => row.expires_at !== null && row.expires_at <= Date.now();
 
 function newId(): string {
 	// 12 url-safe chars, ~72 bits. Collision loop is cheap insurance.
@@ -74,18 +87,38 @@ export function hashSharePassword(password: string): string {
 	return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
 }
 
-export function verifySharePassword(password: string, stored: string): boolean {
-	const parts = stored.split('$');
-	if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
-	try {
-		const salt = Buffer.from(parts[1], 'hex');
-		const expected = Buffer.from(parts[2], 'hex');
-		if (salt.length !== 16 || expected.length !== 32) return false;
-		const actual = scryptSync(password, salt, 32);
-		return timingSafeEqual(actual, expected);
-	} catch {
-		return false;
+const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, len: number) => Promise<Buffer>;
+
+// Wrong passwords per share: after 10 in 10 minutes the share answers 429
+// until the window ends, so guessing stays slow and never ties up the
+// server (the hash also runs off the main thread).
+const FAIL_LIMIT = 10;
+const FAIL_WINDOW = 10 * 60_000;
+const failures = new Map<string, { count: number; since: number }>();
+
+export async function verifySharePassword(shareId: string, password: string, stored: string): Promise<boolean> {
+	const now = Date.now();
+	let f = failures.get(shareId);
+	if (f && now - f.since > FAIL_WINDOW) f = undefined;
+	if (f && f.count >= FAIL_LIMIT) throw error(429, 'Too many wrong passwords, try again later');
+	// The guess counts before the hash runs, so a burst of parallel guesses
+	// can't all slip in under the limit; a right one takes it back.
+	if (!f) {
+		if (failures.size > 1000) failures.clear();
+		f = { count: 0, since: now };
+		failures.set(shareId, f);
 	}
+	f.count++;
+	const parts = stored.split('$');
+	let ok = false;
+	try {
+		const salt = Buffer.from(parts[1] ?? '', 'hex');
+		const expected = Buffer.from(parts[2] ?? '', 'hex');
+		if (parts.length === 3 && parts[0] === 'scrypt' && salt.length === 16 && expected.length === 32)
+			ok = timingSafeEqual(await scryptAsync(password, salt, 32), expected);
+	} catch {}
+	if (ok) f.count = Math.max(0, f.count - 1);
+	return ok;
 }
 
 // Hash of the raw password for asset-URL comparison avoidance: asset URLs
@@ -107,17 +140,23 @@ export function checkProofToken(shareId: string, proof: string | null): boolean 
 	return proofCache.has(`${shareId}:${proof}`);
 }
 
-export function createShare(notePath: string, createdBy: string | null, password?: string): PublicShare {
+export function createShare(
+	notePath: string,
+	createdBy: string | null,
+	password?: string,
+	expiresAt: number | null = null
+): PublicShare {
 	const row: ShareRow = {
 		id: newId(),
 		note_path: notePath,
 		created_at: Date.now(),
 		created_by: createdBy,
-		password_hash: password ? hashSharePassword(password) : null
+		password_hash: password ? hashSharePassword(password) : null,
+		expires_at: expiresAt
 	};
 	db.prepare(
-		`INSERT INTO shares (id, note_path, created_at, created_by, password_hash) VALUES (?, ?, ?, ?, ?)`
-	).run(row.id, row.note_path, row.created_at, row.created_by, row.password_hash);
+		`INSERT INTO shares (id, note_path, created_at, created_by, password_hash, expires_at) VALUES (?, ?, ?, ?, ?, ?)`
+	).run(row.id, row.note_path, row.created_at, row.created_by, row.password_hash, row.expires_at);
 	return toPublic(row);
 }
 
@@ -131,9 +170,11 @@ export function getShare(id: string): PublicShare | undefined {
 	return row ? toPublic(row) : undefined;
 }
 
-/** Raw row for password checks - never serialize this to a client. */
+/** Raw row for password checks - never serialize this to a client. An
+ * expired link has none: it opens nothing, like a revoked one. */
 export function getShareSecret(id: string): ShareRow | undefined {
-	return getShareRow(id);
+	const row = getShareRow(id);
+	return row && !expired(row) ? row : undefined;
 }
 
 export function listSharesForNote(notePath: string): PublicShare[] {
@@ -154,6 +195,11 @@ export function listAllShares(): PublicShare[] {
 export function setSharePassword(id: string, password: string | null) {
 	db.prepare(`UPDATE shares SET password_hash = ? WHERE id = ?`).run(password ? hashSharePassword(password) : null, id);
 	for (const key of proofCache.keys()) if (key.startsWith(`${id}:`)) proofCache.delete(key);
+}
+
+// Set or (null) clear when a link stops working.
+export function setShareExpiry(id: string, expiresAt: number | null) {
+	db.prepare(`UPDATE shares SET expires_at = ? WHERE id = ?`).run(expiresAt, id);
 }
 
 export function deleteShare(id: string): boolean {
@@ -189,7 +235,8 @@ export function shareImages(markdown: string, notePath: string): { urls: string[
 		const resolved = resolveAssetUrl(url, dir);
 		if (resolved?.startsWith('/api/assets/') && !urls.includes(url)) {
 			urls.push(url);
-			paths.push(resolved.slice('/api/assets/'.length).split('/').map(decodeURIComponent).join('/'));
+			const file = resolved.slice('/api/assets/'.length).split(/[?#]/)[0];
+			paths.push(file.split('/').map(decodeURIComponent).join('/'));
 		}
 		return null;
 	});
@@ -200,4 +247,124 @@ export function shareImages(markdown: string, notePath: string): { urls: string[
 export function sharedNotePaths(): Set<string> {
 	const rows = db.prepare(`SELECT DISTINCT note_path FROM shares`).all() as { note_path: string }[];
 	return new Set(rows.map((r) => r.note_path));
+}
+
+export interface SharePage {
+	title: string;
+	// One line of the note's text, for link previews in chat apps.
+	description: string;
+	html: string;
+	// The note's sections, each heading carrying `id` in html.
+	toc: { id: string; text: string; level: number }[];
+	updatedAt: number | null;
+	hasPassword: boolean;
+}
+
+// The note behind a link, rendered for the viewer: the note's current file,
+// never a snapshot. Images load through this link's asset route (with a
+// proof token for password links, never the password), and [[links]] to
+// notes that have their own live link open that link. Throws 404 for an
+// unknown or revoked link, 410 for an expired one or a deleted note, 401
+// without the right password and 429 after too many wrong ones.
+export async function openShare(id: string, password: string | null): Promise<SharePage> {
+	const row = getShareRow(id);
+	if (!row) throw error(404, 'This link is invalid or was revoked.');
+	if (expired(row)) throw error(410, 'This link expired.');
+	if (row.password_hash && (!password || !(await verifySharePassword(id, password, row.password_hash)))) {
+		throw error(401, 'Password required');
+	}
+	let markdown: string;
+	try {
+		markdown = await readNote(row.note_path);
+	} catch {
+		throw error(410, 'This note no longer exists.');
+	}
+	let updatedAt: number | null = null;
+	try {
+		updatedAt = (await stat(safeResolve(row.note_path))).mtimeMs;
+	} catch {}
+
+	const { urls } = shareImages(markdown, row.note_path);
+	const proof = row.password_hash ? `?proof=${encodeURIComponent(mintProofToken(id))}` : '';
+	const asset = (url: string) => {
+		const i = urls.indexOf(url);
+		return i < 0 ? '' : `/api/share/${encodeURIComponent(id)}/assets/${i}${proof}`;
+	};
+	let linkTo: ((target: string) => string | null) | undefined;
+	if (findWikilinksInText(markdown).some((w) => w.target)) {
+		const notes = wikiResolver(notePathsFromTree(await listTree('')));
+		const shareOf = db.prepare(
+			`SELECT id FROM shares WHERE note_path = ? AND (expires_at IS NULL OR expires_at > ?)
+			 ORDER BY password_hash IS NOT NULL, created_at DESC LIMIT 1`
+		);
+		linkTo = (target) => {
+			const path = notes.resolve(target);
+			const other = path && (shareOf.get(path, Date.now()) as { id: string } | undefined);
+			return other ? `/s/${encodeURIComponent(other.id)}` : null;
+		};
+	}
+	const title = effectiveTitle(markdown, row.note_path);
+	const { html, toc } = withHeadingIds(renderNoteToHtml(markdown, row.note_path, asset, linkTo));
+	return {
+		title,
+		description: excerpt(html, title),
+		html,
+		toc,
+		updatedAt,
+		hasPassword: !!row.password_hash
+	};
+}
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+const INLINE = new Set(['a', 'span', 'strong', 'em', 'b', 'i', 'code', 's', 'del', 'mark', 'sub', 'sup', 'u']);
+const VOID = new Set(['img', 'br', 'hr', 'input', 'wbr', 'col', 'source', 'path', 'rect', 'circle', 'line']);
+
+// The text a reader sees in a piece of rendered html: no math, code or icons.
+function plainText(html: string): string {
+	let text = '';
+	let skip = 0;
+	let at = 0;
+	for (const m of html.matchAll(/<(\/?)([a-zA-Z0-9]+)([^>]*?)(\/?)>/g)) {
+		const [, close, tag, attrs, selfClose] = m;
+		if (!skip) text += html.slice(at, m.index) + (INLINE.has(tag.toLowerCase()) ? '' : ' ');
+		at = m.index + m[0].length;
+		if (VOID.has(tag.toLowerCase()) || selfClose) continue;
+		if (close) {
+			if (skip) skip--;
+		} else if (skip || /^(pre|svg|style|script)$/i.test(tag) || /class="katex/.test(attrs)) skip++;
+	}
+	if (!skip) text += html.slice(at);
+	return text
+		.replace(/&(amp|lt|gt|quot|#39);/g, (_, e: string) => ENTITIES[e])
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+function excerpt(html: string, title: string): string {
+	let text = plainText(html.slice(0, 20_000));
+	if (text.startsWith(title)) text = text.slice(title.length).trim();
+	return text.length > 200 ? `${text.slice(0, 199).trimEnd()}…` : text;
+}
+
+// Gives every heading below the title an id the contents list can link to.
+function withHeadingIds(html: string): Pick<SharePage, 'html' | 'toc'> {
+	const toc: SharePage['toc'] = [];
+	const used = new Set<string>();
+	let first = true;
+	const out = html.replace(/<h([1-6])>([\s\S]*?)<\/h\1>/g, (whole, lv: string, inner: string) => {
+		const level = Number(lv);
+		const text = plainText(inner);
+		if ((first && level === 1) || !text) {
+			first = false;
+			return whole;
+		}
+		first = false;
+		const base = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'section';
+		let id = base;
+		for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+		used.add(id);
+		toc.push({ id, text, level });
+		return `<h${lv} id="${id}">${inner}</h${lv}>`;
+	});
+	return { html: out, toc };
 }

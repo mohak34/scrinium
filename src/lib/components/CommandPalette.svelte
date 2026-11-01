@@ -40,7 +40,7 @@
 	}
 
 	async function openNote(path: string) {
-		await flushSave();
+		void flushSave();
 		openTab(path);
 		if (page.url.pathname !== '/') await goto('/');
 	}
@@ -62,6 +62,7 @@
 		['account', 'Account', 'Google Calendar connection'],
 		['devices', 'Devices', 'Phone tokens'],
 		['agents', 'Agents', 'MCP URL and agent tokens'],
+		['shares', 'Shared links', 'Copy, revoke or password links'],
 		['about', 'About', 'Version and links']
 	];
 

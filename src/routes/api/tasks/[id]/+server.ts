@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getTask, updateTask, deleteTask, getProject, setSubtreeProject } from '$lib/server/db';
-import { isArea, isPriority, isStatus } from '$lib/taskModel';
+import { isPriority, isStatus } from '$lib/taskModel';
 import { parseStamp, parseWaitingSince } from '$lib/server/taskInput';
 
 // Walk the whole parent chain to reject a reparent that would cycle. No hop
@@ -42,10 +42,6 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (body.priority !== undefined) {
 		if (!isPriority(body.priority)) throw error(400, 'Bad priority');
 		patch.priority = body.priority;
-	}
-	if (body.area !== undefined) {
-		if (body.area !== null && !isArea(body.area)) throw error(400, 'Bad area');
-		patch.area = body.area;
 	}
 	if (body.waiting_on !== undefined) {
 		if (body.waiting_on !== null && typeof body.waiting_on !== 'string')

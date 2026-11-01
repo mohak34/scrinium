@@ -9,7 +9,7 @@ async function notesUnder(rel: string, original: string, out: string[]): Promise
 	for (const d of await fs.readdir(safeResolve(rel), { withFileTypes: true }).catch(() => [])) {
 		if (d.name.startsWith('.')) continue;
 		if (d.isDirectory()) await notesUnder(`${rel}/${d.name}`, `${original}/${d.name}`, out);
-		else if (d.name.endsWith('.md')) out.push(`${original}/${d.name}`);
+		else if (d.name.toLowerCase().endsWith('.md')) out.push(`${original}/${d.name}`);
 	}
 }
 
@@ -19,7 +19,7 @@ export const GET: RequestHandler = async () => {
 	for (const e of entries) {
 		const notes: string[] = [];
 		if (e.isDir) await notesUnder(binPath('archive', e.name), e.originalPath, notes);
-		else if (e.originalPath.endsWith('.md')) notes.push(e.originalPath);
+		else if (e.originalPath.toLowerCase().endsWith('.md')) notes.push(e.originalPath);
 		out.push({ name: e.name, originalPath: e.originalPath, archivedAt: e.movedAt, isDir: e.isDir, notes });
 	}
 	return json(out);

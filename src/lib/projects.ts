@@ -23,3 +23,34 @@ export function boardHref(view: ProjectView): string {
 	if (view === 'all') return '/tasks/kanban';
 	return `/tasks/kanban?project=${encodeURIComponent(view.project ?? '')}`;
 }
+
+// A project's icon and color in the sidebar, picked from these. Quotidian
+// has no row and always shows as home in gray.
+export const PROJECT_ICONS = [
+	'deployed_code', 'school', 'work', 'menu_book', 'science', 'code', 'fitness_center', 'savings',
+	'flight', 'home', 'psychology', 'rocket_launch', 'music_note', 'palette', 'sports_esports', 'favorite'
+] as const;
+export const PROJECT_COLORS = ['gray', 'teal', 'blue', 'green', 'rose', 'violet', 'orange', 'yellow', 'sand'] as const;
+export type ProjectIcon = (typeof PROJECT_ICONS)[number];
+export type ProjectColor = (typeof PROJECT_COLORS)[number];
+
+export const colorVar = (c: ProjectColor) =>
+	c === 'gray' ? 'var(--text-2)' : c === 'teal' ? 'var(--accent)' : `var(--${c})`;
+
+export const isProjectIcon = (v: unknown): v is ProjectIcon => PROJECT_ICONS.includes(v as ProjectIcon);
+export const isProjectColor = (v: unknown): v is ProjectColor => PROJECT_COLORS.includes(v as ProjectColor);
+
+// An unpicked color comes from the path, so each project starts out different
+// and keeps its color across reloads.
+export function projectStyle(
+	key: ProjectKey,
+	row?: { icon: string | null; color: string | null }
+): { icon: ProjectIcon; color: ProjectColor } {
+	if (key === null) return { icon: 'home', color: 'gray' };
+	let h = 0;
+	for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+	return {
+		icon: isProjectIcon(row?.icon) ? row.icon : 'deployed_code',
+		color: isProjectColor(row?.color) ? row.color : PROJECT_COLORS[1 + (h % (PROJECT_COLORS.length - 1))]
+	};
+}

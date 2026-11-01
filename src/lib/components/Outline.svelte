@@ -11,18 +11,39 @@
 
 	const entries = $derived(parseOutline(content));
 	// The heading the caret sits under lights up as you move through the note.
+	// Binary search: entries are in line order and the caret moves often.
 	const current = $derived.by(() => {
-		let line = -1;
-		for (const e of entries) if (e.line <= $cursorPos.line) line = e.line;
-		return line;
+		let lo = 0;
+		let hi = entries.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if (entries[mid].line <= $cursorPos.line) lo = mid + 1;
+			else hi = mid;
+		}
+		return lo ? entries[lo - 1].line : -1;
 	});
-	const minLevel = $derived(Math.min(...entries.map((e) => e.level)));
+	const minLevel = $derived(entries.reduce((m, e) => Math.min(m, e.level), 6));
+
+	// A long outline scrolls in its own box and draws only the rows in view,
+	// so a note with thousands of headings opens as fast as a short one.
+	const LONG = 200;
+	const ROW = 28;
+	const long = $derived(entries.length > LONG);
+	let scrollTop = $state(0);
+	let boxHeight = $state(0);
+	const first = $derived(long ? Math.max(0, Math.floor(scrollTop / ROW) - 10) : 0);
+	const shown = $derived(long ? entries.slice(first, first + Math.ceil(boxHeight / ROW) + 20) : entries);
 </script>
 
 {#if entries.length > 0}
 	<PanelSection icon="toc" title="Outline">
-		<ul>
-			{#each entries as e (e.line)}
+		<ul
+			class:long
+			bind:clientHeight={boxHeight}
+			onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
+		>
+			{#if long}<li class="gap" style="height: {first * ROW}px"></li>{/if}
+			{#each shown as e (e.line)}
 				<li>
 					<button
 						class:on={e.line === current}
@@ -34,6 +55,7 @@
 					</button>
 				</li>
 			{/each}
+			{#if long}<li class="gap" style="height: {(entries.length - first - shown.length) * ROW}px"></li>{/if}
 		</ul>
 	</PanelSection>
 {/if}
@@ -44,6 +66,14 @@
 		margin: 2px 0 0 6px;
 		padding: 0;
 		border-left: 1px solid var(--line-2);
+	}
+	ul.long {
+		max-height: 60vh;
+		overflow-y: auto;
+	}
+	ul.long li {
+		height: 28px;
+		overflow: hidden;
 	}
 	button {
 		display: block;

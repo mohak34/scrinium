@@ -21,7 +21,7 @@
 		busy = true;
 		try {
 			const path = await restoreTrash(e.trashName);
-			if (path?.endsWith('.md')) onOpened();
+			if (/\.md$/i.test(path ?? '')) onOpened();
 		} finally {
 			busy = false;
 		}

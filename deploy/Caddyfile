@@ -5,5 +5,8 @@
 # to configure for TLS.
 
 scrinium.yourdomain.com {
+	# Compresses notes, JSON and pages. PDFs and images are left alone, so
+	# byte ranges stay valid.
+	encode zstd gzip
 	reverse_proxy localhost:3000
 }

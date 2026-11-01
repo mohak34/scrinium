@@ -24,12 +24,12 @@
 	const pinned = $derived($pinnedPaths.includes(path));
 
 	const menuItems = $derived([
-		{ label: pinned ? 'Unpin' : 'Pin to sidebar', action: () => togglePin(path) },
-		{ label: 'Rename', action: () => renameRequest.set({ path }) },
-		{ label: 'Copy path', action: () => void navigator.clipboard?.writeText(path).catch(() => {}) },
-		{ label: 'Download .md', action: () => void downloadNote(path).catch(() => {}) },
-		{ label: 'Archive', action: () => void archivePath(path) },
-		{ label: 'Move to trash', danger: true, action: () => void deletePath(path) }
+		{ label: 'Rename', icon: 'edit', action: () => renameRequest.set({ path }) },
+		{ label: pinned ? 'Unpin' : 'Pin to sidebar', icon: pinned ? 'keep_off' : 'keep', action: () => togglePin(path) },
+		{ label: 'Copy path', icon: 'content_copy', divider: true, action: () => void navigator.clipboard?.writeText(path).catch(() => {}) },
+		{ label: 'Download .md', icon: 'download', action: () => void downloadNote(path).catch(() => {}) },
+		{ label: 'Archive', icon: 'inventory_2', divider: true, action: () => void archivePath(path) },
+		{ label: 'Move to trash', icon: 'delete', danger: true, action: () => void deletePath(path) }
 	]);
 
 	async function printNote() {

@@ -16,7 +16,7 @@ Notes you are done with can be archived from the note menu, the file tree, or th
 
 **Settings > Shared links** lists every public share link, grouped by note. From there you can copy a link, add, change or remove its password, revoke it, or open the note. New links are still made from a note's Share button.
 
-A project is a folder at the vault root with its own notes, pins and board. Everything outside a project is Quotidian. The notes sidebar shows all projects as sections, or one project at a time from the switcher at its top, where search then stays inside that project. Pin a note in its project or everywhere. Make a project from the switcher, a right-click in the sidebar, the palette, or the + on the Board's tabs; any top-level folder can become one. The Board has a tab per project plus All and Quotidian. A project's Inbox is its backlog and stays on its own tab. Its tasks show on All and the task list once they move to This week or later.
+A project is a folder at the vault root with its own notes, pins and board. Everything outside a project is Quotidian. The notes sidebar shows all projects as sections, or one project at a time from the switcher at its top, where search then stays inside that project. Pin a note in its project or everywhere. Make a project from the switcher, a right-click in the sidebar, the palette, or the + on the Board's tabs; any top-level folder can become one. The Board has a tab per project plus All and Quotidian. A project's Inbox is its backlog and stays on its own tab. Its tasks show on All, the task list and the calendar once they move to This week or later, or get a date. On All, the Board can split its columns into one lane per project.
 
 ## Getting started (local)
 

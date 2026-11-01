@@ -83,12 +83,17 @@ Scrinium is small, but there are a few footguns specific to it.
    plus `BETTER_AUTH_SECRET` gate the whole deployment. Never log or commit
    them.
 4. **Breaking the title ↔ filename sync loop.** For `.md` notes the first `# `
-   heading and the filename are kept identical (see `scheduleTitleSync` /
-   `syncFilenameToTitle` in `src/lib/stores/vault.ts`). Both directions guard
-   against loops by comparing sanitized values before acting; a rename also
-   flushes pending saves first. Don't add a second path that renames notes
-   without going through `renameNote` (moves included), or tabs/pins/
-   activePath and queued saves drift. A rename of the open note moves
+   heading and the filename are kept identical. Heading to filename is
+   `scheduleTitleSync` in `src/lib/stores/vault.ts`; filename to heading is
+   `retitle` in frontmatter.ts, applied by the server on every move and by
+   `renameNote` to the editor's live text. Both directions guard against
+   loops by comparing sanitized values before acting (`retitle` only
+   touches a title that was the old filename); a rename also flushes
+   pending saves first. Every move, from the UI or MCP, is the notes PATCH
+   route: `renamePath` moves the file and its database rows in one vault
+   lock. Don't add a second path that renames notes without going through
+   `renameNote` on the client (moves included), or tabs/pins/activePath and
+   queued saves drift. A rename of the open note moves
    `shownNote()` with it, so the page keeps the editor instead of reloading.
 5. **Bypassing the bin indexes.** Deletes move files into `VAULT_DIR/.trash/`,
    archiving into `VAULT_DIR/.archive/`, flat as `<stamp>-<name>`, with the
@@ -117,13 +122,30 @@ Scrinium is small, but there are a few footguns specific to it.
    server-derived copy over it. `flushSave()` resolves false on a failed
    write - anything else that reads the server copy must check it. The editor is
    one view for every note: a note switch goes through `showNote`, which
-   loads in the queue and prefers the note's unsaved text over the server
-   copy (so a failed save never reopens stale), then `setDoc(text, true)`,
+   prefers the note's unsaved text over the server copy (so a failed save
+   never reopens stale). A note with nothing pending or being written is
+   read right away, outside the queue, so a switch never waits on saves of
+   the note being left; if any write of it or any queued change finished
+   or is queued meanwhile (`writtenAt`, `changedAt`, `changing`), the read
+   reruns in the queue. Then `setDoc(text, true)`,
    which also drops undo history - never swap docs another way. Keystrokes
    save to `shownNote()`, which lags `activePath` until the load lands. A
    load the user already left is skipped; a failed load of the selected
    note sets `activePath` back to `shownNote()` (or none), so the chrome
    never names a note other than the one being typed into.
+   Saves are version-checked: every note read or write answers with
+   `X-Note-Version` (a hash of the text), the browser keeps it per path
+   (`versions` in stores/vault.ts) and sends it back as `If-Match`.
+   `saveNote` in server/vault.ts compares inside the vault lock: a note
+   changed elsewhere (an agent, the phone, another tab) is kept as
+   `<name> (conflict).md` and the tab's text still saves; a note moved or
+   trashed elsewhere gets the text as that copy and the editor follows it,
+   so a stale tab never recreates it. The rename response carries the new
+   versions of the notes it relinked, so this tab's own moves never
+   conflict. On window focus `refreshShown` loads the open note's newer
+   server copy when nothing is unsaved. Writes without `If-Match` (MCP,
+   the phone) overwrite. A client path that PUTs a note goes through
+   `putNote` and `saved`, or it loses track of the version.
 8. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
 9. **Vault mutations go through `withVaultLock`** in `src/lib/server/vault.ts`.
@@ -139,6 +161,9 @@ Scrinium is small, but there are a few footguns specific to it.
 Use `bun` (never npm/yarn) for dev tooling. The lockfile is `bun.lock`.
 
 - `bun run dev` — dev server on `http://localhost:5173`. Bounces to `/login`.
+  With `DEV_LOGIN_EMAIL` set (plus `VAULT_DIR`/`DATABASE_PATH` pointing at
+  a throwaway vault) it signs every request in as that email, for previews
+  Google sign-in can't reach. Dev only: builds ignore it.
 - `bun run check` — the gate: `svelte-kit sync && svelte-check`. Must be
   0 errors / 0 warnings before committing.
 - `bun run build` — production build via `@sveltejs/adapter-node` → `build/`,
@@ -179,8 +204,12 @@ State channels you will touch:
   callouts.ts (shared Obsidian `> [!note]` parser: kinds, aliases, icons,
   `findCallouts`; editor boxes via line decos + `!active` hides, print
   rewrites blockquotes post-restore so math/code inside keep rendering),
-  wikilinks.ts (shared `[[link]]` parse/resolve/backlink-match; the editor
-  pill `WikilinkWidget` and its click-to-open/create live in livePreview.ts,
+  wikilinks.ts (shared `[[link]]` parse/resolve, `[[#heading]]` for the
+  note itself, `wikiTargetFor` (shortest unambiguous way to write a link),
+  `wikilinkNewPath` (where an unresolved link creates its note, folders
+  included); the editor pill `WikilinkWidget` and its click-to-open/create
+  live in livePreview.ts - a heading link opens through `openNoteAt`, which
+  jumps once `showNote` lands,
   fed the note list by `wikiCtxField` there; `[[` completion in
   wikiComplete.ts),
   frontmatter.ts (shared YAML `---` props: parse, `effectiveTitle`
@@ -212,20 +241,51 @@ State channels you will touch:
   mathSnippets.ts (Tab word/subscript and Space fraction triggers),
   tableBlock.ts (top-level GFM tables as a StateField like mathBlock:
   the table is always one block widget rendered by the lazy-loaded
-  renderNote.ts, and editing is per cell. When the main selection sits
-  in a cell, `syncCell` mounts a small nested EditorView in that td for
-  the cell's raw source; its edits are written back to the main doc as
+  renderNote.ts and drawn as a grid (theme in markdownSetup.ts), and
+  editing is per cell. Columns are measured once and laid out fixed
+  (`layoutColumns`; columns keep their own width and an empty filler
+  column takes the spare room and holds the `+` new-column button, a
+  table wider than the note scrolls), so opening a cell never resizes anything.
+  Dragging a header's right edge sets that column's width and
+  double-click fits it to its content (`resizeColumn`); the width is
+  saved as `cols[i].width` in the settings line. When
+  the main selection sits in a cell, `syncCell` mounts a small nested
+  EditorView over that td (the rendered content keeps the cell's size)
+  for the cell's raw source; its edits are written back to the main doc as
   one transaction each (same userEvent, so undo groups like typing and
-  runs through the main history), and the widget skips repainting for
+  runs through the main history), and the widget skips rendering and repainting for
   its own echo. A column that repeats a value offers the column's
   values as completions in that cell editor (`columnChoices`), so a
-  status column edits like a select with nothing declared. Tab/Enter/arrows step cells via the main selection;
+  status column edits like a select with nothing declared; status
+  choices carry their color dot and a new value offers `Add "x"`. Date
+  and deadline cells open a month picker (`datePicker`, a CM tooltip on
+  the cell editor) instead of completions. The cell editor also
+  completes `[[` and `#` (the note's sources, fed copies of its
+  `wikiCtxField`/`tagCtxField`); the note's own completions skip tables
+  (`outsideTables` in markdownSetup.ts), or they open at the widget's edge. Ctrl+click
+  opens links and wikilinks from the rendered cell or the cell editor
+  (`followWikilink`/`openUrl` in livePreview.ts). Tab/Enter/arrows step cells via the main selection;
   typed `|` is escaped. In vim normal mode the cell is only outlined
   and j/k move by row (vim's own j/k jump over the widget); `i`/`a`
   open it through `tableVim`, a facet CodeEditor provides. Row/column/
-  align/sort palette commands rewrite the whole table through
+  align palette commands rewrite the whole table through
   `readTable`/`writeTable` in tableRanges.ts; "Table: edit as markdown"
-  shows the raw lines until the cursor leaves. Ranges from
+  shows the raw lines, settings line included, until the cursor leaves.
+  Column types (text, date, deadline, status, number), sort and filters
+  live in one `<!-- scrinium-table: {json} -->` line right above the
+  table (tableMeta.ts), keyed by column index; the widget hides it,
+  renderNote.ts drops it, column commands shift its keys. They are set
+  from the header menu (a click on the header; Shift+click edits it,
+  Rename does too), the toolbar's Sort and Filter menus (`tableMenu`, a
+  facet CodeEditor provides to open a ContextMenu) and the palette sort
+  commands. Sort and
+  filter are a view: `tableView` orders the rendered rows, the markdown
+  never moves, and `orders` maps rendered rows back to source rows for
+  clicks and row stepping. A filter never hides the row the cursor is
+  in; that row is dimmed instead. Text and number columns filter by
+  `contains` (`filter[i].text`, typed into `askText`, a small input
+  inside the editor DOM so the editor theme reaches it). The toolbar above the table also counts rows, shows the markdown
+  and, below the table, adds a row. Ranges from
   tableRanges.ts so `livePreview.ts` never decorates inside a table),
   docRanges.ts (`perDoc`: a whole-doc scan cached per document and
   syntax tree, so math, table, callout and frontmatter ranges are found
@@ -236,13 +296,20 @@ State channels you will touch:
   "<N> lines yanked" status notice via the facade dialog signal, read off
   live selection state so a stale range can never paint),
   formatting.ts.
-- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe, plus the
-  trash and archive bins: move/list/restore/purge backed by each bin's
-  `.index.json`), bins.ts (the bookkeeping around a bin move that routes
+- `src/lib/server/` — vault.ts (filesystem, path-traversal-safe with
+  symlinks followed - `safeResolve` refuses a link out of the vault and
+  the walkers skip links - plus the trash and archive bins:
+  move/list/restore/purge backed by each bin's `.index.json`, booked
+  before the move so a failed index write moves nothing), bins.ts (the bookkeeping around a bin move that routes
   call), db.ts (sqlite cache
   + api_tokens table), shares.ts (public share links: random id → live vault
-  path, optional scrypt password hash; rename/delete follow the file),
-  auth.ts (better-auth, Google, allowlist), indexer.ts,
+  path, optional scrypt password hash, 10 wrong guesses per share lock it
+  for 10 minutes, optional `expires_at` after which the link and its
+  images answer like a revoked one; rename/delete follow the file),
+  auth.ts (better-auth, Google, allowlist), indexer.ts (the search
+  index scan: the first search waits for it, later ones rescan in the
+  background at most every 30 s and drop rows for files gone outside
+  the app),
   google.ts (read-only Calendar overlay: refreshes the stored Google token,
   reads every calendar ticked in Google's sidebar with pagination; only a
   revoked grant or missing scope means "reconnect", outages are a 502).
@@ -260,7 +327,10 @@ State channels you will touch:
   under `BODY_SIZE_LIMIT` in `deploy/scrinium.service` (`MAX_UPLOAD_BYTES`
   in assets.ts). `PUT /api/assets/<path>` overwrites an existing non-note
   file the same streamed way (`replaceAssetStream`, atomic rename under
-  the vault lock); the PDF pane saves annotations through it.
+  the vault lock); the PDF pane saves annotations through it. Asset reads
+  answer with `X-Asset-Version` (size and mtime); a PUT with it as
+  `If-Match` over a file changed since saves as `<name> (conflict).<ext>`
+  instead, and the pane keeps saving to that copy.
   `src/lib/attachments.ts` (`isImagePath`, `attachmentMarkdown`,
   `resolveAssetUrl`) is shared by the editor, MCP and share pages.
   mobileAuth.ts (Google ID-token verification + API-token issue/verify),
@@ -282,19 +352,36 @@ State channels you will touch:
   pdf.js, only when a PDF opens. pdf.js's fonts, CMaps and wasm decoders
   are bundled through `import.meta.glob` and handed over by file name.
   Highlights, ink and text notes are written into the PDF as standard
-  annotations (`saveDocument`) and PUT back over the file, debounced and
-  again on close; there is no sidecar store. The asset route caches for
-  an hour, so the pane always fetches with `no-store`.
+  annotations (`saveDocument`) and PUT back over the file after a 10 s
+  pause, when the tab hides and on close; there is no sidecar store.
+  A failed save on close retries for about a minute, then downloads the
+  annotated PDF so nothing is lost. The pane reads the version
+  with a HEAD and hands pdf.js the URL with `?v=<version>`: the asset route
+  serves byte ranges (the first pages show before the file is down) and
+  answers 412 once the file changed, so a pane never mixes two versions.
+  Asset reads carry an ETag and `no-cache`, so browsers revalidate (304)
+  instead of showing an overwritten file.
+  Ctrl+F inside the pane opens pdf.js's own find (`PDFFindController`)
+  ahead of the page's Mod+F, which opens the note editor's search. The
+  page counter is a page jump; page and zoom per PDF path and the dark
+  pages switch (a CSS filter on the page canvas) live in localStorage.
 - `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
   renderer (markdown-it plus the editor's math, code, callout, wikilink
-  and tag parsing). Used by `/print` (NoteBar's Print / PDF) and the
-  `/s/[id]` share viewer; a markdown feature that should show up in PDFs
-  and shares goes here as well as in the editor. It builds its own GFM
-  parser from `@lezer/markdown` and must never import `livePreview.ts`,
+  and tag parsing). Used by `/print` (NoteBar's Print / PDF) and, on the
+  server, the `/s/[id]` share viewer (`openShare` in shares.ts, which
+  turns `[[links]]` to notes with their own live link into links); a
+  markdown feature that should show up in PDFs and shares goes here as
+  well as in the editor. It builds its own GFM parser from
+  `@lezer/markdown` and must never import `livePreview.ts`,
   `markdownSetup.ts` or `@codemirror/lang-markdown`: any of them ships the
-  whole editor to share pages.
+  whole editor to the print page and the server.
 - `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
-  Sidebar, TabBar, ShortcutHelp (the `?` overlay), ReminderToasts (mounted
+  Sidebar, TabBar, ShortcutHelp (the `?` overlay), Select and DatePicker
+  (the app's own select and date/time field; no native `<select>` or date
+  input, they ignore the theme. Select opens ContextMenu under its button.
+  Both popups claim their keys in the window capture phase, and the
+  settings dialog and bins view leave Esc to an open `.ctx-menu` or
+  `.date-pop`), ReminderToasts (mounted
   in the root layout except on login and share pages; polls
   `POST /api/tasks/due` every 30 s while the tab is visible).
   CommandPalette is mounted in the root layout too, so Ctrl+K works on
@@ -310,20 +397,39 @@ State channels you will touch:
   The notes sidebar is split by project (`src/lib/projects.ts`): a
   switcher shows All projects or one, each project is a collapsible
   section (Quotidian, everything outside a project folder, first) holding
-  its own pins and its file tree, and global pins sit above them. A
+  its own pins and its file tree, and global pins sit above them
+  under a Pinned band drawn like a project header in plain text color
+  (its rows show file and folder icons; project pins keep the pin icon). A
   section folds under its folder path in `collapsedDirs` ("" for
-  Quotidian), so its pins fold with it. Pins live in `pinnedPaths`; the
+  Quotidian), so its pins fold with it. A project header is a sticky one-line
+  band in its color with its icon inside a ring that fills as the
+  project's board tasks get done (done/total beside it) (`projectStyle` in projects.ts; icon and color set
+  from the header's right-click menu, stored on the `projects` row, an
+  unpicked color comes from the path) so it never reads as a folder. Pins live in `pinnedPaths`; the
   global ones are also in `globalPins`, the rest show in their project's
   section. In one project, search passes `?folder=` to `/api/search`.
   `sidebarDrag.ts` is the sidebar's drag: pointer events, not HTML5
-  drag-and-drop. Tree rows move into folders (a file row means its folder,
-  a section header or its empty space the section's folder), notes dropped
-  on the global Pinned list pin everywhere and on their own project's pins
-  pin there, pins reorder, move into a folder they are dropped on (staying
-  pinned), and unpin when dropped anywhere else. Targets are found by
+  drag-and-drop. Tree rows move into folders (a section header or its empty
+  space means the section's folder). A file dropped on the top or bottom
+  half of another file lands right before or after it, moving folders if
+  needed; that hand-placed order lives in `fileOrder` (localStorage, like
+  pins, in stores/vault.ts) and `inFileOrder` applies it, folders first.
+  Notes dropped on the Pinned list pin everywhere and on their own
+  project's pins pin there. Nothing is inserted mid-drag, so the tree never
+  shifts: an empty list is reached through rows already on screen, the
+  switcher bar (reads "Pin everywhere") and the note's project header
+  (a Pin target in place of its task count). Pins reorder, move into a folder they are dropped on, a pinned
+  folder's row and open tree included (all of the row but a thin strip at
+  its edges, which reorders when that changes the order), unpinning so they
+  show in that folder's tree, and unpin when dropped anywhere else or on the
+  folder they already live in; a folder dropped
+  on itself does nothing. Targets are found by
   `data-*` attributes under the pointer; the lifted row and its "Move to
-  X" label live in Sidebar.svelte. A pinned note shows only in its pin
-  list, not in the tree; its pin row carries the file menu minus Rename.
+  X" label live in Sidebar.svelte. Folders pin like notes and list
+  before the pinned notes, opening in place with their own tree. A pinned
+  note or folder shows only in its pin list, not in the tree; its pin row
+  carries its menu minus Rename. A pin on a folder that became a project
+  is not shown; the project's section stands for it.
   `bins/BinsView.svelte` is the full-page Archive / Trash / Review view,
   mounted (and its code loaded) by the root layout only while open,
   through `openBins(tab, focus?)` (`stores/bins.ts`) from the sidebar footer, the palette, task links and
@@ -337,15 +443,20 @@ State channels you will touch:
   settings dialog.
   `src/lib/archive.ts` holds the archive types and path mapping shared by
   the routes, MCP and the view.
-  `src/lib/relink.ts` finds relative markdown link destinations
-  (`[t](url)`, `![a](url)`, `[ref]: url`) with the editor's Lezer parser,
-  so code is never touched. `renamePath` in vault.ts uses it inside the
-  vault lock to fix the links a move broke, in the moved notes, in every
-  note linking into the move and in archived notes (from their original
-  path); the PATCH route reindexes and returns those paths. `renameNote`
-  applies the same `relinkNote` to the open note's live text and to queued
-  unsaved text, so autosave never writes the old links back. Moves that
-  skip `renamePath` leave broken images.
+  `src/lib/relink.ts` is the one link scanner: relative markdown link
+  destinations (`[t](url)`, `![a](url)`, `[ref]: url`) and wikilinks, found
+  with the editor's Lezer parser so code is never touched. `noteLinks`
+  lists where a note's links go (backlinks, archive review). `relinkNote`
+  fixes links after a move; wikilinks need resolvers for the vault before
+  and after it, since a move can also hand a bare name to another note
+  (old links then get pinned by path). `renamePath` in vault.ts runs it
+  inside the vault lock over the moved notes, every note linking into the
+  move and archived and trashed notes (from their original path); the
+  PATCH route reindexes and returns those paths. A restore that lands
+  under a new name fixes its own relative links. `renameNote` applies the
+  same `relinkNote` to the open note's live text and to queued unsaved
+  text, so autosave never writes the old links back. Moves that skip
+  `renamePath` leave broken links.
   `settings/SettingsDialog.svelte` is the one settings surface:
   a modal the root layout mounts (and loads) only while open, through
   `openSettings(page)` (`stores/settingsDialog.ts`) from the sidebar footer
@@ -357,7 +468,10 @@ State channels you will touch:
   copy, revoke, set or remove the password), About. While open
   it swallows keydown in the capture phase so app shortcuts never fire
   underneath; Esc closes it.
-- `src/routes/` — `/` (+page.svelte shell), `/login`, `/print`, `/tasks/*`,
+- `src/routes/` — `/` (+page.svelte shell; its server load sends the tree
+  and projects with the page, set into the stores after hydration, and
+  CodeEditor is a dynamic import so CodeMirror never holds up the
+  sidebar), `/login`, `/print`, `/tasks/*`,
   api/{auth,notes,tree,search,assets,attachments,tokens,trash,archive,backlinks,
   tags,tagged,tasks,projects,calendar}.
   `/api/mcp` is the stateless MCP endpoint (streamable HTTP, JSON
@@ -369,7 +483,13 @@ State channels you will touch:
   proofs), public
   `GET/POST /api/share/[id]` (+ `/assets/<n>`: the n-th image the note
   references, from `shareImages` in shares.ts - never a vault path) and the `/s/[id]`
-  viewer (ShareModal.svelte manages links from the note bar).
+  viewer (ShareModal.svelte manages links from the note bar). Open links
+  render on the server with the note's title and first line as link
+  preview tags; a password link sends nothing about the note until the
+  unlock POST returns it rendered. `withHeadingIds` in shares.ts gives the
+  rendered headings ids and returns the contents list; a note with 3+
+  headings shows it as a side column on wide screens and behind a
+  Contents button elsewhere.
 - `src/lib/design/theme.css` — the only design tokens: surfaces (`--bg`
   reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto
   accent split into `--accent-fill` (solid #175e54 under white text) and
@@ -379,8 +499,8 @@ State channels you will touch:
   The old Material-style names (`--primary`, `--surface-container-*`,
   `--on-surface*`) are aliases kept for components not yet moved over; new
   code uses the tokens. Never fill with `--accent` under text.
-  It also holds the one table look shared by the editor widget
-  (`.cm-table-block`) and the share/print sheet (`.paper`).
+  It also holds the table look of the share/print sheet (`.paper`); the
+  editor's table grid is styled in markdownSetup.ts.
 - App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in
   `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
   `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`
@@ -390,25 +510,35 @@ State channels you will touch:
   `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,
   NoteTasks, Tags, FileInfo in that order), `PageFooter.svelte`.
 - Tasks: `src/lib/taskModel.ts` is the single list of statuses (`inbox`,
-  `todo` = "This week", `doing`, `waiting`, `done`), areas and priorities,
-  shared by the API validation and the UI. Rows live in sqlite (`tasks`,
+  `todo` = "This week", `doing`, `waiting`, `done`) and priorities,
+  shared by the API validation and the UI. Tasks group only by project
+  (the old fixed areas became projects at boot via `migrateAreasToProjects`
+  in db.ts; the routes ignore an `area` older phone builds still send). Rows live in sqlite (`tasks`,
   `task_links`), not the vault. `waiting_since` is stamped when a task
   enters Waiting and cleared when it leaves; the task routes (and the MCP
   task tools) accept an earlier start, never a future one. `GET /api/tasks?note=` lists tasks linked to a
-  note; note renames move `task_links` with the file like shares.
+  note; note renames move `task_links` with the file like shares. A link must name
+  a live note and is stored as a clean vault path (`vaultRel`). The client
+  queues each task's writes (`queued` in `stores/tasks.ts`) so PATCHes land
+  in the order they were made; only the newest edit paints the server row.
   Projects: a `projects` row registers a folder at the vault root, never
   a nested one (`POST /api/projects` creates it; `NewProjectDialog.svelte`
   from the sidebar, the palette or the board's tabs); tasks with no
   project are Quotidian. `tasks.project` holds that folder path, and a note/folder
-  rename moves both via `renameProjects`. Rows outlive a trashed folder;
+  rename moves both via `renameProjects`; the PATCH route refuses to move
+  a project folder below the root. Rows outlive a trashed folder;
   a restore under a new name moves the ones whose folders came back.
   Subtasks always carry their parent's project: the task routes enforce
   it and `setSubtreeProject` cascades a change on the parent.
-  `onMainBoard` in taskModel.ts keeps a project's Inbox (its backlog) off
-  the All board, the list and `get_agenda`; the board's tabs set
+  `selectTasks(tasks, view)` in taskModel.ts is the one rule for what a
+  view shows (board, list, calendar, `get_agenda`): a project's undated
+  Inbox is its backlog and stays off All, a dated task always shows, and
+  subtasks follow the same rule. The board's tabs set
   `?project=<folder>` for one project and an empty `?project=` for
-  Quotidian (`boardHref`). The calendar shows every dated task.
-  `/tasks` (list + filters), `/tasks/kanban` (columns or by-area lanes, both
+  Quotidian (`boardHref`). The calendar shows dated subtasks with their
+  parent's title.
+  `/tasks` (list + filters), `/tasks/kanban` (columns or, on All, one lane
+  per project, both
   drag and drop), `/tasks/calendar` (month grid + day agenda, drop to
   schedule) share `TaskDrawer.svelte` docked by `tasks/+layout.svelte`.
 
@@ -460,9 +590,11 @@ State channels you will touch:
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
 - Fonts ship as packages (`@fontsource-variable/atkinson-hyperlegible-next`,
-  `space-grotesk`, `jetbrains-mono`) plus `@material-symbols/font-400`, of which
-  only `outlined.css` is imported; that font carries the FILL axis used by
-  the `.fill` icon class.
+  `space-grotesk`, `jetbrains-mono`). Icons are Material Symbols Outlined
+  subset to the names the code uses (`src/lib/design/material-symbols.woff2`,
+  loaded by `icons.css`, FILL axis kept for the `.fill` class). After using
+  a new icon name, run `uv run scripts/subset-icons.py` (it reads the full
+  font from `@material-symbols/font-400`) or the icon shows as its name.
 - The vault and `data/` live OUTSIDE `app/` on the box and are never touched
   by deploys.
 

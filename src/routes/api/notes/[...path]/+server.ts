@@ -3,6 +3,8 @@ import type { RequestHandler } from './$types';
 import {
 	readNote,
 	writeNote,
+	saveNote,
+	noteVersion,
 	createNoteFile,
 	createFolder,
 	renamePath,
@@ -18,7 +20,8 @@ import {
 	indexNote,
 	renameNoteIndex,
 	renameTaskLinks,
-	renameProjects
+	renameProjects,
+	getProject
 } from '$lib/server/db';
 import { renameShares } from '$lib/server/shares';
 
@@ -35,24 +38,46 @@ function writable(path: string | undefined): string {
 	return vaultRel(path);
 }
 
-export const GET: RequestHandler = async ({ params }) => {
+// Every read and write answers with the note's version (X-Note-Version), a
+// hash of its text; the browser sends it back as If-Match. The version is
+// also the ETag, so reopening an unchanged note is a 304 from the cache.
+export const GET: RequestHandler = async ({ params, request }) => {
 	if (!params.path) throw error(400, 'Invalid path');
 	const content = await readNote(params.path);
-	return text(content);
+	const version = noteVersion(content);
+	const headers = { 'X-Note-Version': version, ETag: version, 'Cache-Control': 'private, no-cache' };
+	if (request.headers.get('if-none-match') === headers.ETag) return new Response(null, { status: 304, headers });
+	return text(content, { headers });
 };
 
-export const PUT: RequestHandler = async ({ params, request }) => {
-	const path = writable(params.path);
-	const content = await request.text();
-	// `If-None-Match: *` asks for create-only: 409 instead of overwriting.
-	if (request.headers.get('if-none-match') === '*') await createNoteFile(path, content);
-	else await writeNote(path, content);
-
+function indexed(path: string, content: string) {
 	const title = effectiveTitle(content, path);
 	upsertNoteMeta(path, title, Date.now());
 	indexNote(path, title, content);
+}
 
-	return new Response(null, { status: 204 });
+// `If-None-Match: *` asks for create-only: 409 instead of overwriting.
+// `If-Match: <version>` saves over that version only (saveNote) and answers
+// with where the text landed and any conflict copy; with `X-Note-Strict: 1`
+// as well it answers 412 instead of keeping a copy (MCP edits read again).
+// Without either the note is overwritten (the phone).
+export const PUT: RequestHandler = async ({ params, request }) => {
+	const path = writable(params.path);
+	const content = await request.text();
+	const version = request.headers.get('if-match');
+	if (version) {
+		const saved = await saveNote(path, content, version, request.headers.get('x-note-strict') === '1');
+		indexed(saved.path, saved.content);
+		if (saved.conflict) indexed(saved.conflict.path, saved.conflict.content);
+		return json(
+			{ path: saved.path, conflict: saved.conflict?.path ?? null },
+			{ headers: { 'X-Note-Version': noteVersion(saved.content) } }
+		);
+	}
+	if (request.headers.get('if-none-match') === '*') await createNoteFile(path, content);
+	else await writeNote(path, content);
+	indexed(path, content);
+	return new Response(null, { status: 204, headers: { 'X-Note-Version': noteVersion(content) } });
 };
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -71,21 +96,36 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	// Same path: nothing moves, and the bookkeeping below would drop the
 	// note's own task links and index row as "stale rows at the target".
 	if (from === to) return json({ relinked: [] });
-	const relinked = await renamePath(from, to);
-	renameNoteMeta(from, to);
-	renameNoteIndex(from, to);
-	renameShares(from, to);
-	renameTaskLinks(from, to);
-	renameProjects(vaultRel(from), vaultRel(to), isFolder);
-	// Notes whose relative links the move rewrote; the editor fixes its
-	// copy of the open one the same way (relinkNote). Archived ones stay
-	// searchable but have no metadata, like every binned note.
+	// Projects are folders at the vault root; nested, the row would point
+	// at a folder the sidebar never shows as one.
+	if (getProject(vaultRel(from)) && vaultRel(to).includes('/')) {
+		throw error(400, 'A project folder stays at the vault root');
+	}
+	const relinked = await renamePath(from, to, () => {
+		renameNoteMeta(from, to);
+		renameNoteIndex(from, to);
+		renameShares(from, to);
+		renameTaskLinks(from, to);
+		renameProjects(vaultRel(from), vaultRel(to), isFolder);
+	});
+	// Notes whose links or title the move rewrote; the editor fixes its
+	// copy of the open one the same way (relinkNote, retitle). Archived ones stay
+	// searchable but have no metadata, like every binned note; trashed ones
+	// stay out of the index.
 	for (const n of relinked) {
+		if (n.path.startsWith('.trash/')) continue;
 		const title = effectiveTitle(n.content, n.path);
 		if (!isHiddenPath(n.path)) upsertNoteMeta(n.path, title, Date.now());
 		indexNote(n.path, title, n.content);
 	}
-	return json({ relinked: relinked.map((n) => n.path) });
+	// Versions let the browser keep saving the notes the move rewrote; it
+	// takes one only over the `previous` version it holds, so text it never
+	// saw (changed elsewhere before the move) still ends in a conflict copy.
+	return json({
+		relinked: relinked.map((n) => n.path),
+		versions: Object.fromEntries(relinked.map((n) => [n.path, noteVersion(n.content)])),
+		previous: Object.fromEntries(relinked.map((n) => [n.path, noteVersion(n.before)]))
+	});
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {

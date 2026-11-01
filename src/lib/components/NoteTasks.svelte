@@ -19,15 +19,23 @@
 	let adding = $state(false);
 	let draft = $state('');
 
+	// The last rows stay up until the next note's land, so a switch never collapses the panel.
+	let loaded = $state(false);
+
 	$effect(() => {
 		const path = $activePath;
-		rows = [];
-		if (!path) return;
+		if (!path) {
+			rows = [];
+			loaded = false;
+			return;
+		}
 		let cancelled = false;
 		fetch(`/api/tasks?note=${encodeURIComponent(path)}`)
 			.then((res) => (res.ok ? (res.json() as Promise<Task[]>) : []))
 			.then((r) => {
-				if (!cancelled) rows = r;
+				if (cancelled) return;
+				rows = r;
+				loaded = true;
 			})
 			.catch(() => {});
 		return () => {
@@ -98,7 +106,7 @@
 				{/if}
 			</div>
 		{:else}
-			{#if !adding}<p class="empty">No tasks point at this note.</p>{/if}
+			{#if !adding}<p class="empty" class:pending={!loaded}>No tasks point at this note.</p>{/if}
 		{/each}
 	</PanelSection>
 {/if}
@@ -188,6 +196,9 @@
 	}
 	.due.today {
 		color: var(--accent);
+	}
+	.empty.pending {
+		visibility: hidden;
 	}
 	.empty {
 		margin: 4px 4px 2px;

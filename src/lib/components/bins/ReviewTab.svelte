@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { archivePath, deletePath, openTab, pinnedPaths } from '$lib/stores/vault';
+	import { archivePaths, deletePaths, openTab, pinnedPaths } from '$lib/stores/vault';
 	import type { ReviewNote } from '$lib/archive';
 	import { longDate, split } from './lists';
 	import NotePreview from './NotePreview.svelte';
+	import Select from '../Select.svelte';
 
 	// Notes that look abandoned (old, nothing links to them, no task, no
 	// share link, not pinned), to archive or trash in bulk.
@@ -49,11 +50,10 @@
 	const toggleAll = () => (picked = allPicked ? new Set() : new Set(shown.map((n) => n.path)));
 
 	// One at a time through the save queue; whatever moved leaves the list.
-	async function bulk(move: (path: string) => Promise<boolean>, paths: string[]) {
+	async function bulk(move: (paths: string[]) => Promise<Set<string>>, paths: string[]) {
 		busy = true;
 		try {
-			const done = new Set<string>();
-			for (const p of paths) if (await move(p)) done.add(p);
+			const done = await move(paths);
 			notes = notes.filter((n) => !done.has(n.path));
 			picked = new Set([...picked].filter((p) => !done.has(p)));
 		} finally {
@@ -63,7 +63,7 @@
 
 	function trash(paths: string[]) {
 		const what = paths.length === 1 ? `"${paths[0]}"` : `${paths.length} notes`;
-		if (confirm(`Move ${what} to the trash?`)) void bulk(deletePath, paths);
+		if (confirm(`Move ${what} to the trash?`)) void bulk(deletePaths, paths);
 	}
 
 	function open(path: string) {
@@ -78,13 +78,17 @@
 	<div class="list">
 		<div class="tools">
 			<input type="checkbox" checked={allPicked} disabled={!shown.length} onchange={toggleAll} title="Select all" />
-			<label class="span">
+			<div class="span">
 				Untouched for
-				<select bind:value={days}>
-					{#each SPANS as s (s)}<option value={s}>{s} days</option>{/each}
-				</select>
-			</label>
-			<button class="btn" disabled={!picked.size || busy} onclick={() => bulk(archivePath, [...picked])}>
+				<Select
+					boxed
+					value={String(days)}
+					options={SPANS.map((s) => ({ value: String(s), label: `${s} days` }))}
+					label="Untouched for"
+					onchange={(v) => (days = Number(v))}
+				/>
+			</div>
+			<button class="btn" disabled={!picked.size || busy} onclick={() => bulk(archivePaths, [...picked])}>
 				<span class="material-symbols-outlined">inventory_2</span>Archive {picked.size || ''}
 			</button>
 			<button class="btn danger" disabled={!picked.size || busy} onclick={() => trash([...picked])}>
@@ -132,7 +136,7 @@
 								class="ib"
 								title="Archive"
 								disabled={busy}
-								onclick={(ev) => (ev.stopPropagation(), bulk(archivePath, [n.path]))}
+								onclick={(ev) => (ev.stopPropagation(), bulk(archivePaths, [n.path]))}
 							>
 								<span class="material-symbols-outlined">inventory_2</span>
 							</button>
@@ -164,7 +168,7 @@
 				<button class="btn danger" disabled={busy} onclick={() => trash([sel.path])}>
 					<span class="material-symbols-outlined">delete</span>Trash
 				</button>
-				<button class="btn primary" disabled={busy} onclick={() => bulk(archivePath, [sel.path])}>
+				<button class="btn primary" disabled={busy} onclick={() => bulk(archivePaths, [sel.path])}>
 					<span class="material-symbols-outlined">inventory_2</span>Archive
 				</button>
 			</div>
@@ -182,15 +186,6 @@
 		color: var(--text-3);
 		font-size: var(--fs-sm);
 		white-space: nowrap;
-	}
-	select {
-		height: 28px;
-		padding: 0 6px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r);
-		background: var(--panel);
-		color: var(--text);
-		font: var(--fs-sm) var(--font-ui);
 	}
 	input[type='checkbox'] {
 		accent-color: var(--accent-fill);

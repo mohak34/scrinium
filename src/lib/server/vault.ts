@@ -1,13 +1,15 @@
 import { env } from '$env/dynamic/private';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
-import { createReadStream, createWriteStream, statSync, type ReadStream } from 'node:fs';
+import { createReadStream, createWriteStream, realpathSync, statSync, type ReadStream, type Stats } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import path from 'node:path';
 import { error } from '@sveltejs/kit';
 import { movedBy, relinkNote } from '$lib/relink';
+import { liveOverArchived, wikiResolver } from '$lib/editor/wikilinks';
+import { retitle } from '$lib/editor/frontmatter';
 
 const VAULT_DIR = path.resolve(env.VAULT_DIR || './vault');
 const TRASH_DIR = path.join(VAULT_DIR, '.trash');
@@ -19,16 +21,30 @@ export interface VaultEntry {
 	children?: VaultEntry[];
 }
 
+const inside = (root: string, p: string) => p === root || p.startsWith(root + path.sep);
+
+// The real location of the deepest part of p that exists, so a symlink
+// anywhere along it is followed (a path being created exists only in part).
+function realExisting(p: string): string {
+	try {
+		return realpathSync(p);
+	} catch {
+		const up = path.dirname(p);
+		return up === p ? p : path.join(realExisting(up), path.basename(p));
+	}
+}
+
 /**
  * Resolves a relative path from the client against the vault root and
- * guarantees the result stays inside VAULT_DIR. Throws a 400 otherwise.
+ * guarantees the result stays inside VAULT_DIR, symlinks followed: a link
+ * in the vault pointing out of it is refused. Throws a 400 otherwise.
  * This is the ONLY function that should turn client-provided paths into
  * real filesystem paths - never build fs paths anywhere else.
  */
 export function safeResolve(relPath: string): string {
 	const cleaned = relPath.replace(/^\/+/, '');
 	const resolved = path.resolve(VAULT_DIR, cleaned);
-	if (resolved !== VAULT_DIR && !resolved.startsWith(VAULT_DIR + path.sep)) {
+	if (!inside(VAULT_DIR, resolved) || !inside(realExisting(VAULT_DIR), realExisting(resolved))) {
 		throw error(400, 'Invalid path');
 	}
 	return resolved;
@@ -47,6 +63,16 @@ export function isFolder(relPath: string): boolean {
 	}
 }
 
+// A live note: an existing .md file outside the trash and archive.
+export function isNote(relPath: string): boolean {
+	if (!/\.md$/i.test(relPath) || isHiddenPath(relPath)) return false;
+	try {
+		return statSync(safeResolve(relPath)).isFile();
+	} catch {
+		return false;
+	}
+}
+
 // Every vault mutation (write, mkdir, rename, trash, restore, purge) runs one
 // at a time through this in-process queue. Renames and restores check that the
 // target is free and then move onto it; without the queue a concurrent write or
@@ -57,6 +83,18 @@ function withVaultLock<T>(fn: () => Promise<T>): Promise<T> {
 	const run = vaultQueue.then(fn);
 	vaultQueue = run.catch(() => {});
 	return run;
+}
+
+// Runs fn (synchronous, e.g. a db insert) only while a note file exists,
+// under the vault lock: a delete or move can't land between the check and
+// fn, so a row never points at a path the note already left.
+export function whileNoteExists<T>(relPath: string, fn: () => T): Promise<T> {
+	const fullPath = safeResolve(relPath);
+	return withVaultLock(async () => {
+		const stat = await fs.stat(fullPath).catch(() => null);
+		if (!stat?.isFile()) throw error(404, 'Note not found');
+		return fn();
+	});
 }
 
 export async function readNote(relPath: string): Promise<string> {
@@ -133,35 +171,57 @@ export async function writeAssetStream(
 	}
 }
 
+// A non-note file's version: its size and modification time, cheap to
+// read for any size of file.
+const fileVersion = (stat: Stats) => `${stat.size}-${Math.floor(stat.mtimeMs)}`;
+
 // Replaces an existing non-note file with a streamed body, e.g. a PDF saved
 // with new annotations. The rename is atomic, so a failed upload leaves the
-// old file intact.
+// old file intact. With `version`, a file that changed since that version
+// is kept and the body lands in "<name> (conflict).<ext>" beside it, like a
+// note save. Resolves where the body landed and its version.
 export async function replaceAssetStream(
 	relPath: string,
 	body: ReadableStream<Uint8Array>,
-	maxBytes: number
-): Promise<void> {
+	maxBytes: number,
+	version: string | null
+): Promise<{ path: string; version: string }> {
 	const fullPath = safeResolve(relPath);
 	if (isHiddenPath(relPath) || /\.md$/i.test(fullPath)) throw error(403, 'Not writable here');
-	const isFile = async () => (await fs.stat(fullPath).catch(() => null))?.isFile() ?? false;
-	if (!(await isFile())) throw error(404, 'Not found');
+	const fileStat = async () => {
+		const stat = await fs.stat(fullPath).catch(() => null);
+		if (!stat?.isFile()) throw error(404, 'Not found');
+		return stat;
+	};
+	await fileStat();
 	const tmp = await streamToTemp(path.dirname(fullPath), body, maxBytes);
 	try {
-		await withVaultLock(async () => {
-			if (!(await isFile())) throw error(404, 'Not found');
-			await fs.rename(tmp, fullPath);
+		return await withVaultLock(async () => {
+			const stale = version !== null && fileVersion(await fileStat()) !== version;
+			const rel = stale ? await conflictPath(relPath) : vaultRel(relPath);
+			const target = safeResolve(rel);
+			await fs.rename(tmp, target);
+			return { path: rel, version: fileVersion(await fs.stat(target)) };
 		});
 	} finally {
 		await fs.rm(tmp, { force: true });
 	}
 }
 
-export async function openAsset(relPath: string): Promise<{ stream: ReadStream; size: number }> {
+// A vault file's size and version, plus a way to stream all of it or a byte
+// range (both ends inclusive).
+export async function openAsset(
+	relPath: string
+): Promise<{ size: number; version: string; open: (start?: number, end?: number) => ReadStream }> {
 	const fullPath = safeResolve(relPath);
 	try {
 		const stat = await fs.stat(fullPath);
 		if (!stat.isFile()) throw error(404, 'Not found');
-		return { stream: createReadStream(fullPath), size: stat.size };
+		return {
+			size: stat.size,
+			version: fileVersion(stat),
+			open: (start, end) => createReadStream(fullPath, { start, end })
+		};
 	} catch (e: unknown) {
 		if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw error(404, 'Not found');
 		throw e;
@@ -189,6 +249,66 @@ export async function writeNote(relPath: string, content: string): Promise<void>
 	return withVaultLock(() => writeAtomic(fullPath, content));
 }
 
+// A note's version: a hash of its text. Readers get it as X-Note-Version
+// and send it back as If-Match, so a save can tell whether the note changed
+// since the writer read it.
+export function noteVersion(content: string): string {
+	return `"${createHash('sha256').update(content).digest('hex').slice(0, 16)}"`;
+}
+
+export interface SavedNote {
+	path: string;
+	content: string;
+	// The other writer's copy, kept when it changed under this one.
+	conflict?: { path: string; content: string };
+}
+
+// Saves a writer's text over the copy it last read (`version`). When the
+// note changed since, that other copy is kept beside it as
+// "<name> (conflict).md" and the text still saves; when the note is gone
+// (moved or trashed elsewhere) the text lands in that copy instead. A stale
+// tab never overwrites another writer's change or recreates a moved note.
+// Copies take their name as title when the title was the note's name.
+export function saveNote(relPath: string, content: string, version: string, strict = false): Promise<SavedNote> {
+	const fullPath = safeResolve(relPath);
+	return withVaultLock(async () => {
+		const theirs = await fs.readFile(fullPath, 'utf-8').catch((e: NodeJS.ErrnoException) => {
+			if (e.code === 'ENOENT') return null;
+			throw e;
+		});
+		// Strict: a read-modify-write (MCP edits) that must start over
+		// instead of keeping a conflict copy.
+		if (strict && (theirs === null || noteVersion(theirs) !== version)) throw error(412, 'Note changed');
+		if (theirs === null) {
+			const copy = await conflictPath(relPath);
+			const text = retitle(content, relPath, copy);
+			await writeAtomic(safeResolve(copy), text);
+			return { path: copy, content: text };
+		}
+		const saved = { path: vaultRel(relPath), content };
+		if (theirs === content) return saved;
+		if (noteVersion(theirs) !== version) {
+			const copy = await conflictPath(relPath);
+			const text = retitle(theirs, relPath, copy);
+			await writeAtomic(safeResolve(copy), text);
+			await writeAtomic(fullPath, content);
+			return { ...saved, conflict: { path: copy, content: text } };
+		}
+		await writeAtomic(fullPath, content);
+		return saved;
+	});
+}
+
+// A free "<name> (conflict).md", then "(conflict 2)", ... beside the note.
+async function conflictPath(relPath: string): Promise<string> {
+	const rel = vaultRel(relPath);
+	const ext = path.extname(rel);
+	const stem = rel.slice(0, rel.length - ext.length);
+	let copy = `${stem} (conflict)${ext}`;
+	for (let i = 2; await exists(safeResolve(copy)); i++) copy = `${stem} (conflict ${i})${ext}`;
+	return copy;
+}
+
 // Writes a new note, failing with a 409 if anything already sits at the path.
 // The check and the write share the lock, so a create never replaces a note.
 export async function createNoteFile(relPath: string, content: string): Promise<void> {
@@ -208,51 +328,104 @@ export async function createFolder(relPath: string): Promise<void> {
 
 // fs.rename replaces an existing file (or empty folder), so the free check
 // and the move must not interleave with other mutations: hold the vault lock.
-// Relative links that the move broke are fixed in the same lock, in the
-// moved notes and in every note linking into the move (a whole-vault scan,
-// like backlinks). Archived notes are fixed too, read from where they came
-// from, so a restore brings them back with working links. A note that fails
-// to rewrite keeps its old links rather than failing a move already made.
+// Links that the move broke are fixed in the same lock, in the moved notes
+// and in every note linking into the move (a whole-vault scan, like
+// backlinks): relative markdown links and wikilinks. Archived and trashed
+// notes are fixed too, read from where they came from, so a restore brings
+// them back with working links. A renamed note whose title was its old
+// filename takes the new one (`retitle`). A note that fails to rewrite keeps
+// its old links rather than failing a move already made. `book` moves the
+// database rows (meta, index, shares, task links, projects) in the same lock,
+// so a second move can never run between the file and its rows. A missing
+// source is a 404 even when the target exists: the caller may hold a stale
+// copy, and reporting success would let it write that copy over the target.
 // Resolves the notes it rewrote, under their current paths.
 export async function renamePath(
 	oldRelPath: string,
-	newRelPath: string
-): Promise<{ path: string; content: string }[]> {
+	newRelPath: string,
+	book: () => void
+): Promise<{ path: string; content: string; before: string }[]> {
 	const from = safeResolve(oldRelPath);
 	const to = safeResolve(newRelPath);
 	if (from === to) return [];
 	return withVaultLock(async () => {
+		if (!(await exists(from))) throw error(404, 'Not found');
+		if (to.startsWith(from + path.sep)) throw error(400, 'Cannot move a folder into itself');
 		if (await exists(to)) throw error(409, 'Target already exists');
+		await fs.mkdir(path.dirname(to), { recursive: true });
 		await fs.rename(from, to);
 		const [was, now] = [vaultRel(oldRelPath), vaultRel(newRelPath)];
-		const changed: { path: string; content: string }[] = [];
+		book();
+		// Each rewritten note's text, and its text before the move touched it.
+		const changed = new Map<string, { content: string; before: string }>();
+		const change = (p: string, content: string, before: string) =>
+			changed.set(p, { content, before: changed.get(p)?.before ?? before });
 		try {
+			const text = /\.md$/i.test(now) ? await fs.readFile(to, 'utf-8').catch(() => null) : null;
+			const titled = text === null ? text : retitle(text, was, now);
+			if (text !== null && titled !== null && titled !== text) {
+				await writeAtomic(to, titled);
+				change(now, titled, text);
+			}
 			const moved = movedBy(was, now);
 			const back = movedBy(now, was);
 			const notes = (await readNotesUnder('')).map((n) => ({ ...n, from: back(n.path), to: n.path, moved }));
-			for (const e of await listBin('archive')) {
-				const at = binPath('archive', e.name);
-				// Files archived with the note come back with it: only links
-				// leaving the archived item follow the move.
-				const o = e.originalPath;
-				const keep = (p: string) => (p === o || p.startsWith(o + '/') ? p : moved(p));
-				for (const n of await readNotesUnder(at)) {
-					const original = e.originalPath + n.path.slice(at.length);
-					notes.push({ ...n, from: original, to: original, moved: keep });
+			const live = notes.map((n) => n.path);
+			const archived: string[] = [];
+			for (const bin of ['archive', 'trash'] as const) {
+				for (const e of await listBin(bin)) {
+					const at = binPath(bin, e.name);
+					// Files binned with the note come back with it: only links
+					// leaving the binned item follow the move.
+					const o = e.originalPath;
+					const keep = (p: string) => (p === o || p.startsWith(o + '/') ? p : moved(p));
+					for (const n of await readNotesUnder(at)) {
+						const original = e.originalPath + n.path.slice(at.length);
+						notes.push({ ...n, from: original, to: original, moved: keep });
+						if (bin === 'archive') archived.push(original);
+					}
 				}
 			}
+			const shelf = wikiResolver(archived);
+			const wiki = {
+				before: liveOverArchived(wikiResolver(live.map(back)), shelf),
+				after: liveOverArchived(wikiResolver(live), shelf)
+			};
+			// A link the move can change names the moved item or a moved note
+			// (old or new name, maybe percent-encoded); notes inside the move
+			// always relink. A big folder move scans every note.
+			const name = (p: string) => (p.split('/').pop() ?? p).replace(/\.md$/i, '').toLowerCase();
+			const names = new Set([name(was)]);
+			for (const p of live) if (p === now || p.startsWith(now + '/')) names.add(name(p)).add(name(back(p)));
+			const mayLink = (text: string) => {
+				if (names.size > 50) return true;
+				let low = text.toLowerCase();
+				// Entities and backslash escapes can spell a name without
+				// its plain text; those notes take the full parse.
+				if (/[&\\]/.test(low)) return true;
+				if (low.includes('%')) {
+					try {
+						low += '\n' + decodeURIComponent(low);
+					} catch {
+						return true;
+					}
+				}
+				for (const t of names) if (low.includes(t)) return true;
+				return false;
+			};
 			for (const n of notes) {
-				const out = relinkNote(n.content, n.from, n.to, n.moved);
+				if (n.from === n.to && !mayLink(n.content)) continue;
+				const out = relinkNote(n.content, n.from, n.to, n.moved, wiki);
 				if (out === n.content) continue;
 				await writeAtomic(safeResolve(n.path), out).then(
-					() => changed.push({ path: n.path, content: out }),
+					() => change(n.path, out, n.content),
 					(e) => console.error(`relink ${n.path}:`, e)
 				);
 			}
 		} catch (e) {
 			console.error('relink after move:', e);
 		}
-		return changed;
+		return [...changed].map(([path, c]) => ({ path, ...c }));
 	});
 }
 
@@ -306,6 +479,23 @@ async function readBinIndex(bin: Bin): Promise<BinIndex> {
 	}
 }
 
+// Books an item into a bin's index, then moves it there. A failed index
+// write moves nothing, so an item never sits in a bin without its original
+// path; a failed move takes the entry back out (a leftover entry for a
+// missing item is ignored anyway).
+async function moveIntoBin(bin: Bin, src: string, name: string, meta: BinIndex[string]): Promise<void> {
+	const idx = await readBinIndex(bin);
+	idx[name] = meta;
+	await writeBinIndex(bin, idx);
+	try {
+		await fs.rename(src, path.join(BIN_DIRS[bin], name));
+	} catch (e) {
+		delete idx[name];
+		await writeBinIndex(bin, idx).catch(() => {});
+		throw e;
+	}
+}
+
 async function writeBinIndex(bin: Bin, idx: BinIndex): Promise<void> {
 	await fs.mkdir(BIN_DIRS[bin], { recursive: true });
 	const tmp = `${indexFile(bin)}.tmp-${Date.now()}`;
@@ -337,14 +527,8 @@ export function moveToBin(bin: Bin, relPath: string): Promise<BinEntry> {
 		if (!st) throw error(404, 'Not found');
 		await fs.mkdir(BIN_DIRS[bin], { recursive: true });
 		const name = await freeBinName(bin, path.basename(fullPath));
-		await fs.rename(fullPath, path.join(BIN_DIRS[bin], name));
 		const entry = { name, originalPath: rel, movedAt: Date.now(), isDir: st.isDirectory() };
-		// Best-effort: without its entry an item restores to the vault root.
-		try {
-			const idx = await readBinIndex(bin);
-			idx[name] = { originalPath: rel, movedAt: entry.movedAt, isDir: entry.isDir };
-			await writeBinIndex(bin, idx);
-		} catch {}
+		await moveIntoBin(bin, fullPath, name, { originalPath: rel, movedAt: entry.movedAt, isDir: entry.isDir });
 		return entry;
 	});
 }
@@ -386,18 +570,34 @@ export interface Restored {
 	notes: { path: string; content: string }[];
 }
 
-// Every .md note at or under a vault path ('' is the whole vault), with its
-// text. Dot folders inside are skipped.
+// Every .md note (any case, like the wikilink resolver) at or under a vault
+// path ('' is the whole vault), with its text. Dot folders inside are skipped.
 export async function readNotesUnder(rel: string): Promise<{ path: string; content: string }[]> {
-	const full = safeResolve(rel);
-	const st = await fs.stat(full).catch(() => null);
-	if (!st?.isDirectory()) {
-		const content = st && rel.endsWith('.md') ? await fs.readFile(full, 'utf-8').catch(() => null) : null;
-		return content === null ? [] : [{ path: rel, content }];
-	}
+	const paths: string[] = [];
+	const walk = async (at: string): Promise<void> => {
+		let full: string;
+		try {
+			full = safeResolve(at);
+		} catch {
+			return; // a symlink out of the vault
+		}
+		const st = await fs.stat(full).catch(() => null);
+		if (!st?.isDirectory()) {
+			if (st && at.toLowerCase().endsWith('.md')) paths.push(at);
+			return;
+		}
+		for (const d of await fs.readdir(full, { withFileTypes: true }).catch(() => [])) {
+			if (!d.name.startsWith('.')) await walk(at ? `${at}/${d.name}` : d.name);
+		}
+	};
+	await walk(rel);
+	// Read in batches: in parallel is twice as fast, unbounded can run out
+	// of file descriptors on a big vault.
 	const out: { path: string; content: string }[] = [];
-	for (const d of await fs.readdir(full, { withFileTypes: true }).catch(() => [])) {
-		if (!d.name.startsWith('.')) out.push(...(await readNotesUnder(rel ? `${rel}/${d.name}` : d.name)));
+	for (let i = 0; i < paths.length; i += 64) {
+		const batch = paths.slice(i, i + 64);
+		const texts = await Promise.all(batch.map((p) => fs.readFile(safeResolve(p), 'utf-8').catch(() => null)));
+		batch.forEach((path, j) => texts[j] !== null && out.push({ path, content: texts[j] }));
 	}
 	return out;
 }
@@ -417,6 +617,21 @@ export function restoreFromBin(bin: Bin, name: string): Promise<Restored> {
 		const targetFull = safeResolve(targetRel);
 		await fs.mkdir(path.dirname(targetFull), { recursive: true });
 		await fs.rename(src, targetFull);
+		// Landed under a new name: its own links start one name over and a
+		// note's title follows its new filename. Its wikilinks resolved
+		// against the vault with it back at the original path, so `[[P/B]]`
+		// keeps meaning the restored B, not the note now living at P/B.
+		if (targetRel !== originalPath) {
+			const moved = movedBy(originalPath, targetRel);
+			const back = movedBy(targetRel, originalPath);
+			const live = (await readNotesUnder('')).map((n) => n.path);
+			const wiki = { before: wikiResolver([...new Set(live.map(back))]), after: wikiResolver(live) };
+			for (const n of await readNotesUnder(targetRel)) {
+				const was = back(n.path);
+				const out = retitle(relinkNote(n.content, was, n.path, moved, wiki), was, n.path);
+				if (out !== n.content) await writeAtomic(safeResolve(n.path), out).catch((e) => console.error(`relink ${n.path}:`, e));
+			}
+		}
 		delete idx[name];
 		try {
 			await writeBinIndex(bin, idx);
@@ -441,15 +656,10 @@ export function moveBetweenBins(from: Bin, to: Bin, name: string): Promise<BinEn
 		const originalPath = fromIdx[name]?.originalPath ?? name.replace(/^\d+-/, '');
 		await fs.mkdir(BIN_DIRS[to], { recursive: true });
 		const dest = await freeBinName(to, path.basename(originalPath) || name);
-		await fs.rename(src, path.join(BIN_DIRS[to], dest));
 		const entry = { name: dest, originalPath, movedAt: Date.now(), isDir: st.isDirectory() };
-		try {
-			delete fromIdx[name];
-			await writeBinIndex(from, fromIdx);
-			const toIdx = await readBinIndex(to);
-			toIdx[dest] = { originalPath, movedAt: entry.movedAt, isDir: entry.isDir };
-			await writeBinIndex(to, toIdx);
-		} catch {}
+		await moveIntoBin(to, src, dest, { originalPath, movedAt: entry.movedAt, isDir: entry.isDir });
+		delete fromIdx[name];
+		await writeBinIndex(from, fromIdx).catch(() => {});
 		return entry;
 	});
 }
@@ -502,7 +712,7 @@ export async function manifestNotes(): Promise<NoteManifestEntry[]> {
 			const childRelPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
 			if (dirent.isDirectory()) {
 				await walk(childRelPath);
-			} else if (dirent.name.endsWith('.md')) {
+			} else if (dirent.isFile() && /\.md$/i.test(dirent.name)) {
 				const st = await fs.stat(path.join(fullPath, dirent.name));
 				entries.push({
 					path: childRelPath,
@@ -518,8 +728,13 @@ export async function manifestNotes(): Promise<NoteManifestEntry[]> {
 	return entries;
 }
 
+// Folders are read in parallel; only the root goes through safeResolve, as
+// the walk never follows links out of it.
 export async function listTree(relDir: string = ''): Promise<VaultEntry[]> {
-	const fullPath = safeResolve(relDir);
+	return walkTree(safeResolve(relDir), relDir);
+}
+
+async function walkTree(fullPath: string, relDir: string): Promise<VaultEntry[]> {
 	let dirents;
 	try {
 		dirents = await fs.readdir(fullPath, { withFileTypes: true });
@@ -528,22 +743,20 @@ export async function listTree(relDir: string = ''): Promise<VaultEntry[]> {
 		throw e;
 	}
 
-	const entries: VaultEntry[] = [];
-	for (const dirent of dirents) {
-		if (dirent.name.startsWith('.')) continue; // skip dotfiles/dirs
-		const childRelPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
-
-		if (dirent.isDirectory()) {
-			entries.push({
-				name: dirent.name,
-				path: childRelPath,
-				type: 'directory',
-				children: await listTree(childRelPath)
-			});
-		} else {
-			entries.push({ name: dirent.name, path: childRelPath, type: 'file' });
-		}
-	}
+	const entries: VaultEntry[] = await Promise.all(
+		dirents
+			.filter((d) => !d.name.startsWith('.')) // skip dotfiles/dirs
+			.map(async (dirent): Promise<VaultEntry> => {
+				const childRelPath = relDir ? `${relDir}/${dirent.name}` : dirent.name;
+				if (!dirent.isDirectory()) return { name: dirent.name, path: childRelPath, type: 'file' };
+				return {
+					name: dirent.name,
+					path: childRelPath,
+					type: 'directory',
+					children: await walkTree(path.join(fullPath, dirent.name), childRelPath)
+				};
+			})
+	);
 
 	// directories first, then alphabetical
 	entries.sort((a, b) => {

@@ -9,12 +9,16 @@ export const isImagePath = (p: string) => /\.(png|jpe?g|gif|webp|avif)$/i.test(p
 // note's folder and served through the auth-gated asset API. Shared by the
 // editor, the note renderer and share pages so images resolve identically.
 // A destination may be written in angle brackets and percent-encoded
-// (`<my img.png>`, `my%20img.png`); both reach the same file.
+// (`<my img.png>`, `my%20img.png`); both reach the same file. A `?query`
+// or `#fragment` (`doc.pdf#page=2`) rides along after the asset path.
 export function resolveAssetUrl(url: string, noteDir: string | null): string | null {
 	let clean = url.trim();
 	if (clean.startsWith('<') && clean.endsWith('>')) clean = clean.slice(1, -1).trim();
 	if (!clean) return null;
 	if (/^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith('/')) return clean;
+	const cut = clean.search(/[?#]/);
+	const suffix = cut < 0 ? '' : clean.slice(cut);
+	if (cut >= 0) clean = clean.slice(0, cut);
 	// The note's folder is a real path; only the destination is decoded.
 	const parts = noteDir ? noteDir.split('/') : [];
 	for (const seg of clean.split('/')) {
@@ -26,7 +30,7 @@ export function resolveAssetUrl(url: string, noteDir: string | null): string | n
 		parts.push(decodeSegment(seg));
 	}
 	if (!parts.length) return null;
-	return '/api/assets/' + parts.map(encodeURIComponent).join('/');
+	return '/api/assets/' + parts.map(encodeURIComponent).join('/') + suffix;
 }
 
 function decodeSegment(seg: string): string {

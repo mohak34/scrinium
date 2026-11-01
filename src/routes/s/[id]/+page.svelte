@@ -1,26 +1,28 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
-	import { renderNoteToHtml } from '$lib/print/renderNote';
+	import { page } from '$app/state';
+	import type { SharePage } from '$lib/server/shares';
 	import 'katex/dist/katex.min.css';
 
-	const id = $derived($page.params.id ?? '');
+	let { data } = $props();
+	const id = $derived(page.params.id ?? '');
 
-	interface SharePayload {
-		title: string;
-		markdown: string;
-		notePath: string;
-		updatedAt: number | null;
-		hasPassword: boolean;
-		proof: string;
-		images: string[];
-	}
-
-	let status = $state<'loading' | 'locked' | 'ready' | 'error'>('loading');
-	let payload = $state<SharePayload | null>(null);
+	// Open links arrive rendered from the server; a locked one fills in here
+	// after the unlock.
+	let unlocked = $state<SharePage | null>(null);
+	const share = $derived(unlocked ?? data.share);
+	let failed = $state('');
+	const status = $derived(failed ? 'error' : share ? 'ready' : data.state);
+	const errorMessage = $derived(failed || data.message || 'This link is invalid or was revoked.');
 	let message = $state('');
 	let password = $state('');
 	let busy = $state(false);
+
+	// A link to another share reuses this page: drop the last one's unlock.
+	$effect.pre(() => {
+		void id;
+		unlocked = null;
+		failed = message = password = '';
+	});
 
 	// Reader zoom on the paper. Scales the base font size (everything inside
 	// is sized in em, KaTeX included) so text reflows inside the viewport
@@ -29,16 +31,6 @@
 	const MAX_ZOOM = 200;
 	const ZOOM_STEP = 10;
 	let zoom = $state(100);
-
-	// Local images load through this share's asset route by index (the
-	// server lists the ones the note references). Password shares attach the
-	// proof token from the unlock, never the password itself.
-	function shareAsset(p: SharePayload, url: string): string {
-		const i = p.images.indexOf(url);
-		if (i < 0) return '';
-		const proof = p.proof ? `?proof=${encodeURIComponent(p.proof)}` : '';
-		return `/api/share/${encodeURIComponent(id)}/assets/${i}${proof}`;
-	}
 
 	// "just now", "3h ago", "2d ago" - absolute date past a week.
 	function timeAgo(mtimeMs: number): string {
@@ -53,82 +45,96 @@
 		return new Date(mtimeMs).toLocaleDateString();
 	}
 
-	const html = $derived.by(() => {
-		if (!payload) return '';
-		try {
-			const p = payload;
-			return renderNoteToHtml(p.markdown, p.notePath, (url) => shareAsset(p, url));
-		} catch {
-			return '';
-		}
-	});
+	// Contents: a side column on wide screens at normal zoom, a menu in the
+	// bar otherwise. Short notes get neither.
+	const toc = $derived(share && share.toc.length >= 3 ? share.toc : []);
+	const top = $derived(Math.min(...toc.map((t) => t.level)));
+	let current = $state('');
+	let menuOpen = $state(false);
 
-	async function load() {
-		const res = await fetch(`/api/share/${encodeURIComponent(id)}`);
-		if (res.status === 401) {
-			status = 'locked';
-			return;
+	// The section being read: the last heading scrolled past the top.
+	function track() {
+		let id = toc[0]?.id ?? '';
+		for (const t of toc) {
+			const el = document.getElementById(t.id);
+			if (el && el.getBoundingClientRect().top > 96) break;
+			id = t.id;
 		}
-		if (res.status === 410) {
-			status = 'error';
-			message = 'This note no longer exists.';
-			return;
-		}
-		if (!res.ok) {
-			status = 'error';
-			message = 'This link is invalid or was revoked.';
-			return;
-		}
-		payload = (await res.json()) as SharePayload;
-		status = 'ready';
+		current = id;
 	}
+
+	$effect(() => {
+		if (toc.length) track();
+	});
 
 	async function unlock() {
 		if (!password || busy) return;
 		busy = true;
+		const asked = id;
 		try {
-			const res = await fetch(`/api/share/${encodeURIComponent(id)}`, {
+			const res = await fetch(`/api/share/${encodeURIComponent(asked)}`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ password })
 			});
+			if (asked !== id) return;
 			if (res.status === 401) {
 				message = 'Wrong password. Try again.';
 				return;
 			}
-			if (!res.ok) {
-				message = 'This link is invalid or was revoked.';
-				status = 'error';
+			if (res.status === 429) {
+				message = 'Too many wrong passwords. Try again in a few minutes.';
 				return;
 			}
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				if (asked !== id) return;
+				failed = body?.message || 'This link is invalid or was revoked.';
+				return;
+			}
+			const next = (await res.json()) as SharePage;
+			if (asked !== id) return;
 			message = '';
 			password = '';
-			payload = (await res.json()) as SharePayload;
-			status = 'ready';
+			unlocked = next;
 		} finally {
 			busy = false;
 		}
 	}
-
-	onMount(() => {
-		if (!id) {
-			status = 'error';
-			message = 'This link is invalid or was revoked.';
-			return;
-		}
-		void load();
-	});
 </script>
 
+<svelte:window
+	onscroll={() => toc.length && track()}
+	onclick={(e) => menuOpen && !(e.target as Element).closest('.contents') && (menuOpen = false)}
+	onkeydown={(e) => e.key === 'Escape' && (menuOpen = false)}
+/>
+
+{#snippet contents(cls: string)}
+	<nav class={cls} aria-label="Contents">
+		{#each toc as t (t.id)}
+			<a
+				href="#{t.id}"
+				class:on={t.id === current}
+				style:padding-left="{(t.level - top) * 14 + 12}px"
+				onclick={() => (menuOpen = false)}>{t.text}</a
+			>
+		{/each}
+	</nav>
+{/snippet}
+
 <svelte:head>
-	<title>{payload ? `${payload.title} — shared note` : 'Shared note'}</title>
+	<title>{share?.title ?? 'Shared note'}</title>
 	<meta name="robots" content="noindex, nofollow" />
+	<meta property="og:type" content="article" />
+	<meta property="og:title" content={share?.title ?? 'Shared note'} />
+	{#if share?.description}
+		<meta name="description" content={share.description} />
+		<meta property="og:description" content={share.description} />
+	{/if}
 </svelte:head>
 
 <div class="shared">
-	{#if status === 'loading'}
-		<p class="state">Loading shared note…</p>
-	{:else if status === 'locked'}
+	{#if status === 'locked'}
 		<form
 			class="lock"
 			onsubmit={(e) => {
@@ -153,13 +159,29 @@
 		<div class="lock">
 			<span class="material-symbols-outlined">link_off</span>
 			<h1>Link unavailable</h1>
-			<p>{message}</p>
+			<p>{errorMessage}</p>
 		</div>
-	{:else if payload}
+	{:else if share}
 		<header class="bar">
-			<span class="doc">{payload.notePath}</span>
+			<span class="doc">{share.title}</span>
 			<span class="tag">read-only</span>
 			<span class="tools">
+				{#if toc.length}
+					<span class="contents">
+						<button
+							class="tbtn wide"
+							class:always={zoom > 100}
+							class:open={menuOpen}
+							title="Contents"
+							aria-expanded={menuOpen}
+							onclick={() => (menuOpen = !menuOpen)}
+						>
+							<span class="material-symbols-outlined">toc</span><span class="lbl">Contents</span>
+						</button>
+						{#if menuOpen}{@render contents('toc menu')}{/if}
+					</span>
+					<span class="zoom-sep"></span>
+				{/if}
 				<button
 					class="tbtn"
 					title="Download / print PDF"
@@ -188,13 +210,14 @@
 					<span class="material-symbols-outlined">add</span>
 				</button>
 			</span>
-			{#if payload.updatedAt}
-				<span class="time" title={new Date(payload.updatedAt).toLocaleString()}>
-					updated {timeAgo(payload.updatedAt)}
+			{#if share.updatedAt}
+				<span class="time" title={new Date(share.updatedAt).toLocaleString()}>
+					updated {timeAgo(share.updatedAt)}
 				</span>
 			{/if}
 		</header>
-		<article class="paper" style:--zoom={zoom / 100}>{@html html}</article>
+		{#if toc.length && zoom <= 100}{@render contents('toc rail')}{/if}
+		<article class="paper" style:--zoom={zoom / 100}>{@html share.html}</article>
 	{/if}
 </div>
 
@@ -208,11 +231,6 @@
 		color: #eee;
 		-webkit-text-size-adjust: 100%;
 		text-size-adjust: 100%;
-	}
-	.state {
-		margin: 20vh 0 0;
-		text-align: center;
-		color: #888;
 	}
 	.lock {
 		margin: 16vh auto 0;
@@ -271,6 +289,10 @@
 		color: #f19494 !important;
 	}
 	.bar {
+		position: sticky;
+		top: 0;
+		z-index: 20;
+		background: #000;
 		width: 100%;
 		display: flex;
 		align-items: center;
@@ -355,6 +377,92 @@
 		.pct {
 			min-height: 36px;
 		}
+	}
+	.tbtn.wide {
+		display: none;
+		width: auto;
+		gap: 6px;
+		padding: 0 8px;
+	}
+	.tbtn.wide.always,
+	.tbtn.open {
+		display: flex;
+	}
+	.tbtn.open {
+		background: #1a1a1a;
+		color: #eee;
+	}
+	.contents {
+		position: relative;
+		display: flex;
+	}
+	.toc a {
+		display: block;
+		padding-top: 5px;
+		padding-bottom: 5px;
+		padding-right: 12px;
+		color: #888;
+		text-decoration: none;
+		line-height: 1.35;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.toc a:hover {
+		color: #fff;
+	}
+	.toc a.on {
+		color: #5db8aa;
+	}
+	.menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 10;
+		width: min(300px, calc(100vw - 2rem));
+		max-height: 70vh;
+		overflow-y: auto;
+		padding: 6px 0;
+		background: #000;
+		border: 1px solid #2a2a2a;
+		border-radius: 6px;
+		font-size: 0.85rem;
+	}
+	.menu a:hover {
+		background: #111;
+	}
+	/* Fixed left of the 880px sheet, shown only when there is room for it. */
+	.rail {
+		position: fixed;
+		top: 72px;
+		left: calc(50% - 440px - 252px);
+		width: 220px;
+		max-height: calc(100vh - 96px);
+		overflow-y: auto;
+		border-left: 1px solid #222;
+		font-size: 0.8rem;
+	}
+	.rail a.on {
+		box-shadow: inset 1px 0 #5db8aa;
+	}
+	@media (max-width: 1399px) {
+		.rail {
+			display: none;
+		}
+		.tbtn.wide {
+			display: flex;
+		}
+	}
+	@media (max-width: 640px) {
+		.tbtn.wide .lbl {
+			display: none;
+		}
+		.tbtn.wide {
+			padding: 0 6px;
+		}
+	}
+	.paper :global(:is(h1, h2, h3, h4, h5, h6)[id]) {
+		scroll-margin-top: 80px;
 	}
 	.zoom-sep {
 		width: 1px;
@@ -501,7 +609,8 @@
 			min-height: 0;
 			background: #fff;
 		}
-		.bar {
+		.bar,
+		.rail {
 			display: none;
 		}
 		.paper {

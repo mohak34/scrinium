@@ -5,7 +5,6 @@
 	import {
 		tasks,
 		projects,
-		loadTasks,
 		openTaskId,
 		closeTask,
 		openTask,
@@ -16,20 +15,24 @@
 		loadTaskLinks,
 		addTaskLink,
 		removeTaskLink,
-		dueInputValue,
-		dueTimeValue,
-		combineDateTime,
-		dateTimeInputValue,
-		parseDateTimeInput,
 		PRIORITIES,
 		STATUSES,
-		AREAS,
 		type Task,
 		type TaskPriority
 	} from '$lib/stores/tasks';
+	import Select from './Select.svelte';
+	import DatePicker from './DatePicker.svelte';
 	import { tree, loadTree, openTab, type VaultEntry } from '$lib/stores/vault';
 	import { openBins } from '$lib/stores/bins';
+	import { QUOTIDIAN } from '$lib/projects';
 
+	const PRI_COLOR: Record<TaskPriority, string> = {
+		none: 'var(--text-4)',
+		low: 'var(--blue)',
+		medium: 'var(--yellow)',
+		high: 'var(--orange)',
+		urgent: 'var(--red)'
+	};
 	const REMIND_QUICK = [
 		{ label: '15m before due', ms: 15 * 60000 },
 		{ label: '1h before due', ms: 60 * 60000 },
@@ -165,7 +168,7 @@
 		const out: string[] = [];
 		const walk = (list: VaultEntry[]) => {
 			for (const e of list) {
-				if (e.type === 'file' && e.path.endsWith('.md')) out.push(e.path);
+				if (e.type === 'file' && /\.md$/i.test(e.path)) out.push(e.path);
 				else if (e.children) walk(e.children);
 			}
 		};
@@ -348,110 +351,50 @@
 				</div>
 			{/if}
 			<div class="kv">
-				<span class="k">Area</span>
-				<div class="chips" role="group" aria-label="Area">
-					{#each AREAS as a (a.key)}
-						<button
-							class="chip"
-							class:on={task.area === a.key}
-							style="--c: {a.color}"
-							onclick={() => void updateTask(task.id, { area: task.area === a.key ? null : a.key })}
-						>
-							<i></i>{a.label}
-						</button>
-					{/each}
-				</div>
-			</div>
-			<div class="kv">
 				<span class="k">Priority</span>
 				<div class="v">
-					<span class="material-symbols-outlined fill flag pri-{task.priority}">flag</span>
-					<select
-						class="ctl bare"
+					<Select
 						value={task.priority}
-						aria-label="Priority"
-						onchange={(e) =>
-							void updateTask(task.id, {
-								priority: (e.target as HTMLSelectElement).value as TaskPriority
-							})}
-					>
-						{#each PRIORITIES as p (p.key)}
-							<option value={p.key}>{p.label}</option>
-						{/each}
-					</select>
+						options={PRIORITIES.map((p) => ({ value: p.key, label: p.label, icon: 'flag', color: PRI_COLOR[p.key] }))}
+						label="Priority"
+						onchange={(priority) => void updateTask(task.id, { priority })}
+					/>
 				</div>
 			</div>
 			{#if !task.parent_id}
 				<div class="kv">
 					<span class="k">Project</span>
 					<div class="v">
-						<select
-							class="ctl bare grow"
+						<Select
+							grow
 							value={task.project ?? ''}
-							aria-label="Project"
-							onchange={async (e) => {
-								// Subtasks follow on the server; reload to show it.
-								if (await updateTask(task.id, { project: (e.target as HTMLSelectElement).value || null }))
-									void loadTasks();
-							}}
-						>
-							<option value="">None</option>
-							{#each $projects as p (p.path)}
-								<option value={p.path}>{p.path}</option>
-							{/each}
-						</select>
+							options={[{ value: '', label: QUOTIDIAN }, ...$projects.map((p) => ({ value: p.path, label: p.path }))]}
+							label="Project"
+							onchange={(v) => void updateTask(task.id, { project: v || null })}
+						/>
 					</div>
 				</div>
 			{/if}
 			<div class="kv">
 				<span class="k">Parent</span>
 				<div class="v">
-					<select
-						class="ctl bare grow"
+					<Select
+						grow
 						value={task.parent_id ?? ''}
-						aria-label="Parent task"
-						onchange={(e) =>
-							void updateTask(task.id, {
-								parent_id: (e.target as HTMLSelectElement).value || null
-							})}
-					>
-						<option value="">None</option>
-						{#each parentChoices as p (p.id)}
-							<option value={p.id}>{p.title}</option>
-						{/each}
-					</select>
+						options={[{ value: '', label: 'None' }, ...parentChoices.map((p) => ({ value: p.id, label: p.title }))]}
+						label="Parent task"
+						onchange={(v) => void updateTask(task.id, { parent_id: v || null })}
+					/>
 				</div>
 			</div>
 			<div class="kv">
 				<span class="k">Due</span>
 				<div class="v">
-					<input
-						class="ctl"
-						type="date"
-						value={dueInputValue(task.due_at)}
-						aria-label="Due date"
-						onchange={(e) =>
-							void updateTask(task.id, {
-								due_at: combineDateTime(
-									(e.target as HTMLInputElement).value,
-									dueTimeValue(task.due_at)
-								)
-							})}
-					/>
-					<input
-						class="ctl time"
-						type="time"
-						value={dueTimeValue(task.due_at)}
-						aria-label="Due time"
-						disabled={task.due_at == null}
-						title={task.due_at == null ? 'Set a date first' : 'Due time'}
-						onchange={(e) =>
-							void updateTask(task.id, {
-								due_at: combineDateTime(
-									dueInputValue(task.due_at),
-									(e.target as HTMLInputElement).value
-								)
-							})}
+					<DatePicker
+						value={task.due_at}
+						label="Due date"
+						placeholder="No due date"
+						onchange={(due_at) => void updateTask(task.id, { due_at })}
 					/>
 					{#if task.due_at != null}
 						<button
@@ -467,15 +410,13 @@
 			<div class="kv">
 				<span class="k">Reminder</span>
 				<div class="v">
-					<input
-						class="ctl"
-						type="datetime-local"
-						value={dateTimeInputValue(task.remind_at)}
-						aria-label="Reminder date and time"
-						onchange={(e) =>
-							void updateTask(task.id, {
-								remind_at: parseDateTimeInput((e.target as HTMLInputElement).value)
-							})}
+					<DatePicker
+						value={task.remind_at}
+						time="required"
+						icon="notifications"
+						label="Reminder"
+						placeholder="No reminder"
+						onchange={(remind_at) => void updateTask(task.id, { remind_at })}
 					/>
 					{#if task.remind_at != null}
 						<button
@@ -759,55 +700,6 @@
 		background: var(--press);
 		color: var(--text);
 	}
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-	}
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 26px;
-		padding: 0 9px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r);
-		background: none;
-		color: var(--text-2);
-		font: var(--fs-sm) var(--font-ui);
-		cursor: pointer;
-	}
-	.chip i {
-		width: 7px;
-		height: 7px;
-		border-radius: 2px;
-		background: var(--c);
-	}
-	.chip:hover {
-		color: var(--text);
-		border-color: var(--line-3);
-	}
-	.chip.on {
-		color: var(--text);
-		border-color: color-mix(in srgb, var(--c) 55%, transparent);
-		background: color-mix(in srgb, var(--c) 12%, transparent);
-	}
-	.flag {
-		font-size: 17px;
-		color: var(--text-4);
-	}
-	.pri-urgent {
-		color: var(--red);
-	}
-	.pri-high {
-		color: var(--orange);
-	}
-	.pri-medium {
-		color: var(--yellow);
-	}
-	.pri-low {
-		color: var(--blue);
-	}
 	.ctl {
 		height: 30px;
 		min-width: 0;
@@ -823,24 +715,9 @@
 	.ctl:focus {
 		border-color: var(--accent);
 	}
-	.ctl:disabled {
-		opacity: 0.4;
-	}
 	.ctl.grow {
 		flex: 1;
 		min-width: 0;
-	}
-	.ctl.time {
-		width: 104px;
-	}
-	.ctl.bare {
-		border-color: transparent;
-		background: none;
-		padding: 0 4px;
-		cursor: pointer;
-	}
-	.ctl.bare:hover {
-		background: var(--hover);
 	}
 	.quick {
 		flex-wrap: wrap;

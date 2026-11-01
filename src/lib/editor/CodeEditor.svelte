@@ -25,15 +25,15 @@ import { perDoc } from './docRanges';
 } from '@codemirror/search';
 	import { markdownLanguage, baseTheme, codeHighlight } from './markdownSetup';
 	import { autocompletion, closeCompletion, completionStatus, moveCompletionSelection } from '@codemirror/autocomplete';
-	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
+	import { livePreview, setPreviewMode, isPreviewMode, urlAtPos, openUrl, noteDirEffect, noteDirField, wikiCtxEffect, wikiCtxField, tagCtxEffect, tagCtxField } from './livePreview';
 	import { notePathsFromTree } from './wikilinks';
-	import { attachmentMarkdown, resolveAssetUrl } from '$lib/attachments';
-	import { tree, archiveEntries } from '$lib/stores/vault';
+	import { attachmentMarkdown } from '$lib/attachments';
+	import { tree, archiveEntries, insertIntoNote, shownNote, trackPath } from '$lib/stores/vault';
 	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
-	import { syncCell, tableBlockField, tableCommands, tableVim } from './tableBlock';
+	import { syncCell, tableBlockField, tableCommands, tableMenu, tableVim } from './tableBlock';
+	import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
-	import { pdfPath, isPdfPath } from '$lib/stores/pdf';
 	import { addYankFlash, clearYankFlash, yankFlashField, yankFlashTheme, YANK_NOTICE, YANK_FLASH_MS } from './yankFlash';
 	import { toggleWrap, setHeading, toggleBullet, toggleTask, removeTask, insertListNewline } from './formatting';
 	import { expandMathSnippet, expandMathFraction } from './mathSnippets';
@@ -54,6 +54,8 @@ import { perDoc } from './docRanges';
 	// the parent echoing it back costs a reference compare, not a stringify.
 	let docText = '';
 	let vimOn = $state(false);
+	// A table column's menu (tableBlock.ts), open while set.
+	let colMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 	let toasts = $state<{ id: number; text: string }[]>([]);
 	let toastId = 0;
 	let cmdBar = $state<HTMLDivElement>();
@@ -311,10 +313,10 @@ import { perDoc } from './docRanges';
 			.catch(() => {});
 	});
 
-	async function uploadFile(file: File): Promise<string | null> {
+	async function uploadFile(file: File, note: string | null): Promise<string | null> {
 		// The server re-validates the folder.
 		const projectSet = new Set(get(projects).map((p) => p.path));
-		const folder = attachmentDirFor(notePath ?? null, get(settings).attachments, projectSet);
+		const folder = attachmentDirFor(note, get(settings).attachments, projectSet);
 		const query = new URLSearchParams({ name: file.name });
 		if (folder) query.set('folder', folder);
 		try {
@@ -334,15 +336,29 @@ import { perDoc } from './docRanges';
 	}
 
 	// Upload pasted or dropped files and insert their markdown reference at
-	// `pos`. Failed uploads are skipped silently rather than leaving broken
-	// refs.
+	// `pos` in the note they were dropped on, also when the editor moved to
+	// another note or the note was renamed during the upload. A failed
+	// upload leaves no ref and says so.
 	async function insertFiles(view: EditorView, files: File[], pos: number) {
-		let insert = '';
+		const dropped = shownNote();
+		const target = trackPath(dropped);
+		const uploaded: string[] = [];
+		const failed: string[] = [];
 		for (const file of files) {
-			const vaultRel = await uploadFile(file);
-			if (vaultRel) insert += attachmentMarkdown(vaultRel, notePath ?? null) + '\n';
+			const vaultRel = await uploadFile(file, dropped);
+			if (vaultRel) uploaded.push(vaultRel);
+			else failed.push(file.name);
 		}
-		if (!insert) return;
+		const note = target.get();
+		target.done();
+		if (failed.length) alert(`Upload failed: ${failed.join(', ')}`);
+		if (!uploaded.length) return;
+		const insert = uploaded.map((p) => attachmentMarkdown(p, note) + '\n').join('');
+		if (shownNote() !== note) {
+			const ok = note !== null && (await insertIntoNote(note, pos, insert));
+			if (!ok) alert(`Uploaded ${uploaded.join(', ')}, but could not add ${uploaded.length > 1 ? 'them' : 'it'} to the note.`);
+			return;
+		}
 		pos = Math.min(pos, view.state.doc.length);
 		const line = view.state.doc.lineAt(pos);
 		const needsBreak = pos > line.from;
@@ -479,6 +495,7 @@ import { perDoc } from './docRanges';
 				livePreview,
 				mathBlockField,
 				tableBlockField,
+				tableMenu.of((x, y, items) => (colMenu = { x, y, items })),
 				tableVim.of({
 					mode: (v) =>
 						!cmOf(v) || !get(settings).editor.vimMotions
@@ -542,13 +559,8 @@ import { perDoc } from './docRanges';
 							if (pos !== null) {
 								// Relative links point into the vault (attachments).
 								const url = urlAtPos(view, pos);
-								const href = url && resolveAssetUrl(url, view.state.field(noteDirField));
-								if (href) {
+								if (url && openUrl(url, view.state.field(noteDirField))) {
 									e.preventDefault();
-									// Vault PDFs open in the pane beside the editor.
-									const asset = href.startsWith('/api/assets/') ? decodeURIComponent(href.slice(12)) : '';
-									if (asset && isPdfPath(asset)) pdfPath.set(asset);
-									else window.open(href, '_blank', 'noopener,noreferrer');
 									return true;
 								}
 							}
@@ -656,20 +668,32 @@ import { perDoc } from './docRanges';
 
 	// If the parent swaps to a different note, reset the doc without treating
 	// it as a user edit (no spurious save). resetCursor marks a note switch:
-	// the old note's undo history is dropped with its text.
-	export function setDoc(newValue: string, resetCursor = false) {
+	// the old note's undo history is dropped with its text. dropHistory alone
+	// is for a copy saved elsewhere: undo past it would bring back text the
+	// server no longer has and save it over the other change.
+	export function setDoc(newValue: string, resetCursor = false, dropHistory = resetCursor) {
 		if (!view) return;
 		suppressChange = true;
-		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure([]) });
+		if (dropHistory) view.dispatch({ effects: historyCompartment.reconfigure([]) });
+		// Same-note pushes replace only the part that differs, so the cursor
+		// and scroll around it stay put.
+		const old = view.state.doc.toString();
+		let from = 0;
+		let to = old.length;
+		let end = newValue.length;
+		if (!resetCursor) {
+			while (from < to && from < end && old[from] === newValue[from]) from++;
+			while (to > from && end > from && old[to - 1] === newValue[end - 1]) to--, end--;
+		}
 		view.dispatch({
-			changes: { from: 0, to: view.state.doc.length, insert: newValue },
+			changes: { from, to, insert: newValue.slice(from, end) },
 			// Note switches park the cursor on line 1; same-note pushes
 			// (rename syncs, link conversions) leave it alone.
 			selection: resetCursor ? { anchor: 0 } : undefined,
 			effects: resetCursor ? [EditorView.scrollIntoView(0)] : []
 		});
 		docText = newValue;
-		if (resetCursor) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
+		if (dropHistory) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
 		// Note switches also take focus so typing starts immediately.
 		if (resetCursor) view.focus();
 		suppressChange = false;
@@ -737,6 +761,9 @@ import { perDoc } from './docRanges';
 
 <div class="editor-wrap">
 	<div class="editor-host" bind:this={container}></div>
+	{#if colMenu}
+		<ContextMenu x={colMenu.x} y={colMenu.y} items={colMenu.items} onClose={() => (colMenu = null)} />
+	{/if}
 	{#if vimOn}
 		<div class="toasts" aria-live="polite">
 			{#each toasts as t (t.id)}
