@@ -6,6 +6,8 @@ import type { ProjectRow, TaskRow } from './db';
 import { fromArchivedPath, type ArchiveEntry } from '$lib/archive';
 import { projectOf } from '$lib/projects';
 import { MAX_SHARE_DAYS } from '$lib/shareExpiry';
+import type { PublicShare } from './shares';
+import type { VaultEntry } from './vault';
 
 type TrashRow = { trashName: string; originalPath: string; deletedAt: number };
 
@@ -35,7 +37,7 @@ const NotePath = z
 	.refine((p) => !p.split('/').includes('..'), 'Paths stay inside the vault')
 	.describe('Vault-relative path, e.g. "Uni/DSA/Lecture 3.md"');
 
-const INSTRUCTIONS = `Scrinium is a personal notes and tasks app. Notes are markdown files in a vault, addressed by vault-relative path ending in .md. The first "# " heading of a note is its title and should match the filename. Use [[Note name]] to link notes and #tag for tags.
+const INSTRUCTIONS = `Scrinium is a personal notes and tasks app. Notes are markdown files in a vault, addressed by vault-relative path ending in .md. A note's title is its frontmatter "title:" when it has one, else its first "# " heading, and should match the filename. Use [[Note name]] to link notes and #tag for tags.
 
 Tasks live in the app, not in notes. Statuses: ${STATUSES.map((s) => `${s.key} (${s.hint})`).join(', ')}. Keep doing to ${DOING_LIMIT} or fewer. Priorities: ${PRIORITIES.map((p) => p.key).join(', ')}. A task with parent_id is a subtask and always shares its parent's project. Tasks link to existing notes by path.
 
@@ -190,7 +192,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			inputSchema: { path: NotePath, content: z.string() }
 		},
 		async ({ path, content }) => {
-			if (!path.endsWith('.md')) throw new Error('Note paths end in .md');
+			if (!/\.md$/i.test(path)) throw new Error('Note paths end in .md');
 			await call(`/api/notes/${enc(path)}`, {
 				method: 'PUT',
 				headers: { 'If-None-Match': '*' },
@@ -246,7 +248,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 			inputSchema: { path: NotePath, text: z.string().min(1) }
 		},
 		async ({ path, text }) => {
-			if (!path.endsWith('.md')) throw new Error('Note paths end in .md');
+			if (!/\.md$/i.test(path)) throw new Error('Note paths end in .md');
 			const existed = await rewriteNote(path, (cur) => {
 				const sep = !cur || cur.endsWith('\n') ? '' : '\n';
 				return (cur ?? '') + sep + text + (text.endsWith('\n') ? '' : '\n');
@@ -260,7 +262,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		'move_note',
 		{
 			description:
-				'Rename or move a note or folder. Missing folders on the way are created. Links in other notes (wikilinks and markdown links), shares, task links and projects follow it, and a note whose title was its old filename takes the new name as its title. Project folders stay at the vault root. Calling it again after it succeeded is harmless.',
+				'Rename or move a note or folder. Missing folders on the way are created. Links in other notes (wikilinks and markdown links), shares, task links and projects follow it, and a note whose title was its old filename takes the new name as its title. Project folders stay at the vault root.',
 			inputSchema: { path: NotePath, new_path: NotePath }
 		},
 		async ({ path, new_path }) => {
@@ -387,7 +389,7 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 	server.registerTool(
 		'get_backlinks',
 		{
-			description: 'Notes that link to this note with [[...]], plus notes that mention its title without linking.',
+			description: 'Notes that link to this note with [[...]] or a relative markdown link, plus notes that mention its title without linking.',
 			inputSchema: { path: NotePath },
 			annotations: readOnly
 		},
@@ -418,7 +420,81 @@ export function createMcpServer(fetch: Fetch, origin: string, onWrite: OnWrite =
 		}
 	);
 
+	const shareOut = (s: PublicShare) => ({
+		id: s.id,
+		url: `${origin}/s/${s.id}`,
+		path: s.notePath,
+		password_protected: s.hasPassword,
+		created: iso(s.createdAt),
+		expires_at: iso(s.expiresAt)
+	});
+
+	server.registerTool(
+		'list_shares',
+		{
+			description: 'List public share links, for one note or every note. Expired links are listed with their expiry.',
+			inputSchema: { path: NotePath.optional().describe('Only links to this note') },
+			annotations: readOnly
+		},
+		async ({ path }) => {
+			const rows = await getJson<PublicShare[]>(`/api/shares${path ? `?path=${encodeURIComponent(path)}` : ''}`);
+			return result(rows.map(shareOut));
+		}
+	);
+
+	server.registerTool(
+		'revoke_share',
+		{
+			description: 'Delete a share link so it stops working. Only call this when the user asks.',
+			inputSchema: { id: z.string().min(1).describe('id from list_shares') },
+			annotations: { destructiveHint: true }
+		},
+		async ({ id }) => {
+			await send('DELETE', `/api/shares/${encodeURIComponent(id)}`);
+			onWrite('revoke_share', id);
+			return result(`Revoked share ${id}`);
+		}
+	);
+
+	server.registerTool(
+		'set_share_password',
+		{
+			description: 'Set or change a share link\'s password, or remove it with null. Viewers have to unlock again.',
+			inputSchema: {
+				id: z.string().min(1).describe('id from list_shares'),
+				password: z.string().min(4).max(200).nullable()
+			}
+		},
+		async ({ id, password }) => {
+			const share = (await (await send('PATCH', `/api/shares/${encodeURIComponent(id)}`, { password })).json()) as PublicShare;
+			onWrite('set_share_password', share.notePath);
+			return result(shareOut(share));
+		}
+	);
+
 	// Attachments
+
+	server.registerTool(
+		'list_files',
+		{
+			description:
+				'List every file and folder in the vault (notes, attachments, PDFs, empty folders), folders ending in "/". Archive and trash are left out.',
+			inputSchema: { folder: NotePath.optional().describe('Only entries inside this folder') },
+			annotations: readOnly
+		},
+		async ({ folder }) => {
+			const out: string[] = [];
+			const walk = (list: VaultEntry[]) => {
+				for (const e of list) {
+					out.push(e.type === 'directory' ? `${e.path}/` : e.path);
+					if (e.children) walk(e.children);
+				}
+			};
+			walk(await getJson<VaultEntry[]>('/api/tree'));
+			const dir = folder?.replace(/^\/+|\/+$/g, '');
+			return result(dir ? out.filter((p) => p.startsWith(`${dir}/`) && p !== `${dir}/`) : out);
+		}
+	);
 
 	server.registerTool(
 		'upload_attachment',

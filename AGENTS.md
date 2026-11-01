@@ -143,8 +143,8 @@ Scrinium is small, but there are a few footguns specific to it.
    so a stale tab never recreates it. The rename response carries the new
    versions of the notes it relinked, so this tab's own moves never
    conflict. On window focus `refreshShown` loads the open note's newer
-   server copy when nothing is unsaved. Writes without `If-Match` (MCP,
-   the phone) overwrite. A client path that PUTs a note goes through
+   server copy when nothing is unsaved. Writes without `If-Match` (the
+   phone) overwrite; MCP rewrites send a strict `If-Match` and retry. A client path that PUTs a note goes through
    `putNote` and `saved`, or it loses track of the version.
 8. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
