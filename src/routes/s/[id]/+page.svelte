@@ -88,6 +88,7 @@
 			}
 			if (!res.ok) {
 				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				if (asked !== id) return;
 				failed = body?.message || 'This link is invalid or was revoked.';
 				return;
 			}
