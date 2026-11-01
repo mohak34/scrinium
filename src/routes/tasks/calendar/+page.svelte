@@ -32,31 +32,48 @@
 	let refresh = $state(0);
 	let connectFailed = $state(false);
 	let shownMonth = '';
+	// Events per grid month for this visit, so a month seen before (or
+	// prefetched next to the one on screen) shows at once while it refreshes.
+	const monthEvents = new Map<string, CalendarEvent[]>();
+
+	async function fetchMonth(y: number, m: number, signal?: AbortSignal) {
+		const [from, to] = gridRange(y, m);
+		const res = await fetch(`/api/calendar/events?from=${from}&to=${to}`, { cache: 'no-store', signal });
+		if (!res.ok) throw new Error(`calendar ${res.status}`);
+		const data = (await res.json()) as { events: CalendarEvent[]; needsConnect?: boolean };
+		if (!data.needsConnect) monthEvents.set(`${y}-${m}`, data.events);
+		return data;
+	}
 
 	// Google overlay for the visible grid. Local tasks render regardless. A
 	// refresh keeps the old events on screen until the new ones arrive; a
-	// month change clears them so last month's events never sit on this grid.
+	// month change shows that month's cached events or none, so last month's
+	// events never sit on this grid.
 	$effect(() => {
-		const [from, to] = gridRange(viewYear, viewMonth);
+		const y = viewYear;
+		const m = viewMonth;
 		void refresh;
-		const month = `${viewYear}-${viewMonth}`;
+		const month = `${y}-${m}`;
 		if (month !== shownMonth) {
 			shownMonth = month;
-			gev = [];
-			calendarState = 'loading';
+			const cached = monthEvents.get(month);
+			gev = cached ?? [];
+			calendarState = cached ? 'connected' : 'loading';
 		}
 		const ctl = new AbortController();
 		(async () => {
 			try {
-				const res = await fetch(`/api/calendar/events?from=${from}&to=${to}`, {
-					cache: 'no-store',
-					signal: ctl.signal
-				});
-				if (!res.ok) throw new Error(`calendar ${res.status}`);
-				const data = (await res.json()) as { events: CalendarEvent[]; needsConnect?: boolean };
+				const data = await fetchMonth(y, m, ctl.signal);
 				if (ctl.signal.aborted) return;
 				gev = data.events;
 				calendarState = data.needsConnect ? 'disconnected' : 'connected';
+				if (data.needsConnect) return;
+				for (const d of [-1, 1]) {
+					const n = new Date(y, m + d, 1);
+					if (!monthEvents.has(`${n.getFullYear()}-${n.getMonth()}`)) {
+						void fetchMonth(n.getFullYear(), n.getMonth()).catch(() => {});
+					}
+				}
 			} catch {
 				if (!ctl.signal.aborted) calendarState = 'error';
 			}
