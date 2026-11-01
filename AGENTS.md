@@ -518,7 +518,7 @@ State channels you will touch:
 - App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in
   `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
   `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`
-  (crumbs + preview/PDF/more/Share/right-panel toggle), `StatusBar.svelte`,
+  (crumbs + preview/download/print/more/Share/right-panel toggle), `StatusBar.svelte`,
   `AppActions.svelte` (Archive/Trash/Settings/Sign out buttons: notes sidebar, Tasks
   sidebar, Board footer via `PageFooter actions`; not on Calendar),
   `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,

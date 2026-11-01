@@ -27,7 +27,6 @@
 		{ label: 'Rename', icon: 'edit', action: () => renameRequest.set({ path }) },
 		{ label: pinned ? 'Unpin' : 'Pin to sidebar', icon: pinned ? 'keep_off' : 'keep', action: () => togglePin(path) },
 		{ label: 'Copy path', icon: 'content_copy', divider: true, action: () => void navigator.clipboard?.writeText(path).catch(() => {}) },
-		{ label: 'Download .md', icon: 'download', action: () => void downloadNote(path).catch(() => {}) },
 		{ label: 'Archive', icon: 'inventory_2', divider: true, action: () => void archivePath(path) },
 		{ label: 'Move to trash', icon: 'delete', danger: true, action: () => void deletePath(path) }
 	]);
@@ -50,8 +49,11 @@
 	<button class="btn" title="Preview (Esc)" onclick={onTogglePreview}>
 		<span class="material-symbols-outlined">visibility</span>
 	</button>
+	<button class="btn" title="Download .md" onclick={() => void downloadNote(path).catch(() => {})}>
+		<span class="material-symbols-outlined">download</span>
+	</button>
 	<button class="btn" title="Print / PDF" onclick={() => void printNote()}>
-		<span class="material-symbols-outlined">picture_as_pdf</span>
+		<span class="material-symbols-outlined">print</span>
 	</button>
 	<button
 		class="btn"
@@ -64,8 +66,8 @@
 		<span class="material-symbols-outlined">more_horiz</span>
 	</button>
 	<span class="vsep"></span>
-	<button class="btn line" onclick={() => (shareOpen = true)}>
-		<span class="material-symbols-outlined">ios_share</span>Share
+	<button class="btn share" onclick={() => (shareOpen = true)}>
+		<span class="material-symbols-outlined">share</span>Share
 	</button>
 	<button
 		class="btn"
@@ -142,10 +144,20 @@
 		background: var(--hover);
 		color: var(--text);
 	}
-	.btn.line {
-		border: 1px solid var(--line-2);
-		padding: 0 11px 0 9px;
+	.btn .material-symbols-outlined {
+		font-size: 18px;
+	}
+	.btn.share {
+		padding: 0 12px 0 10px;
 		margin-right: 4px;
+		background: var(--accent-fill);
+		color: var(--on-accent);
+	}
+	.btn.share:hover {
+		background: var(--accent-fill-hi);
+	}
+	.btn.share .material-symbols-outlined {
+		font-size: 17px;
 	}
 	.vsep {
 		width: 1px;
