@@ -2,7 +2,7 @@
 	import type { VaultEntry } from '$lib/stores/vault';
 	import { activePath, archivePath, fileOrder, inFileOrder, folderNoteCount, pinnedPaths } from '$lib/stores/vault';
 	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
-	import { drag } from './sidebarDrag';
+	import { drag, fileDrop } from './sidebarDrag';
 	import { fileIcon } from '$lib/attachments';
 	import FileTree from './FileTree.svelte';
 
@@ -39,8 +39,10 @@
 
 	// The row being dragged fades in place; the folder a drop would land in is
 	// highlighted with everything under it, a spot between files gets a line.
+	// Files dragged in from the computer highlight their folder the same way.
 	const dragged = $derived($drag && !$drag.source.fromPins ? $drag.source.path : null);
-	const moveTo = $derived($drag?.target?.kind === 'move' ? $drag.target : null);
+	const target = $derived($drag?.target ?? $fileDrop);
+	const moveTo = $derived(target?.kind === 'move' ? target : null);
 	const dropDir = $derived(moveTo && !moveTo.place ? moveTo.dir : undefined);
 	const insBefore = (path: string) => moveTo?.place?.path === path && !moveTo.place.after;
 	const insAfter = (path: string) => moveTo?.place?.path === path && moveTo.place.after;

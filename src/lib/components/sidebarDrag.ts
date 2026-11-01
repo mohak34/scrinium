@@ -50,6 +50,10 @@ export interface DragState {
 
 export const drag = writable<DragState | null>(null);
 
+// Where files dragged in from the computer would land, while they hover the
+// sidebar; drawn like a row drag's move target.
+export const fileDrop = writable<DropTarget | null>(null);
+
 const THRESHOLD = 4;
 const EXPAND_DELAY = 600;
 const EDGE = 32;
@@ -115,6 +119,14 @@ function placeTarget(source: DragSource, row: HTMLElement, y: number): DropTarge
 	const beside = next?.querySelector<HTMLElement>('[data-tree-entry]')?.dataset.path;
 	if (path === source.path || beside === source.path) return null;
 	return { kind: 'move', dir: parentDirOf(path), place: { path, after } };
+}
+
+// The folder files from the computer land in: the folder under the pointer
+// (a pinned folder's row too), or undefined outside every section.
+export function fileDropDir(x: number, y: number): string | null | undefined {
+	const el = document.elementFromPoint(x, y);
+	const pinDir = el?.closest('[data-tree-entry], [data-pin-tree]') ? null : el?.closest<HTMLElement>('[data-pin-dir]');
+	return pinDir?.dataset.pin ?? treeDir(el);
 }
 
 function resolve(source: DragSource, x: number, y: number): DropTarget | null {
