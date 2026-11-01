@@ -73,6 +73,23 @@ export const auth = betterAuth({
 					throw new APIError('UNAUTHORIZED', { error: 'invalid_grant', error_description: 'consent required' });
 				}
 			}
+		}),
+		// A refresh issues a new token row but keeps the old one, so every
+		// old refresh token would stay usable until it expires. Once the new
+		// pair is out, the old row (and its access token) is dropped.
+		after: createAuthMiddleware(async (ctx) => {
+			const old = ctx.body?.refresh_token;
+			if (
+				ctx.path === '/mcp/token' &&
+				ctx.body?.grant_type === 'refresh_token' &&
+				typeof old === 'string' &&
+				!(ctx.context.returned instanceof APIError)
+			) {
+				await ctx.context.adapter.delete({
+					model: 'oauthAccessToken',
+					where: [{ field: 'refreshToken', value: old }]
+				});
+			}
 		})
 	},
 

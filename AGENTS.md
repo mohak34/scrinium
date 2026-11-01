@@ -479,7 +479,8 @@ State channels you will touch:
   OAuth token from better-auth's `mcp` plugin (auth.ts). OAuth clients find
   it through `/.well-known/oauth-*` (public) and every authorization stops
   at `/oauth/consent`; the hooks in auth.ts force that, since the plugin
-  alone skips consent. Mobile-only
+  alone skips consent, and delete a token row once it is refreshed, since
+  the plugin keeps old refresh tokens working. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
   authed `GET/POST /api/shares` + `PATCH/DELETE /api/shares/[id]` (PATCH
