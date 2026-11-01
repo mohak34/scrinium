@@ -566,6 +566,13 @@ State channels you will touch:
   session only) mints a labeled token for an MCP client; the raw value is
   shown once. Phone tokens have no label. `GET /api/tokens/activity`
   lists what an agent token changed (30 days, dropped on revoke).
+- **OAuth apps**: MCP clients that signed in (ChatGPT, Claude, OpenCode)
+  are listed under Settings > Agents > Connected apps from better-auth's
+  `oauthAccessToken` rows (`src/lib/server/oauthApps.ts`, `GET/DELETE
+  /api/apps`, browser session only). Their writes log under
+  `oauth:<clientId>` (`locals.agent`, set in hooks.server.ts), so the
+  activity survives token refreshes; `oauth_app_use` keeps the last use.
+  Disconnect deletes the user's tokens and consent for that app.
 - Auth gates a shared vault: today all allowlisted users see the same files.
   Per-user vaults are a feature to build, not a config switch.
 - Public routes (`/s`, `/api/share`) are allowlisted in `hooks.server.ts`

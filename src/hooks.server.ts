@@ -2,8 +2,8 @@ import type { Handle, ServerInit } from '@sveltejs/kit';
 import { redirect } from '@sveltejs/kit';
 import { getMigrations } from 'better-auth/db/migration';
 import { timingSafeEqual } from 'node:crypto';
-import { auth, emailForOAuthToken, isAllowedEmail } from '$lib/server/auth';
-import { emailForBearerToken } from '$lib/server/mobileAuth';
+import { auth, isAllowedEmail, oauthCaller } from '$lib/server/auth';
+import { emailForBearerToken, hash } from '$lib/server/mobileAuth';
 import { migrateAreasToProjects } from '$lib/server/db';
 import { createFolder, safeResolve } from '$lib/server/vault';
 import { readdir } from 'node:fs/promises';
@@ -48,6 +48,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (dev && env.DEV_LOGIN_EMAIL) {
 		event.locals.session = null;
 		event.locals.email = env.DEV_LOGIN_EMAIL;
+		event.locals.agent = null;
 		return resolve(event);
 	}
 
@@ -58,6 +59,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const session = found && isAllowedEmail(found.user.email) ? found : null;
 	event.locals.session = session;
 	event.locals.email = session?.user.email ?? null;
+	event.locals.agent = null;
 
 	if (!session && !isPublic) {
 		if (event.url.pathname.startsWith('/api')) {
@@ -66,11 +68,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 			// access token from the mcp plugin (ChatGPT, claude.ai).
 			const authz = event.request.headers.get('authorization');
 			const bearer = authz?.match(/^Bearer (.+)$/i)?.[1];
-			const email = bearer
-				? (emailForBearerToken(bearer) ?? (await emailForOAuthToken(event.request.headers)))
-				: null;
-			if (email && isAllowedEmail(email)) {
-				event.locals.email = email;
+			let caller: { email: string; agent: string } | null = null;
+			if (bearer) {
+				const email = emailForBearerToken(bearer);
+				caller = email ? { email, agent: hash(bearer) } : await oauthCaller(event.request.headers);
+			}
+			if (caller && isAllowedEmail(caller.email)) {
+				event.locals.email = caller.email;
+				event.locals.agent = caller.agent;
 				return resolve(event);
 			}
 			// The header points MCP clients at the OAuth metadata so they can
