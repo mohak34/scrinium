@@ -8,6 +8,9 @@ declare global {
 			session: Awaited<ReturnType<typeof auth.api.getSession>>;
 			// Who the request is for: the session's email or the API token's.
 			email: string | null;
+			// Which agent sent a token request, for its activity log: an API
+			// token's hash or `oauth:<clientId>`. Null for browser sessions.
+			agent: string | null;
 		}
 	}
 }

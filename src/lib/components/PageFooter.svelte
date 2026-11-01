@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import AppActions from './AppActions.svelte';
+	import ReminderBell from './ReminderBell.svelte';
 
 	// Bottom strip for Tasks, Board and Calendar, matching the notes status bar.
 	// `actions` puts Trash/Settings/Sign out at the left on pages without a sidebar.
@@ -10,6 +11,7 @@
 <footer>
 	{#if actions}<span class="actions"><AppActions /></span>{/if}
 	<span class="sp"></span>
+	<ReminderBell />
 	{@render children()}
 </footer>
 

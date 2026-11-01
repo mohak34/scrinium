@@ -381,9 +381,13 @@ State channels you will touch:
   input, they ignore the theme. Select opens ContextMenu under its button.
   Both popups claim their keys in the window capture phase, and the
   settings dialog and bins view leave Esc to an open `.ctx-menu` or
-  `.date-pop`), ReminderToasts (mounted
-  in the root layout except on login and share pages; polls
-  `POST /api/tasks/due` every 30 s while the tab is visible).
+  `.date-pop`), ReminderToasts (the top-right
+  reminder panel, mounted in the root layout except on login and share
+  pages; every 30 s while the tab is visible it fires what came due with
+  `POST /api/tasks/due`, which opens the panel, and reloads every fired
+  reminder still open with `GET`. A reminder stays until done, snoozed (a
+  new `remind_at` re-arms it) or cleared (`remind_at` null); closing the
+  panel leaves them on ReminderBell in the bottom bars, `stores/reminders.ts`).
   CommandPalette is mounted in the root layout too, so Ctrl+K works on
   every app page (`stores/palette.ts`). It searches notes and tasks, adds
   an Inbox task from the query, and holds the global commands; a page adds
@@ -483,7 +487,8 @@ State channels you will touch:
   OAuth token from better-auth's `mcp` plugin (auth.ts). OAuth clients find
   it through `/.well-known/oauth-*` (public) and every authorization stops
   at `/oauth/consent`; the hooks in auth.ts force that, since the plugin
-  alone skips consent. Mobile-only
+  alone skips consent, and delete a token row once it is refreshed, since
+  the plugin keeps old refresh tokens working. Mobile-only
   endpoints: `POST /api/auth/mobile` (Google ID token → long-lived API token)
   and `GET /api/notes/manifest` (metadata-only delta sync listing). Sharing:
   authed `GET/POST /api/shares` + `PATCH/DELETE /api/shares/[id]` (PATCH
@@ -570,6 +575,13 @@ State channels you will touch:
   session only) mints a labeled token for an MCP client; the raw value is
   shown once. Phone tokens have no label. `GET /api/tokens/activity`
   lists what an agent token changed (30 days, dropped on revoke).
+- **OAuth apps**: MCP clients that signed in (ChatGPT, Claude, OpenCode)
+  are listed under Settings > Agents > Connected apps from better-auth's
+  `oauthAccessToken` rows (`src/lib/server/oauthApps.ts`, `GET/DELETE
+  /api/apps`, browser session only). Their writes log under
+  `oauth:<clientId>` (`locals.agent`, set in hooks.server.ts), so the
+  activity survives token refreshes; `oauth_app_use` keeps the last use.
+  Disconnect deletes the user's tokens and consent for that app.
 - Auth gates a shared vault: today all allowlisted users see the same files.
   Per-user vaults are a feature to build, not a config switch.
 - Public routes (`/s`, `/api/share`) are allowlisted in `hooks.server.ts`

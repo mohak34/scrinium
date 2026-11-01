@@ -175,12 +175,13 @@ export function touchApiToken(tokenHash: string) {
 
 export function revokeApiToken(tokenHash: string) {
 	db.prepare(`DELETE FROM api_tokens WHERE token_hash = ?`).run(tokenHash);
-	db.prepare(`DELETE FROM agent_actions WHERE token_hash = ?`).run(tokenHash);
+	dropAgentActions(tokenHash);
 }
 
-// What each agent token changed through MCP, newest first, for Settings >
+// What each agent changed through MCP, newest first, for Settings >
 // Agents. A trust log, not an audit trail: rows older than 30
 // days are pruned on insert and revoking a token drops its rows.
+// token_hash holds the agent key: an API token's hash or `oauth:<clientId>`.
 db.exec(`
 	CREATE TABLE IF NOT EXISTS agent_actions (
 		id INTEGER PRIMARY KEY,
@@ -213,6 +214,38 @@ export function listAgentActions(tokenHash: string, limit = 50): AgentAction[] {
 	return db
 		.prepare(`SELECT tool, target, at FROM agent_actions WHERE token_hash = ? ORDER BY at DESC, id DESC LIMIT ?`)
 		.all(tokenHash, limit) as AgentAction[];
+}
+
+export function dropAgentActions(agent: string) {
+	db.prepare(`DELETE FROM agent_actions WHERE token_hash = ?`).run(agent);
+}
+
+// Last request from each OAuth app (by client id). better-auth's own
+// tables only record when a token was issued, not when it was used.
+db.exec(`
+	CREATE TABLE IF NOT EXISTS oauth_app_use (
+		client_id TEXT PRIMARY KEY,
+		last_used_at INTEGER NOT NULL
+	);
+`);
+
+export function touchOAuthApp(clientId: string) {
+	db.prepare(
+		`INSERT INTO oauth_app_use (client_id, last_used_at) VALUES (?, ?)
+		 ON CONFLICT(client_id) DO UPDATE SET last_used_at = excluded.last_used_at`
+	).run(clientId, Date.now());
+}
+
+export function oauthAppLastUsed(clientId: string): number | null {
+	const row = db.prepare(`SELECT last_used_at FROM oauth_app_use WHERE client_id = ?`).get(clientId) as
+		| { last_used_at: number }
+		| undefined;
+	return row?.last_used_at ?? null;
+}
+
+export function forgetOAuthApp(clientId: string) {
+	db.prepare(`DELETE FROM oauth_app_use WHERE client_id = ?`).run(clientId);
+	dropAgentActions(`oauth:${clientId}`);
 }
 
 export function listApiTokensForEmail(email: string): ApiTokenRow[] {
@@ -745,6 +778,18 @@ export function listDueReminders(now: number): TaskRow[] {
 			 ORDER BY remind_at ASC`
 		)
 		.all(now) as TaskRow[];
+}
+
+// Reminders that fired and still wait on the user: the task is open and its
+// reminder was neither cleared nor moved (a new time re-arms it).
+export function listFiredReminders(): TaskRow[] {
+	return db
+		.prepare(
+			`SELECT ${TASK_COLS} FROM tasks
+			 WHERE remind_at IS NOT NULL AND notified_at IS NOT NULL AND status != 'done'
+			 ORDER BY remind_at ASC`
+		)
+		.all() as TaskRow[];
 }
 
 export function markRemindersNotified(ids: string[], now: number) {

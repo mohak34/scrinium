@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { mcp } from 'better-auth/plugins';
 import { env } from '$env/dynamic/private';
-import { db } from './db';
+import { db, touchOAuthApp } from './db';
 
 const allowedEmails = (env.ALLOWED_EMAILS || '')
 	.split(',')
@@ -73,6 +73,23 @@ export const auth = betterAuth({
 					throw new APIError('UNAUTHORIZED', { error: 'invalid_grant', error_description: 'consent required' });
 				}
 			}
+		}),
+		// A refresh issues a new token row but keeps the old one, so every
+		// old refresh token would stay usable until it expires. Once the new
+		// pair is out, the old row (and its access token) is dropped.
+		after: createAuthMiddleware(async (ctx) => {
+			const old = ctx.body?.refresh_token;
+			if (
+				ctx.path === '/mcp/token' &&
+				ctx.body?.grant_type === 'refresh_token' &&
+				typeof old === 'string' &&
+				!(ctx.context.returned instanceof APIError)
+			) {
+				await ctx.context.adapter.delete({
+					model: 'oauthAccessToken',
+					where: [{ field: 'refreshToken', value: old }]
+				});
+			}
 		})
 	},
 
@@ -102,11 +119,13 @@ export const auth = betterAuth({
 	}
 });
 
-// Email behind an OAuth access token from the mcp plugin, or null when the
-// token is unknown or expired.
-export async function emailForOAuthToken(headers: Headers): Promise<string | null> {
+// Who sent an OAuth access token from the mcp plugin, or null when the
+// token is unknown or expired. Marks the app as used for Settings > Agents.
+export async function oauthCaller(headers: Headers): Promise<{ email: string; agent: string } | null> {
 	const token = await auth.api.getMcpSession({ headers });
 	if (!token) return null;
 	const user = await auth.$context.then((c) => c.internalAdapter.findUserById(token.userId));
-	return user?.email ?? null;
+	if (!user) return null;
+	touchOAuthApp(token.clientId);
+	return { email: user.email, agent: `oauth:${token.clientId}` };
 }

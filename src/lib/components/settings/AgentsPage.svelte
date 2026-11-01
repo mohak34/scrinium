@@ -3,6 +3,7 @@
 	import { day, listTokens, revokeToken, type Token } from './tokens';
 
 	type Action = { tool: string; target: string; at: number };
+	type App = { client_id: string; name: string; connected_at: number; last_used_at: number | null };
 
 	// MCP write tools as past-tense verbs for the activity list.
 	const VERBS: Record<string, string> = {
@@ -28,6 +29,7 @@
 	};
 
 	let tokens = $state<Token[]>([]);
+	let apps = $state<App[]>([]);
 	let loading = $state(true);
 	let busy = $state<string | null>(null);
 	let copied = $state<string | null>(null);
@@ -35,17 +37,22 @@
 	let creating = $state(false);
 	// Raw token from the last create. Shown once, gone when the dialog closes.
 	let fresh = $state<{ label: string; token: string } | null>(null);
-	// Activity of the one expanded agent; null while collapsed.
-	let open = $state<{ hash: string; actions: Action[] | null } | null>(null);
+	// Activity of the one expanded agent or app, by token hash or client id;
+	// null while collapsed.
+	let open = $state<{ key: string; actions: Action[] | null } | null>(null);
 
 	const mcpUrl = `${location.origin}/api/mcp`;
 
 	// Phone tokens have no label and live on the Devices page.
 	const load = async () => (tokens = (await listTokens()).filter((t) => t.label));
+	const loadApps = async () => {
+		const res = await fetch('/api/apps');
+		apps = res.ok ? await res.json() : [];
+	};
 
 	onMount(async () => {
 		try {
-			await load();
+			await Promise.all([load(), loadApps()]);
 		} finally {
 			loading = false;
 		}
@@ -81,14 +88,29 @@
 		}
 	}
 
-	async function toggleActivity(hash: string) {
-		if (open?.hash === hash) {
+	async function disconnect(a: App) {
+		if (!confirm(`Disconnect "${a.name}"? It will have to sign in and be approved again.`)) return;
+		busy = a.client_id;
+		try {
+			const res = await fetch('/api/apps', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ client_id: a.client_id })
+			});
+			if (res.ok) apps = apps.filter((x) => x.client_id !== a.client_id);
+		} finally {
+			busy = null;
+		}
+	}
+
+	async function toggleActivity(key: string, url: string) {
+		if (open?.key === key) {
 			open = null;
 			return;
 		}
-		open = { hash, actions: null };
-		const res = await fetch(`/api/tokens/activity?token_hash=${encodeURIComponent(hash)}`);
-		if (open?.hash === hash) open = { hash, actions: res.ok ? await res.json() : [] };
+		open = { key, actions: null };
+		const res = await fetch(url);
+		if (open?.key === key) open = { key, actions: res.ok ? await res.json() : [] };
 	}
 
 	function copy(value: string) {
@@ -101,11 +123,32 @@
 		new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 </script>
 
+{#snippet activity(actions: Action[] | null)}
+	<div class="log">
+		{#if actions === null}
+			<div class="hint">Loading...</div>
+		{:else if actions.length === 0}
+			<div class="hint">No changes in the last 30 days.</div>
+		{:else}
+			{#each actions as a, i (i)}
+				<div class="act">
+					<span class="when">{stamp(a.at)}</span>
+					<span class="what">{VERBS[a.tool] ?? a.tool}</span>
+					<span class="tgt">{a.target}</span>
+				</div>
+			{/each}
+		{/if}
+	</div>
+{/snippet}
+
 <div class="sub">Connect</div>
 <div class="row">
 	<div class="txt">
 		<span class="lbl">MCP server</span>
-		<span class="hint">Give an agent this URL and a token, sent as <span class="mono">Authorization: Bearer</span></span>
+		<span class="hint">
+			Apps that sign in (ChatGPT, Claude, OpenCode) need only this URL. Others take a token, sent as
+			<span class="mono">Authorization: Bearer</span>
+		</span>
 	</div>
 	<span class="mono url">{mcpUrl}</span>
 	<button class="btn ghost" onclick={() => copy(mcpUrl)}>
@@ -148,7 +191,11 @@
 					Added {day(t.created_at)}, {t.last_used_at ? `last used ${day(t.last_used_at)}` : 'never used'}
 				</span>
 			</div>
-			<button class="btn ghost" class:on={open?.hash === t.token_hash} onclick={() => toggleActivity(t.token_hash)}>
+			<button
+				class="btn ghost"
+				class:on={open?.key === t.token_hash}
+				onclick={() => toggleActivity(t.token_hash, `/api/tokens/activity?token_hash=${encodeURIComponent(t.token_hash)}`)}
+			>
 				<span class="material-symbols-outlined">history</span>
 				Activity
 			</button>
@@ -158,23 +205,37 @@
 			</button>
 			<button class="btn danger" disabled={busy === t.token_hash} onclick={() => revoke(t)}>Revoke</button>
 		</div>
-		{#if open?.hash === t.token_hash}
-			<div class="log">
-				{#if open.actions === null}
-					<div class="hint">Loading...</div>
-				{:else if open.actions.length === 0}
-					<div class="hint">No changes in the last 30 days.</div>
-				{:else}
-					{#each open.actions as a, i (i)}
-						<div class="act">
-							<span class="when">{stamp(a.at)}</span>
-							<span class="what">{VERBS[a.tool] ?? a.tool}</span>
-							<span class="tgt">{a.target}</span>
-						</div>
-					{/each}
-				{/if}
+		{#if open?.key === t.token_hash}{@render activity(open.actions)}{/if}
+	{/each}
+{/if}
+
+<div class="sub">Connected apps</div>
+<p class="hint top">Apps that signed in with your account. Disconnect one to cut it off; it has to be approved again.</p>
+{#if loading}
+	<div class="empty">Loading...</div>
+{:else if apps.length === 0}
+	<div class="empty">No apps.</div>
+{:else}
+	{#each apps as a (a.client_id)}
+		<div class="row">
+			<span class="material-symbols-outlined ic">apps</span>
+			<div class="txt">
+				<span class="lbl">{a.name}</span>
+				<span class="hint">
+					Connected {day(a.connected_at)}, {a.last_used_at ? `last used ${stamp(a.last_used_at)}` : 'never used'}
+				</span>
 			</div>
-		{/if}
+			<button
+				class="btn ghost"
+				class:on={open?.key === a.client_id}
+				onclick={() => toggleActivity(a.client_id, `/api/apps/activity?client_id=${encodeURIComponent(a.client_id)}`)}
+			>
+				<span class="material-symbols-outlined">history</span>
+				Activity
+			</button>
+			<button class="btn danger" disabled={busy === a.client_id} onclick={() => disconnect(a)}>Disconnect</button>
+		</div>
+		{#if open?.key === a.client_id}{@render activity(open.actions)}{/if}
 	{/each}
 {/if}
 

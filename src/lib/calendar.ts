@@ -12,6 +12,12 @@ export interface CalendarEvent {
 	allDay: boolean;
 }
 
+// One Google calendar the overlay reads, for the page's show/hide switches.
+export interface CalendarSource {
+	name: string;
+	color: string | null;
+}
+
 // Local midnight for date-only values, the instant otherwise.
 function instant(value: string, allDay: boolean): number {
 	return new Date(allDay ? `${value}T00:00:00` : value).getTime();
