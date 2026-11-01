@@ -282,13 +282,14 @@ async function writePending(keepalive = false): Promise<boolean> {
 }
 
 // Notes whose next PUT is a restore from history (restoreVersion): the
-// server books it as a version of its own.
+// server books it as a version of its own. Kept until a PUT lands, so a
+// retried restore never folds into the version before it.
 const restoring = new Set<string>();
 
-function putNote(path: string, content: string, keepalive = false): Promise<Response> {
+async function putNote(path: string, content: string, keepalive = false): Promise<Response> {
 	const version = versions.get(path);
-	const restore = restoring.delete(path);
-	return fetch(`/api/notes/${encPath(path)}`, {
+	const restore = restoring.has(path);
+	const res = await fetch(`/api/notes/${encPath(path)}`, {
 		method: 'PUT',
 		headers: {
 			'Content-Type': 'text/plain',
@@ -298,6 +299,8 @@ function putNote(path: string, content: string, keepalive = false): Promise<Resp
 		body: content,
 		keepalive
 	});
+	if (res.ok) restoring.delete(path);
+	return res;
 }
 
 // Record a save's version. A version-checked save also says where the text
