@@ -531,10 +531,17 @@ async function executeTitleSync() {
 	if (!pending) return;
 	const sanitized = sanitizeTitleForFilename(pending.title);
 	if (!sanitized) return;
-	const dir = pending.path.includes('/') ? pending.path.slice(0, pending.path.lastIndexOf('/')) : null;
+	// Moves already queued run first: the note follows its folder, and a
+	// note renamed by hand or deleted meanwhile keeps that.
+	const ref = trackPath(pending.path);
+	await enqueue(async () => {});
+	const path = ref.get();
+	ref.done();
+	if (!path || path.split('/').pop() !== pending.path.split('/').pop()) return;
+	const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
 	const newPath = dir ? `${dir}/${sanitized}.md` : `${sanitized}.md`;
-	if (newPath === pending.path) return;
-	const ok = await renameNote(pending.path, newPath);
+	if (newPath === path) return;
+	const ok = await renameNote(path, newPath);
 	if (!ok) saveStatus.set('error');
 }
 
