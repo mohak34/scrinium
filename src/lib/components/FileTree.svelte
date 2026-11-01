@@ -3,7 +3,7 @@
 	import { activePath, fileOrder, inFileOrder, folderNoteCount, pinnedPaths } from '$lib/stores/vault';
 	import { collapsedDirs, toggleDir } from '$lib/stores/filetree';
 	import { drag } from './sidebarDrag';
-	import { isImagePath } from '$lib/attachments';
+	import { fileIcon } from '$lib/attachments';
 	import FileTree from './FileTree.svelte';
 
 	interface Props {
@@ -36,14 +36,6 @@
 		onCancelCreate,
 		onCancelRename
 	}: Props = $props();
-
-	function fileIcon(name: string): string {
-		if (isImagePath(name)) return 'image';
-		if (/\.pdf$/i.test(name)) return 'picture_as_pdf';
-		if (/\.(mp3|m4a|wav|ogg)$/i.test(name)) return 'audio_file';
-		if (/\.(mp4|webm|mov)$/i.test(name)) return 'video_file';
-		return 'draft';
-	}
 
 	// The row being dragged fades in place; the folder a drop would land in is
 	// highlighted with everything under it, a spot between files gets a line.
@@ -211,30 +203,24 @@
 					<span class="file-label">{entry.name.replace(/\.md$/, '')}</span>
 				</button>
 			{:else}
-				{@const viewable = /\.(png|jpe?g|gif|webp|pdf)$/i.test(entry.name)}
 				<div
 					class="file asset"
-					class:viewable={viewable}
 					class:dragging={dragged === entry.path}
 					class:ins-before={insBefore(entry.path)}
 					class:ins-after={insAfter(entry.path)}
 					title={entry.name}
 					role="button"
-					tabindex={viewable ? 0 : -1}
+					tabindex="0"
 					data-tree-entry
 					data-path={entry.path}
 					data-type="file"
-					onclick={viewable ? () => onOpenAsset(entry.path) : undefined}
-					onkeydown={
-						viewable
-							? (e) => {
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault();
-										onOpenAsset(entry.path);
-									}
-								}
-							: undefined
-					}
+					onclick={() => onOpenAsset(entry.path)}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault();
+							onOpenAsset(entry.path);
+						}
+					}}
 					oncontextmenu={(e) => {
 						e.preventDefault();
 						e.stopPropagation();
@@ -385,20 +371,13 @@
 		text-overflow: ellipsis;
 	}
 	.file.asset {
-		cursor: default;
+		cursor: pointer;
 		color: var(--text-3);
 		font-size: var(--fs-sm);
 	}
 	.file.asset:hover {
-		background: none;
-		color: var(--text-3);
-	}
-	.file.asset.viewable {
-		cursor: pointer;
-		color: var(--text-2);
-	}
-	.file.asset.viewable:hover {
 		background: var(--hover);
+		color: var(--text-2);
 	}
 	.rename-input {
 		display: block;

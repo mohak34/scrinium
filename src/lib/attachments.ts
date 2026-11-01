@@ -4,6 +4,15 @@ import { relativeTo } from './relink';
 // Shared by client and server so all three agree.
 export const isImagePath = (p: string) => /\.(png|jpe?g|gif|webp|avif)$/i.test(p);
 
+// Material Symbols name for a non-note vault file (tree rows, note panel).
+export function fileIcon(name: string): string {
+	if (isImagePath(name)) return 'image';
+	if (/\.pdf$/i.test(name)) return 'picture_as_pdf';
+	if (/\.(mp3|m4a|wav|ogg)$/i.test(name)) return 'audio_file';
+	if (/\.(mp4|webm|mov)$/i.test(name)) return 'video_file';
+	return 'draft';
+}
+
 // Turn a markdown image reference into a browser-loadable URL. Absolute
 // (http(s)/data) URLs pass through; anything else is resolved against the
 // note's folder and served through the auth-gated asset API. Shared by the
