@@ -281,11 +281,20 @@ async function writePending(keepalive = false): Promise<boolean> {
 	return true;
 }
 
+// Notes whose next PUT is a restore from history (restoreVersion): the
+// server books it as a version of its own.
+const restoring = new Set<string>();
+
 function putNote(path: string, content: string, keepalive = false): Promise<Response> {
 	const version = versions.get(path);
+	const restore = restoring.delete(path);
 	return fetch(`/api/notes/${encPath(path)}`, {
 		method: 'PUT',
-		headers: { 'Content-Type': 'text/plain', ...(version && { 'If-Match': version }) },
+		headers: {
+			'Content-Type': 'text/plain',
+			...(version && { 'If-Match': version }),
+			...(restore && { 'X-Note-Restore': '1' })
+		},
 		body: content,
 		keepalive
 	});
@@ -623,6 +632,17 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 	});
 	if (ok) await loadTree();
 	return !!ok;
+}
+
+// Put a version from the note's history back. A write like any other
+// (the open note's editor text is replaced and autosaved), sent with
+// X-Note-Restore so it gets a version of its own.
+// The flag is set once text saved before it is written, so it rides on
+// the restore's own PUT.
+export async function restoreVersion(path: string, content: string): Promise<boolean> {
+	const ok = await rewriteNote(path, () => (restoring.add(path), content));
+	if (!ok) restoring.delete(path);
+	return ok;
 }
 
 // Rewrite the note's frontmatter block via a mutate callback (set/delete

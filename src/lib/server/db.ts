@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import fs from 'node:fs';
 import path from 'node:path';
 import { titleScore } from './rank';
+import { noteHistory } from './history';
 import type { TaskStatus, TaskPriority } from '../taskModel';
 
 const dbPath = env.DATABASE_PATH || './data/scrinium.db';
@@ -12,6 +13,9 @@ fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 export const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
+
+// Past text of every note, with who wrote it (history.ts).
+export const history = noteHistory(db);
 
 // Lightweight metadata cache for the sidebar/search. This is a CACHE, not a
 // source of truth - if it ever gets out of sync with the vault, delete the

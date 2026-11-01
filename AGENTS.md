@@ -73,8 +73,8 @@ Scrinium is small, but there are a few footguns specific to it.
    editor gives each cell its raw source instead (tableBlock.ts).
 2. **Treating the note cache as authoritative.** `note_meta`, `note_fts`
    and `note_docs` cache the vault (recent notes, search). Everything else
-   in `data/scrinium.db` (tasks, projects, shares, tokens, auth) is the only
-   copy: never delete the file. If the cache drifts, stop the app, run
+   in `data/scrinium.db` (note history, tasks, projects, shares, tokens,
+   auth) is the only copy: never delete the file. If the cache drifts, stop the app, run
    `node -e "const d=require('better-sqlite3')(process.argv[1]);d.exec('DELETE FROM note_meta; DROP TABLE note_docs')" data/scrinium.db`
    from the app directory and start it; boot clears the search index and
    the first search rebuilds it from the vault. Never let a feature depend
@@ -148,7 +148,19 @@ Scrinium is small, but there are a few footguns specific to it.
    `putNote` and `saved`, or it loses track of the version.
 8. **Path prefixes in SQL use `under()` from db.ts**, not `LIKE 'x/%'`
    (case-insensitive, `_` and `%` are wildcards).
-9. **Vault mutations go through `withVaultLock`** in `src/lib/server/vault.ts`.
+9. **Note writes are booked in history.** `writeNote`, `saveNote` and
+   `createNoteFile` take a `book` callback run inside the vault lock; the
+   notes PUT route passes `history.record` (`src/lib/server/history.ts`,
+   table `note_versions`) with the author: the session's email, the agent
+   token's label (`Phone` without one) or the OAuth app's name. A write
+   over text the history never saw keeps that text first as an
+   unattributed version. Same-author writes within 5 minutes of the
+   version's start fold into it; `X-Note-Restore: 1` (`restoreVersion` in
+   stores/vault.ts) always starts a new one. 50 versions per note. History
+   rows follow renames and bins like task links (`history.rename`) and are
+   dropped on purge. A new server path that writes a note's text goes
+   through these functions, or its change shows up as unattributed.
+10. **Vault mutations go through `withVaultLock`** in `src/lib/server/vault.ts`.
    Writes, mkdirs, renames, trash, restore and purge run one at a time, so a
    "target is free" check and the move onto it can't be split by another
    request (`fs.rename` silently replaces files). A new function that
@@ -166,6 +178,9 @@ Use `bun` (never npm/yarn) for dev tooling. The lockfile is `bun.lock`.
   Google sign-in can't reach. Dev only: builds ignore it.
 - `bun run check` — the gate: `svelte-kit sync && svelte-check`. Must be
   0 errors / 0 warnings before committing.
+- `bun run test` — `node --test` over `src/**/*.test.ts` (Node's own
+  runner, no test deps). Only pure modules are tested: note history on an
+  in-memory sqlite and the line diff. They import with `.ts` extensions.
 - `bun run build` — production build via `@sveltejs/adapter-node` → `build/`,
   run with `node build/index.js`.
 - `bun run preview` — preview the production build locally.
@@ -365,6 +380,12 @@ State channels you will touch:
   ahead of the page's Mod+F, which opens the note editor's search. The
   page counter is a page jump; page and zoom per PDF path and the dark
   pages switch (a CSS filter on the page canvas) live in localStorage.
+- Note history: `components/HistoryView.svelte` is the full-page view of
+  the open note's versions (NoteBar's `...` menu, palette "Note history"),
+  mounted by the root page only while open. `GET /api/history?note=`
+  lists versions and `&id=` returns one's text; it diffs the version
+  against the editor's live text with `src/lib/lineDiff.ts`. Restore is
+  `restoreVersion`, a content rewrite like any other.
 - `src/lib/print/renderNote.ts` — `renderNoteToHtml`, the one note→HTML
   renderer (markdown-it plus the editor's math, code, callout, wikilink
   and tag parsing). Used by `/print` (NoteBar's Print / PDF) and, on the

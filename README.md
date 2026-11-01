@@ -4,7 +4,7 @@ Self-hosted notes app. Notes are markdown files in a folder on the server, edite
 
 ## What it is
 
-Every note is a `.md` file under `VAULT_DIR`. You can edit, back up, or move notes without the app. SQLite holds everything else: the search index, tasks, share links, sign-ins, and API tokens.
+Every note is a `.md` file under `VAULT_DIR`. You can edit, back up, or move notes without the app. SQLite holds everything else: the search index, note history, tasks, share links, sign-ins, and API tokens.
 
 The editor is CodeMirror 6. It hides markdown syntax and shows it again on the line the cursor is on. Pasted or dropped files go to an `attachments` folder inside the note's project, or at the vault root for notes outside a project; Settings > Attachments changes that.
 
@@ -44,6 +44,8 @@ The app runs at `http://localhost:5173`. It creates the auth tables on first sta
 ## Connecting an agent
 
 The MCP server is at `https://<your-host>/api/mcp`. Agents that take a header (Codex, opencode, Claude Code) use a token: create one in **Settings > Agents** and give the agent the URL and the header `Authorization: Bearer <token>`. Apps that only offer OAuth (ChatGPT, claude.ai connectors) take just the URL: they send you to Google sign-in, then to a consent page in Scrinium where you allow or deny the connection. Each token's **Activity** button lists the last 50 changes the agent made through MCP tools in the last 30 days. Direct API calls, like a `curl` upload, are not listed.
+
+Every save to a note, yours or an agent's, is kept in the note's **History** (the note's `...` menu, or "Note history" in the palette): who wrote each version, a diff against the current text, and Restore. Saves by the same author within 5 minutes fold into one version, and each note keeps its last 50.
 
 The server has these tools:
 

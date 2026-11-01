@@ -244,9 +244,24 @@ async function writeAtomic(fullPath: string, content: string): Promise<void> {
 	}
 }
 
-export async function writeNote(relPath: string, content: string): Promise<void> {
+// Books a note write inside the vault lock, so writes reach the history
+// in the order they hit the disk: the note's path, its text before (null
+// when new) and after.
+export type BookWrite = (path: string, before: string | null, after: string) => void;
+
+const readIfThere = (fullPath: string) =>
+	fs.readFile(fullPath, 'utf-8').catch((e: NodeJS.ErrnoException) => {
+		if (e.code === 'ENOENT') return null;
+		throw e;
+	});
+
+export async function writeNote(relPath: string, content: string, book: BookWrite): Promise<void> {
 	const fullPath = safeResolve(relPath);
-	return withVaultLock(() => writeAtomic(fullPath, content));
+	return withVaultLock(async () => {
+		const before = await readIfThere(fullPath);
+		await writeAtomic(fullPath, content);
+		book(vaultRel(relPath), before, content);
+	});
 }
 
 // A note's version: a hash of its text. Readers get it as X-Note-Version
@@ -269,13 +284,16 @@ export interface SavedNote {
 // (moved or trashed elsewhere) the text lands in that copy instead. A stale
 // tab never overwrites another writer's change or recreates a moved note.
 // Copies take their name as title when the title was the note's name.
-export function saveNote(relPath: string, content: string, version: string, strict = false): Promise<SavedNote> {
+export function saveNote(
+	relPath: string,
+	content: string,
+	version: string,
+	book: BookWrite,
+	strict = false
+): Promise<SavedNote> {
 	const fullPath = safeResolve(relPath);
 	return withVaultLock(async () => {
-		const theirs = await fs.readFile(fullPath, 'utf-8').catch((e: NodeJS.ErrnoException) => {
-			if (e.code === 'ENOENT') return null;
-			throw e;
-		});
+		const theirs = await readIfThere(fullPath);
 		// Strict: a read-modify-write (MCP edits) that must start over
 		// instead of keeping a conflict copy.
 		if (strict && (theirs === null || noteVersion(theirs) !== version)) throw error(412, 'Note changed');
@@ -283,6 +301,7 @@ export function saveNote(relPath: string, content: string, version: string, stri
 			const copy = await conflictPath(relPath);
 			const text = retitle(content, relPath, copy);
 			await writeAtomic(safeResolve(copy), text);
+			book(copy, null, text);
 			return { path: copy, content: text };
 		}
 		const saved = { path: vaultRel(relPath), content };
@@ -292,9 +311,11 @@ export function saveNote(relPath: string, content: string, version: string, stri
 			const text = retitle(theirs, relPath, copy);
 			await writeAtomic(safeResolve(copy), text);
 			await writeAtomic(fullPath, content);
+			book(saved.path, theirs, content);
 			return { ...saved, conflict: { path: copy, content: text } };
 		}
 		await writeAtomic(fullPath, content);
+		book(saved.path, theirs, content);
 		return saved;
 	});
 }
@@ -311,11 +332,12 @@ async function conflictPath(relPath: string): Promise<string> {
 
 // Writes a new note, failing with a 409 if anything already sits at the path.
 // The check and the write share the lock, so a create never replaces a note.
-export async function createNoteFile(relPath: string, content: string): Promise<void> {
+export async function createNoteFile(relPath: string, content: string, book: BookWrite): Promise<void> {
 	const fullPath = safeResolve(relPath);
 	return withVaultLock(async () => {
 		if (await exists(fullPath)) throw error(409, 'Note already exists');
 		await writeAtomic(fullPath, content);
+		book(vaultRel(relPath), null, content);
 	});
 }
 

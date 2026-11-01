@@ -21,9 +21,12 @@ import {
 	renameNoteIndex,
 	renameTaskLinks,
 	renameProjects,
-	getProject
+	getProject,
+	findApiToken,
+	history
 } from '$lib/server/db';
 import { renameShares } from '$lib/server/shares';
+import { oauthAppName } from '$lib/server/oauthApps';
 
 // Auth is already enforced in src/hooks.server.ts for everything under /api
 // except /api/auth itself - see that file for the actual gate.
@@ -56,17 +59,33 @@ function indexed(path: string, content: string) {
 	indexNote(path, title, content);
 }
 
+// Who a write is booked under in the note's history: the user's email, an
+// agent token's label (phones have none), or the OAuth app's name.
+async function author(locals: App.Locals): Promise<string> {
+	const agent = locals.agent;
+	if (!agent) return locals.email ?? 'Unknown';
+	if (agent.startsWith('oauth:')) return (await oauthAppName(agent.slice(6))) ?? 'OAuth app';
+	return findApiToken(agent)?.label || 'Phone';
+}
+
 // `If-None-Match: *` asks for create-only: 409 instead of overwriting.
 // `If-Match: <version>` saves over that version only (saveNote) and answers
 // with where the text landed and any conflict copy; with `X-Note-Strict: 1`
 // as well it answers 412 instead of keeping a copy (MCP edits read again).
 // Without either the note is overwritten (the phone).
-export const PUT: RequestHandler = async ({ params, request }) => {
+// Every write is booked in the note's history; `X-Note-Restore: 1` (a
+// restore from it) starts a version of its own instead of folding into
+// the author's last one.
+export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	const path = writable(params.path);
 	const content = await request.text();
 	const version = request.headers.get('if-match');
+	const by = await author(locals);
+	const restore = request.headers.get('x-note-restore') === '1';
+	const book = (p: string, before: string | null, after: string) =>
+		history.record(p, before, after, by, Date.now(), !restore);
 	if (version) {
-		const saved = await saveNote(path, content, version, request.headers.get('x-note-strict') === '1');
+		const saved = await saveNote(path, content, version, book, request.headers.get('x-note-strict') === '1');
 		indexed(saved.path, saved.content);
 		if (saved.conflict) indexed(saved.conflict.path, saved.conflict.content);
 		return json(
@@ -74,8 +93,8 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 			{ headers: { 'X-Note-Version': noteVersion(saved.content) } }
 		);
 	}
-	if (request.headers.get('if-none-match') === '*') await createNoteFile(path, content);
-	else await writeNote(path, content);
+	if (request.headers.get('if-none-match') === '*') await createNoteFile(path, content, book);
+	else await writeNote(path, content, book);
 	indexed(path, content);
 	return new Response(null, { status: 204, headers: { 'X-Note-Version': noteVersion(content) } });
 };
@@ -106,6 +125,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		renameNoteIndex(from, to);
 		renameShares(from, to);
 		renameTaskLinks(from, to);
+		history.rename(from, to);
 		renameProjects(vaultRel(from), vaultRel(to), isFolder);
 	});
 	// Notes whose links or title the move rewrote; the editor fixes its

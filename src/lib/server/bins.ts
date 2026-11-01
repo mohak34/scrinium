@@ -16,15 +16,16 @@ import {
 	moveTrashedProjects,
 	renameNoteIndex,
 	renameTaskLinks,
-	upsertNoteMeta
+	upsertNoteMeta,
+	history
 } from './db';
 import { deleteSharesByPrefix } from './shares';
 import { effectiveTitle } from '$lib/editor/frontmatter';
 
 // The cache bookkeeping around moving notes in and out of the trash and
 // archive. Routes call these, never the vault bin functions directly.
-// Task links ride along to the bin path and back, so a restored note keeps
-// its tasks; share links are dropped, since a public link to a note you put
+// Task links and note history ride along to the bin path and back, so a
+// restored note keeps its tasks and past versions; share links are dropped, since a public link to a note you put
 // away is a surprise. Archived notes stay in the search index under their
 // bin path; trashed ones leave it.
 
@@ -35,6 +36,7 @@ export async function moveIn(bin: Bin, relPath: string): Promise<BinEntry> {
 	deleteNoteMetaByPrefix(rel);
 	deleteSharesByPrefix(rel);
 	renameTaskLinks(rel, to);
+	history.rename(rel, to);
 	if (bin === 'archive') renameNoteIndex(rel, to);
 	else deleteNoteIndexByPrefix(rel);
 	return entry;
@@ -44,6 +46,7 @@ export async function restore(bin: Bin, name: string): Promise<Restored> {
 	const restored = await restoreFromBin(bin, name);
 	const from = binPath(bin, name);
 	renameTaskLinks(from, restored.path);
+	history.rename(from, vaultRel(restored.path));
 	deleteNoteIndexByPrefix(from);
 	// Landed under a new name: projects that lived in the folder follow it.
 	const [was, now] = [vaultRel(restored.originalPath), vaultRel(restored.path)];
@@ -62,6 +65,7 @@ export async function archiveToTrash(name: string): Promise<BinEntry> {
 	const entry = await moveBetweenBins('archive', 'trash', name);
 	const from = binPath('archive', name);
 	renameTaskLinks(from, binPath('trash', entry.name));
+	history.rename(from, binPath('trash', entry.name));
 	deleteNoteIndexByPrefix(from);
 	return entry;
 }

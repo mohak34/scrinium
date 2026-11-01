@@ -55,3 +55,13 @@ export async function revokeOAuthApp(userId: string, clientId: string) {
 	await adapter.deleteMany({ model: 'oauthConsent', where });
 	forgetOAuthApp(clientId);
 }
+
+// The name an OAuth app registered with, for note history.
+export async function oauthAppName(clientId: string): Promise<string | null> {
+	const { adapter } = await auth.$context;
+	const app = await adapter.findOne<{ name: string }>({
+		model: 'oauthApplication',
+		where: [{ field: 'clientId', value: clientId }]
+	});
+	return app?.name ?? null;
+}
