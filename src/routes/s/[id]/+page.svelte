@@ -17,6 +17,13 @@
 	let password = $state('');
 	let busy = $state(false);
 
+	// A link to another share reuses this page: drop the last one's unlock.
+	$effect.pre(() => {
+		void id;
+		unlocked = null;
+		failed = message = password = '';
+	});
+
 	// Reader zoom on the paper. Scales the base font size (everything inside
 	// is sized in em, KaTeX included) so text reflows inside the viewport
 	// instead of overflowing it on a phone. Print pins it back to 100%.
@@ -63,12 +70,14 @@
 	async function unlock() {
 		if (!password || busy) return;
 		busy = true;
+		const asked = id;
 		try {
-			const res = await fetch(`/api/share/${encodeURIComponent(id)}`, {
+			const res = await fetch(`/api/share/${encodeURIComponent(asked)}`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ password })
 			});
+			if (asked !== id) return;
 			if (res.status === 401) {
 				message = 'Wrong password. Try again.';
 				return;
