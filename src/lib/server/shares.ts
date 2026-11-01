@@ -98,24 +98,27 @@ const failures = new Map<string, { count: number; since: number }>();
 
 export async function verifySharePassword(shareId: string, password: string, stored: string): Promise<boolean> {
 	const now = Date.now();
-	const f = failures.get(shareId);
-	if (f && now - f.since > FAIL_WINDOW) failures.delete(shareId);
-	else if (f && f.count >= FAIL_LIMIT) throw error(429, 'Too many wrong passwords, try again later');
+	let f = failures.get(shareId);
+	if (f && now - f.since > FAIL_WINDOW) f = undefined;
+	if (f && f.count >= FAIL_LIMIT) throw error(429, 'Too many wrong passwords, try again later');
+	// The guess counts before the hash runs, so a burst of parallel guesses
+	// can't all slip in under the limit; a right one takes it back.
+	if (!f) {
+		if (failures.size > 1000) failures.clear();
+		f = { count: 0, since: now };
+		failures.set(shareId, f);
+	}
+	f.count++;
 	const parts = stored.split('$');
-	if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
 	let ok = false;
 	try {
-		const salt = Buffer.from(parts[1], 'hex');
-		const expected = Buffer.from(parts[2], 'hex');
-		if (salt.length !== 16 || expected.length !== 32) return false;
-		ok = timingSafeEqual(await scryptAsync(password, salt, 32), expected);
+		const salt = Buffer.from(parts[1] ?? '', 'hex');
+		const expected = Buffer.from(parts[2] ?? '', 'hex');
+		if (parts.length === 3 && parts[0] === 'scrypt' && salt.length === 16 && expected.length === 32)
+			ok = timingSafeEqual(await scryptAsync(password, salt, 32), expected);
 	} catch {}
-	if (ok) return true;
-	if (failures.size > 1000) failures.clear();
-	const cur = failures.get(shareId);
-	if (cur) cur.count++;
-	else failures.set(shareId, { count: 1, since: now });
-	return false;
+	if (ok) f.count = Math.max(0, f.count - 1);
+	return ok;
 }
 
 // Hash of the raw password for asset-URL comparison avoidance: asset URLs
