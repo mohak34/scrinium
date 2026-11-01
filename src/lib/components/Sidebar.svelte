@@ -386,7 +386,10 @@
 		e.preventDefault();
 		fileDrop.set(null);
 		const dir = fileDropDir(e.clientX, e.clientY) ?? homeDir;
-		void filesFromDrop(e.dataTransfer!).then((files) => upload(dir, files));
+		void filesFromDrop(e.dataTransfer!).then(
+			(files) => upload(dir, files),
+			() => alert('Could not read the dropped files')
+		);
 	}
 	async function upload(dir: string | null, files: Upload[]) {
 		if (!files.length) return;
