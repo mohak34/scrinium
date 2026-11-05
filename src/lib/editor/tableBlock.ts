@@ -25,6 +25,7 @@ import {
 	StateEffect,
 	StateField,
 	Transaction,
+	type Line,
 	type Range
 } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
@@ -121,6 +122,12 @@ function trimCache(noteTables: number) {
 const tableKey = (source: string, refs: string, noteDir: string | null) =>
 	`${noteDir ?? ''}\n${source}\n${refs}`;
 
+function renderTable(source: string, refs: string, noteDir: string | null) {
+	const tpl = document.createElement('template');
+	tpl.innerHTML = render!(refs ? `${source}\n\n${refs}` : source, '', (url) => resolveAssetUrl(url, noteDir));
+	return tpl;
+}
+
 /**
  * HTML for a table, null until the renderer has loaded, '' when the render
  * is not exactly one table with `rows` rows. `refs` are the note's link
@@ -136,11 +143,8 @@ function tableHtml(
 	const key = tableKey(source, refs, noteDir);
 	let html = htmlCache.get(key);
 	if (html === undefined) {
-		html = render(refs ? `${source}\n\n${refs}` : source, '', (url) =>
-			resolveAssetUrl(url, noteDir)
-		);
-		const tpl = document.createElement('template');
-		tpl.innerHTML = html;
+		const tpl = renderTable(source, refs, noteDir);
+		html = tpl.innerHTML;
 		const [table, ...rest] = Array.from(tpl.content.children);
 		if (rest.length || !(table instanceof HTMLTableElement) || table.rows.length !== rows)
 			html = '';
@@ -165,19 +169,39 @@ const orderCache = new Map<string, number[]>();
 const hasFilter = (meta: TableMeta | null) => Object.keys(meta?.filter ?? {}).length > 0;
 const hasView = (meta: TableMeta | null) => !!meta?.sort || hasFilter(meta);
 
-// The body row the cursor is in, for a filtered table it is in, else null.
-function keepRow(state: EditorState, t: TableRange): number | null {
-	const head = state.selection.main.head;
-	if (!hasFilter(t.meta) || head < t.start || head > t.to) return null;
-	const row = state.doc.lineAt(head).number - state.doc.lineAt(t.start).number - 2;
-	return row >= 0 ? row : null;
-}
+// Filters read one row at a time, so a single row can be tested alone.
+const filteredOut = (state: EditorState, t: TableRange, line: Line) =>
+	!tableView([rowCells(state, line).map((c) => state.sliceDoc(c.from, c.to))], t.meta, []).length;
 
-// Changes when the cursor moves to another row of a filtered table.
-const keepKey = (state: EditorState) =>
-	findTableRanges(state)
-		.map((t) => keepRow(state, t))
-		.join();
+// Line starts of the rows the filter would hide but the cursor's table
+// keeps showing: the cursor's own row, and rows it left after an edit
+// took them out. They go once it leaves the table, so clicking on through
+// a table never shifts the rows under the pointer.
+const keptRows = StateField.define<readonly number[]>({
+	create: () => [],
+	update(kept, tr) {
+		if (!tr.docChanged && !tr.selection) return kept;
+		const { state } = tr;
+		const head = state.selection.main.head;
+		const t = tableAt(state, head);
+		if (!t || !hasFilter(t.meta)) return kept.length ? [] : kept;
+		const firstRow = state.doc.line(state.doc.lineAt(t.start).number + 2).from;
+		const lines = new Set(kept.map((pos) => state.doc.lineAt(tr.changes.mapPos(pos)).from));
+		const next = [...lines.add(state.doc.lineAt(head).from)]
+			.filter((pos) => pos >= firstRow && pos <= t.to && filteredOut(state, t, state.doc.lineAt(pos)))
+			.sort((a, b) => a - b);
+		return next.join() === kept.join() ? kept : next;
+	}
+});
+
+// Body rows of `t` kept showing.
+function keepRows(state: EditorState, t: TableRange): number[] {
+	const first = state.doc.lineAt(t.start).number + 2;
+	return state
+		.field(keptRows)
+		.filter((pos) => pos >= t.start && pos <= t.to)
+		.map((pos) => state.doc.lineAt(pos).number - first);
+}
 
 // The HTML renders on first paint: typing in a cell builds a widget per
 // keystroke that never paints (see updateDOM).
@@ -191,8 +215,8 @@ class TableWidget extends WidgetType {
 		readonly refs: string,
 		readonly noteDir: string | null,
 		readonly meta: TableMeta | null,
-		// The body row the cursor is in, which filters never hide.
-		readonly keep: number | null,
+		// Body rows the filters would hide but stay, dimmed (keptRows).
+		readonly keep: readonly number[],
 		// Source cell text of the body rows, read only when sorted or filtered.
 		readonly body: () => string[][]
 	) {
@@ -204,15 +228,13 @@ class TableWidget extends WidgetType {
 		if (this.viewOrder) return this.viewOrder;
 		const count = this.source.split('\n').length - 2;
 		if (!hasView(this.meta)) return (this.viewOrder = Array.from({ length: count }, (_, i) => i));
-		const key = `${this.metaKey}\n${localDay()}\n${this.source}`;
+		const key = `${this.metaKey}\n${this.keep}\n${localDay()}\n${this.source}`;
 		let order = orderCache.get(key);
 		if (!order) {
-			order = tableView(this.body(), this.meta, null);
+			order = tableView(this.body(), this.meta, this.keep);
 			orderCache.set(key, order);
 			while (orderCache.size > 20) orderCache.delete(orderCache.keys().next().value!);
 		}
-		if (this.keep !== null && !order.includes(this.keep))
-			order = tableView(this.body(), this.meta, this.keep);
 		return (this.viewOrder = order);
 	}
 	/** The markdown rendered: header, delimiter, then body rows in display order. */
@@ -230,7 +252,6 @@ class TableWidget extends WidgetType {
 	get cached(): boolean {
 		return this.rendered !== undefined || htmlCache.has(tableKey(this.shownSource, this.refs, this.noteDir));
 	}
-	// Moving between visible rows leaves the filtered view unchanged.
 	eq(other: TableWidget) {
 		return (
 			other.source === this.source &&
@@ -238,8 +259,7 @@ class TableWidget extends WidgetType {
 			other.noteDir === this.noteDir &&
 			other.ready === this.ready &&
 			other.metaKey === this.metaKey &&
-			(other.keep === this.keep ||
-				(other.order.length === this.order.length && other.order.every((row, i) => row === this.order[i])))
+			other.keep.join() === this.keep.join()
 		);
 	}
 	// Toolbar, header, rows and the New row button, so a fresh widget
@@ -268,10 +288,15 @@ class TableWidget extends WidgetType {
 		// Typing in a cell only changes that cell, which shows its editor, so
 		// the rest of the table is already right.
 		if (!(echoing && edit?.host === dom)) this.paint(dom, view);
-		else widgets.set(dom, this);
+		else {
+			const dimmed = widgets.get(dom)?.keep.join() !== this.keep.join();
+			widgets.set(dom, this);
+			if (dimmed) this.dimKept(dom);
+		}
 		return true;
 	}
 	paint(div: HTMLElement, view: EditorView) {
+		const scrollLeft = div.querySelector('.cm-table-scroll')?.scrollLeft;
 		widgets.set(div, this);
 		// Repainting drops a mounted cell editor; syncCell mounts it again.
 		if (edit?.host === div && edit.cell.hasFocus) edit.refocus = true;
@@ -296,6 +321,25 @@ class TableWidget extends WidgetType {
 		div.innerHTML = html;
 		orders.set(div, this.order);
 		this.dress(div, view);
+		if (scrollLeft) div.querySelector('.cm-table-scroll')!.scrollLeft = scrollLeft;
+	}
+	/** Dims the kept rows, in the rows as last painted, and counts the rest. */
+	dimKept(div: HTMLElement) {
+		for (const tr of div.querySelectorAll('tr.cm-row-out')) {
+			tr.classList.remove('cm-row-out');
+			tr.removeAttribute('title');
+		}
+		const rows = div.querySelector('table')?.rows;
+		const order = orders.get(div);
+		for (const row of this.keep) {
+			const tr = order && rows?.[order.indexOf(row) + 1];
+			tr?.classList.add('cm-row-out');
+			tr?.setAttribute('title', 'Hidden by the filter once you leave this table');
+		}
+		const total = this.source.split('\n').length - 2;
+		const shown = this.order.length - this.keep.length;
+		const count = div.querySelector('.cm-table-count');
+		if (count) count.textContent = shown === total ? plural(total, 'row') : `${shown} of ${plural(total, 'row')}`;
 	}
 	/** Toolbar, header icons, typed cells, then column widths. */
 	dress(div: HTMLElement, view: EditorView) {
@@ -337,32 +381,11 @@ class TableWidget extends WidgetType {
 			const options = type === 'status' ? statusOptions(meta, col, body.map((r) => r[col] ?? '')) : [];
 			this.order.forEach((src, i) => {
 				const td = table.rows[i + 1]?.cells[col];
-				const v = body[src]?.[col] ?? '';
-				const box = td?.firstElementChild as HTMLElement | null;
-				if (!td || !box) return;
+				if (!td?.firstElementChild) return;
 				td.classList.add(`cm-col-${type}`);
-				if (!v) return;
-				if (type === 'status') {
-					td.style.setProperty('--status', statusColor(options, v));
-				} else if (type === 'number') {
-					if (/^-?\d+(\.\d+)?$/.test(v)) box.textContent = groupDigits(v);
-					else markBad(td, 'Not a number');
-				} else if (validDate(v)) {
-					box.textContent = friendlyDate(v);
-					td.title = v;
-					if (type === 'deadline') td.classList.add(v < today ? 'cm-cell-over' : v <= soon ? 'cm-cell-near' : 'cm-cell-ok');
-				} else {
-					markBad(td, 'Not a date, use YYYY-MM-DD');
-				}
+				dressCell(td, type, body[src]?.[col] ?? '', options, today, soon);
 			});
 		});
-		// The kept row once the filter would hide it.
-		const out = this.keep !== null && !tableView(this.body(), meta, null).includes(this.keep);
-		if (out) {
-			const tr = table.rows[this.order.indexOf(this.keep) + 1];
-			tr?.classList.add('cm-row-out');
-			tr?.setAttribute('title', 'Hidden by the filter once you leave this row');
-		}
 		const scroll = document.createElement('div');
 		scroll.className = 'cm-table-scroll';
 		table.replaceWith(scroll);
@@ -370,12 +393,10 @@ class TableWidget extends WidgetType {
 		const bar = document.createElement('div');
 		bar.className = 'cm-table-bar';
 		const filters = Object.keys(meta?.filter ?? {}).length;
-		const total = this.source.split('\n').length - 2;
-		const shown = this.order.length - (out ? 1 : 0);
 		bar.innerHTML =
 			`<button data-act="sort"${meta?.sort ? ' class="on"' : ''}><span class="material-symbols-outlined">swap_vert</span>Sort</button>` +
 			`<button data-act="filter"${filters ? ' class="on"' : ''}><span class="material-symbols-outlined">filter_list</span>Filter${filters ? ` ${filters}` : ''}</button>` +
-			`<span class="cm-table-count">${shown === total ? plural(total, 'row') : `${shown} of ${plural(total, 'row')}`}</span>` +
+			`<span class="cm-table-count"></span>` +
 			`<button data-act="source" class="cm-table-md"><span class="material-symbols-outlined">code</span>Markdown</button>`;
 		const add = document.createElement('button');
 		add.className = 'cm-table-addrow';
@@ -383,6 +404,7 @@ class TableWidget extends WidgetType {
 		add.innerHTML = '<span class="material-symbols-outlined">add</span>New row';
 		div.prepend(bar);
 		div.append(add);
+		this.dimKept(div);
 		layoutColumns(div, table, types, view);
 	}
 	destroy(dom: HTMLElement) {
@@ -422,6 +444,44 @@ function friendlyDate(v: string): string {
 function markBad(td: HTMLElement, why: string) {
 	td.classList.add('cm-cell-bad');
 	td.title = why;
+}
+
+// A typed cell's look; its content is already in the `.cm-cell-v` box.
+function dressCell(td: HTMLElement, type: ColType, v: string, options: string[], today: string, soon: string) {
+	if (!v) return;
+	const box = td.firstElementChild as HTMLElement;
+	if (type === 'status') {
+		td.style.setProperty('--status', statusColor(options, v));
+	} else if (type === 'number') {
+		if (/^-?\d+(\.\d+)?$/.test(v)) box.textContent = groupDigits(v);
+		else markBad(td, 'Not a number');
+	} else if (type !== 'text') {
+		if (validDate(v)) {
+			box.textContent = friendlyDate(v);
+			td.title = v;
+			if (type === 'deadline') td.classList.add(v < today ? 'cm-cell-over' : v <= soon ? 'cm-cell-near' : 'cm-cell-ok');
+		} else {
+			markBad(td, 'Not a date, use YYYY-MM-DD');
+		}
+	}
+}
+
+// Redraws one closed cell in place, far cheaper than repainting the table.
+// False when the edit reaches past the cell: the header, a row order that
+// moved, or a status not declared on the column (colors go by position).
+function patchCell(td: HTMLElement, host: HTMLElement, w: TableWidget, ref: CellRef, before: string, text: string) {
+	const type = colType(w.meta, ref.col);
+	const declared = w.meta?.cols?.[ref.col]?.options ?? [];
+	if (ref.row === 0 || !render || w.order.join() !== orders.get(host)?.join()) return false;
+	if (type === 'status' && [before, text].some((v) => v && !declared.includes(v))) return false;
+	const cell = renderTable(`| x |\n| --- |\n| ${text} |`, w.refs, w.noteDir).content.querySelector('tbody td');
+	if (!cell) return false;
+	td.firstElementChild!.replaceChildren(...cell.childNodes);
+	td.classList.remove('cm-cell-bad', 'cm-cell-over', 'cm-cell-near', 'cm-cell-ok');
+	td.removeAttribute('title');
+	td.style.removeProperty('--status');
+	dressCell(td, type, text, declared, localDay(), localDay(7));
+	return true;
 }
 
 // ---- Column widths ----
@@ -784,6 +844,9 @@ interface CellEdit {
 	refocus: boolean;
 	// The cell's text when it opened, for its completions.
 	opened: string;
+	// The column's values, read once per open cell: a query per keystroke
+	// would parse the whole table. Dropped when text outside the cell changes.
+	column?: string[];
 }
 
 // The open cell editor, at most one: the main view has one selection.
@@ -800,14 +863,18 @@ const cellViews = new WeakMap<EditorView, EditorView>();
 
 function closeCell() {
 	if (!edit) return;
-	const { host, cell, main, opened } = edit;
-	const changed = cell.state.doc.toString() !== opened;
-	cell.dom.parentElement?.classList.remove('cm-cell-editing');
+	const { host, cell, main, opened, ref } = edit;
+	const text = cell.state.doc.toString().trim();
+	const td = cell.dom.parentElement;
+	td?.classList.remove('cm-cell-editing');
 	edit = null;
 	closeCompletion(cell);
 	cell.dom.remove();
 	const w = widgets.get(host);
-	if (changed && w && host.isConnected) w.paint(host, main);
+	// A cell that left the DOM went with a repaint, which already drew it.
+	if (text === opened.trim() || !w || !td?.isConnected) return;
+	if (patchCell(td, host, w, ref, opened.trim(), text)) main.requestMeasure();
+	else w.paint(host, main);
 }
 
 function tableDom(view: EditorView, t: TableRange): HTMLElement | null {
@@ -925,7 +992,7 @@ export function syncCell(view: EditorView) {
 		mine.refocus = false;
 		return;
 	}
-	// Closing an edited cell repaints its table, so find the target again.
+	// Closing an edited cell can repaint its table, so find the target again.
 	closeCell();
 	const freshHost = tableDom(view, ref.table);
 	const freshTd = freshHost && cellDom(freshHost, ref.row, ref.col);
@@ -985,7 +1052,7 @@ function columnChoices(own: boolean): string[] {
 	const { main, ref } = edit;
 	const t = tableAt(main.state, ref.from);
 	if (!t) return [];
-	const column = readTable(main.state, t).rows.map((r) => r[ref.col]);
+	const column = (edit.column ??= readTable(main.state, t).rows.map((r) => r[ref.col]));
 	if (colType(t.meta, ref.col) === 'status')
 		return statusOptions(t.meta, ref.col, column.filter((_, i) => i > 0 && (own || i !== ref.row)));
 	const filled = column.slice(1).filter(Boolean);
@@ -1353,6 +1420,10 @@ const cellSync = ViewPlugin.define((view) => {
 	return {
 		update(u) {
 			if (edit?.main === view && u.docChanged) {
+				const open = edit;
+				u.changes.iterChangedRanges((from, to) => {
+					if (from < open.ref.from || to > open.ref.to) open.column = undefined;
+				});
 				edit.ref.from = u.changes.mapPos(edit.ref.from, -1);
 				edit.ref.to = u.changes.mapPos(edit.ref.to, 1);
 			}
@@ -1773,7 +1844,7 @@ function buildTableDecorations(state: EditorState): DecorationSet {
 	for (const t of tables) {
 		const first = state.doc.lineAt(t.from).number;
 		const last = state.doc.lineAt(t.to).number;
-		const widget = new TableWidget(t.source, refs, noteDir, t.meta, keepRow(state, t), () =>
+		const widget = new TableWidget(t.source, refs, noteDir, t.meta, keepRows(state, t), () =>
 			readTable(state, t).rows.slice(1)
 		);
 		// Tables render when drawn, so ones off screen cost nothing; a table
@@ -1798,11 +1869,11 @@ export const tableBlockField = StateField.define<DecorationSet>({
 			syntaxTree(tr.state) !== syntaxTree(tr.startState) ||
 			tr.state.field(rawTableField) !== tr.startState.field(rawTableField) ||
 			tr.effects.some((e) => e.is(previewModeEffect) || e.is(noteDirEffect) || e.is(rendererReady)) ||
-			(tr.selection && keepKey(tr.state) !== keepKey(tr.startState))
+			tr.state.field(keptRows) !== tr.startState.field(keptRows)
 		) {
 			return buildTableDecorations(tr.state);
 		}
 		return deco;
 	},
-	provide: (f) => [rawTableField, EditorView.decorations.from(f), cellSync, enterKeys, vimRowKeys]
+	provide: (f) => [rawTableField, keptRows, EditorView.decorations.from(f), cellSync, enterKeys, vimRowKeys]
 });
