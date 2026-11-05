@@ -271,7 +271,13 @@ State channels you will touch:
   for the cell's raw source; its edits are written back to the main doc as
   one transaction each (same userEvent, so undo groups like typing and
   runs through the main history), and the widget skips rendering and repainting for
-  its own echo. A column that repeats a value offers the column's
+  its own echo. A cell view is reused through transactions, detached while
+  closed and destroyed with the main editor; constructing a view or calling
+  `setState` remounts the shared stylesheet and restyles the whole note.
+  The date picker uses a compartment, and completion contexts update through
+  their effects. Closing an unchanged cell keeps the rendered DOM; a filtered
+  table repaints on selection only when its displayed row order changes.
+  A column that repeats a value offers the column's
   values as completions in that cell editor (`columnChoices`), so a
   status column edits like a select with nothing declared; status
   choices carry their color dot and a new value offers `Add "x"`. Date

@@ -17,6 +17,7 @@
 
 import {
 	Annotation,
+	Compartment,
 	EditorSelection,
 	EditorState,
 	Facet,
@@ -39,6 +40,7 @@ import {
 import { defaultKeymap, redo, undo } from '@codemirror/commands';
 import {
 	autocompletion,
+	closeCompletion,
 	startCompletion,
 	type Completion,
 	type CompletionContext,
@@ -53,7 +55,9 @@ import {
 	previewModeEffect,
 	setPreviewMode,
 	tagCtxField,
-	wikiCtxField
+	tagCtxEffect,
+	wikiCtxField,
+	wikiCtxEffect
 } from './livePreview';
 import { wikiCompletionSource } from './wikiComplete';
 import { tagCompletionSource } from './tagComplete';
@@ -200,13 +204,15 @@ class TableWidget extends WidgetType {
 		if (this.viewOrder) return this.viewOrder;
 		const count = this.source.split('\n').length - 2;
 		if (!hasView(this.meta)) return (this.viewOrder = Array.from({ length: count }, (_, i) => i));
-		const key = `${this.metaKey}\n${this.keep}\n${localDay()}\n${this.source}`;
+		const key = `${this.metaKey}\n${localDay()}\n${this.source}`;
 		let order = orderCache.get(key);
 		if (!order) {
-			order = tableView(this.body(), this.meta, this.keep);
+			order = tableView(this.body(), this.meta, null);
 			orderCache.set(key, order);
 			while (orderCache.size > 20) orderCache.delete(orderCache.keys().next().value!);
 		}
+		if (this.keep !== null && !order.includes(this.keep))
+			order = tableView(this.body(), this.meta, this.keep);
 		return (this.viewOrder = order);
 	}
 	/** The markdown rendered: header, delimiter, then body rows in display order. */
@@ -224,6 +230,7 @@ class TableWidget extends WidgetType {
 	get cached(): boolean {
 		return this.rendered !== undefined || htmlCache.has(tableKey(this.shownSource, this.refs, this.noteDir));
 	}
+	// Moving between visible rows leaves the filtered view unchanged.
 	eq(other: TableWidget) {
 		return (
 			other.source === this.source &&
@@ -231,7 +238,8 @@ class TableWidget extends WidgetType {
 			other.noteDir === this.noteDir &&
 			other.ready === this.ready &&
 			other.metaKey === this.metaKey &&
-			other.keep === this.keep
+			(other.keep === this.keep ||
+				(other.order.length === this.order.length && other.order.every((row, i) => row === this.order[i])))
 		);
 	}
 	// Toolbar, header, rows and the New row button, so a fresh widget
@@ -675,7 +683,7 @@ function onTableMouseDown(e: MouseEvent, view: EditorView, div: HTMLElement) {
 	// Leave preview only after reading positions: the rebuild it triggers
 	// can swap this widget's DOM.
 	if (isPreviewMode()) setPreviewMode(view, false);
-	view.focus();
+	if (!edit?.cell.hasFocus) view.focus();
 }
 
 // Ctrl/Cmd+click on a link in the open cell editor's raw text opens it.
@@ -785,14 +793,21 @@ let echoing = false;
 // Marks cell-editor transactions that copy the main doc in, so they are
 // not written back.
 const fromMain = Annotation.define<boolean>();
+const cellDatePicker = new Compartment();
+// One cell view per main editor, detached while closed. Reopening it keeps
+// CodeMirror from remounting the document's shared stylesheet.
+const cellViews = new WeakMap<EditorView, EditorView>();
 
 function closeCell() {
 	if (!edit) return;
-	const { host, cell, main } = edit;
+	const { host, cell, main, opened } = edit;
+	const changed = cell.state.doc.toString() !== opened;
+	cell.dom.parentElement?.classList.remove('cm-cell-editing');
 	edit = null;
-	cell.destroy();
+	closeCompletion(cell);
+	cell.dom.remove();
 	const w = widgets.get(host);
-	if (w && host.isConnected) w.paint(host, main);
+	if (changed && w && host.isConnected) w.paint(host, main);
 }
 
 function tableDom(view: EditorView, t: TableRange): HTMLElement | null {
@@ -910,7 +925,7 @@ export function syncCell(view: EditorView) {
 		mine.refocus = false;
 		return;
 	}
-	// Closing repaints the table it was in, so find the cell again after.
+	// Closing an edited cell repaints its table, so find the target again.
 	closeCell();
 	const freshHost = tableDom(view, ref.table);
 	const freshTd = freshHost && cellDom(freshHost, ref.row, ref.col);
@@ -918,7 +933,9 @@ export function syncCell(view: EditorView) {
 	// The editor lies over the cell's rendered content, which keeps the
 	// row's height.
 	freshTd.classList.add('cm-cell-editing');
-	const cell = new EditorView({
+	const picker = ref.row > 0 && /^(date|deadline)$/.test(colType(ref.table.meta, ref.col)) ? datePicker : [];
+	const reusable = cellViews.get(view);
+	const cell = reusable ?? new EditorView({
 		parent: freshTd,
 		state: EditorState.create({
 			doc: text,
@@ -928,10 +945,26 @@ export function syncCell(view: EditorView) {
 				// The note list and tags for `[[` and `#` completion, as the note has them.
 				wikiCtxField.init(() => view.state.field(wikiCtxField)),
 				tagCtxField.init(() => view.state.field(tagCtxField)),
-				ref.row > 0 && /^(date|deadline)$/.test(colType(ref.table.meta, ref.col)) ? datePicker : []
+				cellDatePicker.of(picker)
 			]
 		})
 	});
+	cellViews.set(view, cell);
+	if (reusable) {
+		// setState/constructing a view remounts the shared stylesheet, forcing
+		// a style recalculation over the whole note. A transaction keeps it.
+		cell.dispatch({
+			changes: { from: 0, to: cell.state.doc.length, insert: text },
+			selection: local,
+			effects: [
+				wikiCtxEffect.of(view.state.field(wikiCtxField)),
+				tagCtxEffect.of(view.state.field(tagCtxField)),
+				cellDatePicker.reconfigure(picker)
+			],
+			annotations: fromMain.of(true)
+		});
+		freshTd.append(cell.dom);
+	}
 	edit = { main: view, cell, host: freshHost, ref, refocus: false, opened: text };
 	if (click && click !== 'open') {
 		const pos = cell.posAtCoords(click);
@@ -1134,6 +1167,7 @@ function leaveTable(main: EditorView, t: TableRange, after: boolean) {
 	} else {
 		main.dispatch({ changes: { from: 0, insert: '\n' }, selection: { anchor: 0 } });
 	}
+	if (edit?.main === main) closeCompletion(edit.cell);
 	main.focus();
 }
 
@@ -1329,6 +1363,8 @@ const cellSync = ViewPlugin.define((view) => {
 		},
 		destroy() {
 			if (edit?.main === view) closeCell();
+			cellViews.get(view)?.destroy();
+			cellViews.delete(view);
 		}
 	};
 });
