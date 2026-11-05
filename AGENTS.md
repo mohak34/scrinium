@@ -271,8 +271,16 @@ State channels you will touch:
   for the cell's raw source; its edits are written back to the main doc as
   one transaction each (same userEvent, so undo groups like typing and
   runs through the main history), and the widget skips rendering and repainting for
-  its own echo. A column that repeats a value offers the column's
-  values as completions in that cell editor (`columnChoices`), so a
+  its own echo. Closing an edited cell redraws only that cell (`patchCell`);
+  the header, a changed row order and a status value not in the column's
+  `options` (it can recolor the others) repaint the table. A cell view is reused through transactions, detached while
+  closed and destroyed with the main editor; constructing a view or calling
+  `setState` remounts the shared stylesheet and restyles the whole note.
+  The date picker uses a compartment, and completion contexts update through
+  their effects. Closing an unchanged cell keeps the rendered DOM; a filtered
+  table repaints on selection only when its displayed row order changes.
+  A column that repeats a value offers the column's
+  values as completions in that cell editor (`columnChoices`, read once per open cell), so a
   status column edits like a select with nothing declared; status
   choices carry their color dot and a new value offers `Add "x"`. Date
   and deadline cells open a month picker (`datePicker`, a CM tooltip on
@@ -299,7 +307,9 @@ State channels you will touch:
   filter are a view: `tableView` orders the rendered rows, the markdown
   never moves, and `orders` maps rendered rows back to source rows for
   clicks and row stepping. A filter never hides the row the cursor is
-  in; that row is dimmed instead. Text and number columns filter by
+  in, and a row an edit took out of the filter stays too, dimmed, until
+  the cursor leaves the table (`keptRows`), so clicking on through a
+  table never shifts the rows under the pointer. Text and number columns filter by
   `contains` (`filter[i].text`, typed into `askText`, a small input
   inside the editor DOM so the editor theme reaches it). The toolbar above the table also counts rows, shows the markdown
   and, below the table, adds a row. Ranges from

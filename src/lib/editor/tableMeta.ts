@@ -169,17 +169,17 @@ function inRange(v: string, range: DateRange, today: string): boolean {
 
 /**
  * Body rows (indexes into `body`) in display order. `keep` stays visible
- * whatever the filters say: it is the row the cursor is in, so an edit
- * never makes the row being edited vanish.
+ * whatever the filters say, so an edit never makes a row vanish while the
+ * cursor is still in the table.
  */
-export function tableView(body: string[][], meta: TableMeta | null, keep: number | null): number[] {
+export function tableView(body: string[][], meta: TableMeta | null, keep: readonly number[]): number[] {
 	const today = localDay();
 	let rows = body.map((_, i) => i);
 	for (const [k, f] of Object.entries(meta?.filter ?? {})) {
 		const col = Number(k);
 		const text = f.text?.toLowerCase();
 		rows = rows.filter((i) => {
-			if (i === keep) return true;
+			if (keep.includes(i)) return true;
 			const v = body[i][col] ?? '';
 			if (f.filled && !v) return false;
 			if (f.hide?.includes(v)) return false;
