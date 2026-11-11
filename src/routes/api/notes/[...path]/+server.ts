@@ -23,7 +23,8 @@ import {
 	renameProjects,
 	getProject,
 	findApiToken,
-	history
+	history,
+	moves
 } from '$lib/server/db';
 import { renameShares } from '$lib/server/shares';
 import { oauthAppName } from '$lib/server/oauthApps';
@@ -107,11 +108,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	return json({ ok: true });
 };
 
+// `X-Op-Id: <unique id>` makes a move safe to retry: a repeat of a finished
+// move answers `replayed: true` and changes nothing.
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const from = writable(params.path);
 	const body = await request.json().catch(() => null);
 	if (!body?.newPath || typeof body.newPath !== 'string') throw error(400, 'Invalid request');
 	const to = writable(body.newPath);
+	const opId = request.headers.get('x-op-id');
+	const replayed = { relinked: [], versions: {}, previous: {}, replayed: true };
+	if (opId && moves.done(opId)) return json(replayed);
 	// Same path: nothing moves, and the bookkeeping below would drop the
 	// note's own task links and index row as "stale rows at the target".
 	if (from === to) return json({ relinked: [] });
@@ -120,14 +126,22 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (getProject(vaultRel(from)) && vaultRel(to).includes('/')) {
 		throw error(400, 'A project folder stays at the vault root');
 	}
-	const relinked = await renamePath(from, to, () => {
-		renameNoteMeta(from, to);
-		renameNoteIndex(from, to);
-		renameShares(from, to);
-		renameTaskLinks(from, to);
-		history.rename(from, to);
-		renameProjects(vaultRel(from), vaultRel(to), isFolder);
-	});
+	let relinked;
+	try {
+		relinked = await renamePath(from, to, () => {
+			if (opId) moves.record(opId, vaultRel(from), vaultRel(to));
+			renameNoteMeta(from, to);
+			renameNoteIndex(from, to);
+			renameShares(from, to);
+			renameTaskLinks(from, to);
+			history.rename(from, to);
+			renameProjects(vaultRel(from), vaultRel(to), isFolder);
+		});
+	} catch (e) {
+		// A retry racing the first attempt fails on the missing source.
+		if (opId && moves.done(opId)) return json(replayed);
+		throw e;
+	}
 	// Notes whose links or title the move rewrote; the editor fixes its
 	// copy of the open one the same way (relinkNote, retitle). Archived ones stay
 	// searchable but have no metadata, like every binned note; trashed ones
@@ -148,7 +162,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	});
 };
 
-export const DELETE: RequestHandler = async ({ params }) => {
-	await moveIn('trash', writable(params.path));
+// `If-Match: <version>` trashes the note only if it still holds that text;
+// a 412 means it changed since the client read it.
+export const DELETE: RequestHandler = async ({ params, request }) => {
+	await moveIn('trash', writable(params.path), request.headers.get('if-match') ?? undefined);
 	return new Response(null, { status: 204 });
 };
