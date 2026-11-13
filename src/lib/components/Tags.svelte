@@ -23,7 +23,7 @@
 	<PanelSection icon="sell" title="Tags">
 		<div class="tags">
 			{#each tags as t (t)}
-				<button onclick={() => searchTagRequest.set(t)} title={`Search #${t}`}>#{t}</button>
+				<button onclick={() => searchTagRequest.set(t)} title={`Search #${t}`}><span class="hash">#</span>{t}</button>
 			{/each}
 		</div>
 	</PanelSection>
@@ -38,14 +38,19 @@
 	}
 	button {
 		border: none;
-		border-radius: var(--r-sm);
+		border-radius: 5px;
 		padding: 2px 7px;
-		background: color-mix(in srgb, var(--violet) 12%, transparent);
-		color: var(--violet);
+		background: var(--inset);
+		box-shadow: inset 0 0 0 1px var(--rim);
+		color: var(--text-2);
 		font: var(--fs-sm) var(--font-ui);
 		cursor: pointer;
 	}
 	button:hover {
-		background: color-mix(in srgb, var(--violet) 22%, transparent);
+		color: var(--text);
+		box-shadow: inset 0 0 0 1px var(--text-4);
+	}
+	.hash {
+		color: var(--text-4);
 	}
 </style>

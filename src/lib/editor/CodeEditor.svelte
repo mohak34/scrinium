@@ -31,6 +31,8 @@ import { perDoc } from './docRanges';
 	import { tree, archiveEntries, insertIntoNote, shownNote, trackPath } from '$lib/stores/vault';
 	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
+	import { frontmatterField } from './frontmatterBlock';
+	import { parseFrontmatter } from './frontmatter';
 	import { syncCell, tableBlockField, tableCommands, tableMenu, tableVim } from './tableBlock';
 	import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
@@ -502,6 +504,7 @@ import { perDoc } from './docRanges';
 				tagCtxField,
 				livePreview,
 				mathBlockField,
+				frontmatterField,
 				tableBlockField,
 				tableMenu.of((x, y, items) => (colMenu = { x, y, items })),
 				tableVim.of({
@@ -696,9 +699,12 @@ import { perDoc } from './docRanges';
 		}
 		view.dispatch({
 			changes: { from, to, insert: newValue.slice(from, end) },
-			// Note switches park the cursor on line 1; same-note pushes
+			// Note switches park the cursor at the body's start, past the
+			// properties block so it opens rendered; same-note pushes
 			// (rename syncs, link conversions) leave it alone.
-			selection: resetCursor ? { anchor: 0 } : undefined,
+			selection: resetCursor
+				? { anchor: Math.min(parseFrontmatter(newValue)?.bodyStart ?? 0, newValue.length) }
+				: undefined,
 			effects: resetCursor ? [EditorView.scrollIntoView(0)] : []
 		});
 		docText = newValue;

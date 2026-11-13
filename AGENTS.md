@@ -258,6 +258,9 @@ State channels you will touch:
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),
+  frontmatterBlock.ts (the `---` properties as a key/value block widget
+  while the cursor is outside them, raw dim YAML inside; a note switch
+  parks the cursor past the block so it opens rendered),
   mathRender.ts (KaTeX for the math widgets, imported with its CSS on
   the first widget drawn; a widget shows its source until then),
   mathComplete.ts (`\command` completion source, math regions only),

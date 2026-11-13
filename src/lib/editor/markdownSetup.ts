@@ -206,12 +206,37 @@ export const baseTheme = EditorView.theme(
 			borderRadius: '3px'
 		},
 		'.cm-tag': {
-			color: 'var(--violet)',
-			backgroundColor: 'color-mix(in srgb, var(--violet) 12%, transparent)',
+			color: 'var(--text-2)',
+			backgroundColor: 'var(--inset)',
+			boxShadow: 'inset 0 0 0 1px var(--rim)',
 			fontFamily: 'var(--font-ui)',
 			fontSize: '0.85em',
-			padding: '0.05em 0.4em',
-			borderRadius: '4px'
+			padding: '0.1em 0.45em',
+			borderRadius: '5px'
+		},
+		'.cm-tag-hash': { color: 'var(--text-4)' },
+		// Properties block (frontmatterBlock.ts): padding, never margin.
+		'.cm-props': {
+			display: 'grid',
+			gridTemplateColumns: 'minmax(5em, max-content) 1fr',
+			gap: '0.45em 1.5em',
+			padding: '0.2em 0 0.9em',
+			borderBottom: '1px solid var(--rim)',
+			fontFamily: 'var(--font-ui)',
+			fontSize: '0.9em',
+			cursor: 'text'
+		},
+		'.cm-props-key': { color: 'var(--text-3)' },
+		'.cm-props-val': { color: 'var(--text)', display: 'flex', flexWrap: 'wrap', gap: '0.35em' },
+		// Raw YAML while the cursor is in it: the markdown highlighter reads
+		// the closing `---` as a setext heading and `[a, b]` as links.
+		'.cm-fm-line': { fontSize: '0.85em' },
+		'.cm-fm-line, .cm-fm-line *': {
+			fontFamily: 'var(--font-mono)',
+			fontWeight: 'normal',
+			fontStyle: 'normal',
+			textDecoration: 'none',
+			color: 'var(--text-3)'
 		},
 		// Rendered image: full-width lines, unmounted when the cursor leaves.
 		// NOTE: no vertical margin - CodeMirror measures block widgets without

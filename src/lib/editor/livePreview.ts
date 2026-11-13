@@ -806,6 +806,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 			continue;
 		if (inWikilink(t.from, t.to)) continue;
 		pending.push({ from: t.from, to: t.to, deco: Decoration.mark({ class: 'cm-tag' }) });
+		pending.push({ from: t.from, to: t.from + 1, deco: Decoration.mark({ class: 'cm-tag-hash' }) });
 	}
 
 	// Inline math: single-line `$...$` only. Block math (```math fences and
