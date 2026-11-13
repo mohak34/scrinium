@@ -763,6 +763,8 @@
 			{@const pr = progress.get(s.key) ?? { done: 0, total: 0 }}
 			{@const st = styleOf(s.key)}
 			<section
+				class="proj"
+				style:--c={colorVar(st.color)}
 				class:drop-root={dropTarget?.kind === 'move' && !dropTarget.place && dropTarget.dir === s.key}
 				data-drop-dir={s.key ?? ''}
 			>
@@ -781,7 +783,6 @@
 					<div
 						class="group sec-h"
 						class:pin-on={canPin(s.key) && endOfList(s.key)}
-						style:--c={colorVar(st.color)}
 						data-drop-pins={canPin(s.key) || undefined}
 						data-pin-here={canPin(s.key) || undefined}
 						data-project={canPin(s.key) ? (s.key ?? '') : undefined}
@@ -914,8 +915,6 @@
 	aside {
 		width: 100%;
 		flex-shrink: 0;
-		background: var(--panel);
-		border-right: 1px solid var(--line);
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
@@ -925,7 +924,7 @@
 		align-items: center;
 		gap: 2px;
 		height: 48px;
-		padding: 0 8px 0 16px;
+		padding: 0 4px 0 12px;
 		flex-shrink: 0;
 	}
 	.sp {
@@ -934,10 +933,10 @@
 	.icon-btn {
 		display: grid;
 		place-items: center;
-		width: 28px;
-		height: 28px;
+		width: 30px;
+		height: 30px;
 		border: none;
-		border-radius: var(--r);
+		border-radius: var(--r-md);
 		background: none;
 		color: var(--text-3);
 		cursor: pointer;
@@ -951,7 +950,8 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
-		padding-bottom: 12px;
+		padding: 0 8px 12px 10px;
+		scrollbar-width: none;
 	}
 	.group {
 		display: flex;
@@ -959,7 +959,7 @@
 		gap: 6px;
 		padding: 12px 16px 4px;
 		color: var(--text-3);
-		font-size: var(--fs-sm);
+		font-size: var(--t-caption);
 		font-weight: 500;
 	}
 	/* The global pins' band: a project header in plain text color. */
@@ -972,15 +972,15 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		width: calc(100% - 12px);
-		height: 29px;
-		margin: 0 6px;
+		width: 100%;
+		height: 30px;
+		margin: 0;
 		padding: 0 8px;
 		border: none;
-		border-radius: var(--r);
+		border-radius: var(--r-md);
 		background: none;
 		color: var(--text-2);
-		font-size: var(--fs);
+		font-size: var(--t-meta);
 		text-align: left;
 		cursor: pointer;
 	}
@@ -1031,7 +1031,8 @@
 		color: var(--text);
 	}
 	.pin-row.active {
-		background: var(--accent-dim);
+		background: var(--press);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 		color: var(--text);
 	}
 	.pin-row .count {
@@ -1045,27 +1046,40 @@
 	}
 	.tree,
 	.pin-tree {
-		padding: 0 6px;
 		min-height: 40px;
 	}
+	.pins {
+		margin-bottom: 4px;
+	}
+	/* Each project is its own card washed in its color, so where one project
+	   ends and the next begins reads at a glance. */
+	section.proj {
+		margin-top: 8px;
+		padding: 0 4px 6px;
+		border-radius: var(--r-xl);
+		background: color-mix(in srgb, var(--c) 5%, var(--panel));
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 20%, transparent);
+	}
+	section.proj .tree {
+		padding: 0;
+	}
 	section.drop-root {
-		background: var(--hover);
 		box-shadow: inset 0 0 0 1px var(--accent);
-		border-radius: var(--r);
 	}
 	.view-pick {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		width: calc(100% - 12px);
-		height: 29px;
-		margin: 0 6px 6px;
+		width: calc(100% - 18px);
+		height: 34px;
+		margin: 0 8px 8px 10px;
 		padding: 0 8px 0 10px;
 		border: none;
-		border-radius: var(--r);
-		background: none;
+		border-radius: var(--r-md);
+		background: rgba(255, 255, 255, 0.025);
+		box-shadow: inset 0 0 0 1px var(--line-2);
 		color: var(--text);
-		font: 500 var(--fs) var(--font-ui);
+		font: 500 var(--t-meta) var(--font-ui);
 		text-align: left;
 		cursor: pointer;
 	}
@@ -1083,12 +1097,34 @@
 		top: 0;
 		z-index: 1;
 		gap: 9px;
-		height: 34px;
-		margin-top: 6px;
-		padding: 0 10px 0 12px;
-		background: color-mix(in srgb, var(--c) 8%, var(--panel));
+		height: 40px;
+		margin: 0 -4px 2px;
+		padding: 0 8px 0 10px;
+		border-radius: var(--r-xl) var(--r-xl) 0 0;
+		background: color-mix(in srgb, var(--c) 15%, var(--panel));
+		box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--c) 20%, transparent);
 		color: var(--c);
 		cursor: pointer;
+	}
+	section.proj:has(> :not(.sec-h, .rename-input)) > .sec-h {
+		margin-bottom: 4px;
+	}
+	/* Folded: the header is the whole card. */
+	section.proj:not(:has(> :not(.sec-h, .rename-input))) {
+		padding-bottom: 0;
+	}
+	section.proj:not(:has(> :not(.sec-h, .rename-input))) > .sec-h {
+		margin-bottom: 0;
+		border-radius: var(--r-xl);
+		box-shadow: none;
+	}
+	.pins-h.sec-h {
+		margin: 4px 0 2px;
+		height: 32px;
+		padding: 0 8px;
+		background: none;
+		box-shadow: none;
+		position: static;
 	}
 	.ring {
 		position: relative;
@@ -1120,20 +1156,24 @@
 		font-size: 12px;
 	}
 	.sec-h .pin-name {
-		font-size: var(--fs-sm);
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+		color: var(--text);
+		font-size: var(--t-meta);
+		font-weight: 600;
+	}
+	.pins-h .pin-name {
+		color: var(--text-3);
+		font-size: var(--t-caption);
+		font-weight: 500;
 	}
 	.sec-s {
-		color: color-mix(in srgb, var(--c) 60%, var(--text-3));
-		font-size: var(--fs-xs);
+		color: color-mix(in srgb, var(--c) 55%, var(--text-3));
+		font-size: var(--t-caption);
 		font-variant-numeric: tabular-nums;
 	}
 	/* The icon font has one weight; a stroke makes the arrow read bolder. */
 	.sec-h > .chev {
 		font-size: 17px;
-		-webkit-text-stroke: 0.6px currentColor;
+		color: var(--text-3);
 	}
 	/* The buttons replace the count on hover or keyboard focus. A mouse
 	   click leaves focus on the header, so plain :focus-within would keep
@@ -1252,14 +1292,15 @@
 		display: flex;
 		align-items: center;
 		gap: 2px;
-		height: 26px;
-		padding: 0 6px 0 16px;
+		height: 40px;
+		margin: 0 8px 0 10px;
+		padding: 0 0 0 6px;
 		border-top: 1px solid var(--line);
 		flex-shrink: 0;
 	}
 	.count {
 		color: var(--text-3);
-		font-size: var(--fs-xs);
+		font-size: var(--t-caption);
 	}
 	/* The lifted row: opaque so the list never shows through, pointer-events
 	   off so hit-testing sees the rows beneath it. */
@@ -1272,11 +1313,9 @@
 		gap: 8px;
 		height: 29px;
 		padding: 0 10px;
-		border-radius: var(--r);
-		background: var(--hover);
-		box-shadow:
-			0 8px 24px rgb(0 0 0 / 0.6),
-			inset 0 0 0 1px var(--line-2);
+		border-radius: var(--r-md);
+		background: var(--menu);
+		box-shadow: var(--menu-shadow);
 		color: var(--text);
 		font: var(--fs) var(--font-ui);
 	}

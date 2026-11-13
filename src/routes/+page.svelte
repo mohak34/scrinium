@@ -466,7 +466,7 @@
 			></div>
 		{/if}
 	</div>
-	<div class="main">
+	<div class="main" class:solo={collapsed}>
 		<TabBar
 			activePath={$activePath}
 			onActivate={openNote}
@@ -474,6 +474,7 @@
 			onToggleSidebar={toggleCollapse}
 			onNewNote={() => void startCreate('note')}
 		/>
+		<div class="pane note-pane" class:first={!collapsed && $openTabs[0] === $activePath}>
 		{#if $activePath}
 			<NoteBar
 				path={$activePath}
@@ -507,6 +508,7 @@
 		{#if $activePath}
 			<StatusBar content={panelContent} />
 		{/if}
+		</div>
 	</div>
 	{#if $activePath && !rightCollapsed}
 		<aside class="rightbar" aria-label="Note details">
@@ -587,6 +589,18 @@
 	.layout {
 		display: flex;
 		height: 100vh;
+		padding: 0 10px 10px 0;
+	}
+	.note-pane {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	/* The first tab joins the pane's top-left corner, so it stays square. */
+	.note-pane.first {
+		border-top-left-radius: 0;
 	}
 	.sidebar-wrap {
 		width: var(--sidebar-width);
@@ -620,9 +634,7 @@
 	.rightbar {
 		width: 290px;
 		flex-shrink: 0;
-		height: 100vh;
-		background: var(--panel);
-		border-left: 1px solid var(--line);
+		margin-left: 10px;
 		display: flex;
 		flex-direction: column;
 	}
@@ -630,15 +642,15 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 40px;
-		padding: 0 8px 0 16px;
-		border-bottom: 1px solid var(--line);
+		height: 48px;
+		padding: 0 2px 0 6px;
 		flex-shrink: 0;
 	}
 	.rtitle {
 		flex: 1;
 		min-width: 0;
-		font-weight: 600;
+		font: 500 var(--t-meta) var(--font-ui);
+		color: var(--text-2);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -646,10 +658,10 @@
 	.rclose {
 		display: grid;
 		place-items: center;
-		width: 26px;
-		height: 26px;
+		width: 30px;
+		height: 30px;
 		border: none;
-		border-radius: var(--r);
+		border-radius: var(--r-md);
 		background: none;
 		color: var(--text-3);
 		cursor: pointer;
@@ -662,14 +674,19 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
-		padding: 4px 0 24px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		scrollbar-width: none;
 	}
 	.main {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
-		background: var(--bg);
+	}
+	.main.solo {
+		padding-left: 10px;
 	}
 	.editor-scroll {
 		flex: 1;

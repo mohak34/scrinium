@@ -368,7 +368,8 @@
 		color: var(--text-3);
 	}
 	.file.active {
-		background: var(--accent-dim);
+		background: var(--press);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 		color: var(--text);
 	}
 	.file-label {

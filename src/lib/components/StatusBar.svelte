@@ -41,15 +41,14 @@
 
 <style>
 	.status {
-		height: 26px;
+		height: 30px;
 		display: flex;
 		align-items: center;
 		gap: 16px;
 		padding: 0 14px;
 		border-top: 1px solid var(--line);
-		background: var(--panel);
 		color: var(--text-3);
-		font-size: var(--fs-xs);
+		font-size: var(--t-caption);
 		flex-shrink: 0;
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
