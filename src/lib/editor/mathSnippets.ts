@@ -98,8 +98,9 @@ export function expandMathSnippet(view: EditorView): boolean {
 }
 
 // Space: `a/b` -> `\frac{a}{b} ` (the trailing space is re-inserted since
-// the keypress itself is swallowed). Guards: `\/` italic correction and
-// chained `a/b/c` stay untouched. Collapsed cursor in math only.
+// the keypress itself is swallowed, except right before a closing `$`,
+// where a space stops inline math rendering). Guards: `\/` italic
+// correction and chained `a/b/c` stay untouched. Collapsed cursor in math only.
 export function expandMathFraction(view: EditorView): boolean {
 	const sel = view.state.selection.main;
 	if (!sel.empty) return false;
@@ -117,7 +118,8 @@ export function expandMathFraction(view: EditorView): boolean {
 	// `\alpha/b` keeps its single backslash: `\frac{\alpha}{b}`.
 	const keepBs = before[aStart - 1] === '\\';
 	if (keepBs) from -= 1;
-	const insert = `\\frac{${keepBs ? '\\' : ''}${fm[1]}}{${fm[2]}} `;
+	const space = state.sliceDoc(head, head + 1) === '$' ? '' : ' ';
+	const insert = `\\frac{${keepBs ? '\\' : ''}${fm[1]}}{${fm[2]}}${space}`;
 	view.dispatch({
 		changes: { from, to: head, insert },
 		selection: { anchor: from + insert.length }

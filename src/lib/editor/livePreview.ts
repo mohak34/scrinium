@@ -388,8 +388,9 @@ class InlineMathWidget extends WidgetType {
 		fillMath(span, view, this.content, false);
 		return span;
 	}
+	// A click places the cursor on the formula, which reveals its source.
 	ignoreEvent() {
-		return true;
+		return false;
 	}
 }
 
