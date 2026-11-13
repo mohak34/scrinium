@@ -122,13 +122,15 @@ Scrinium is small, but there are a few footguns specific to it.
    server-derived copy over it. `flushSave()` resolves false on a failed
    write - anything else that reads the server copy must check it. The editor is
    one view for every note: a note switch goes through `showNote`, which
-   prefers the note's unsaved text over the server copy (so a failed save
-   never reopens stale). A note with nothing pending or being written is
-   read right away, outside the queue, so a switch never waits on saves of
-   the note being left; if any write of it or any queued change finished
-   or is queued meanwhile (`writtenAt`, `changedAt`, `changing`), the read
-   reruns in the queue. Then `setDoc(text, true)`,
-   which also drops undo history - never swap docs another way. Keystrokes
+   paints pending or in-flight text immediately, otherwise one of the last
+   20 server snapshots (text and version), then revalidates outside the save
+   queue. Pending text wins even when a save fails. Renames, deletes and
+   rewrites clear the snapshots and block reads until their queued change
+   finishes; a read invalidated by a write or mutation (`writtenAt`,
+   `changedAt`, `changing`) retries in the queue. Late or aborted reads
+   never replace text or advance its version. Each switch uses
+   `setDoc(text, true)`, which also drops undo history; background updates
+   use the editor host's `replace` without resetting the cursor. Keystrokes
    save to `shownNote()`, which lags `activePath` until the load lands. A
    load the user already left is skipped; a failed load of the selected
    note sets `activePath` back to `shownNote()` (or none), so the chrome
@@ -144,7 +146,10 @@ Scrinium is small, but there are a few footguns specific to it.
    versions of the notes it relinked, so this tab's own moves never
    conflict. Every 3 s while the tab is visible, and on window focus,
    `refreshShown` loads the open note's newer server copy (an agent's
-   edit) when the note has nothing unsaved, and the editor flashes the
+   edit) outside the save queue, so a slow poll never holds up autosave.
+   It applies only if the shown note, its version and its write/mutation
+   stamps still match and nothing is pending or being written. It updates
+   the snapshot too, and the editor flashes the
    changed lines (`setDoc(..., flash)`, the yank flash's field). Writes without `If-Match` (the
    phone) overwrite; MCP rewrites send a strict `If-Match` and retry. A client path that PUTs a note goes through
    `putNote` and `saved`, or it loses track of the version.
@@ -181,8 +186,9 @@ Use `bun` (never npm/yarn) for dev tooling. The lockfile is `bun.lock`.
 - `bun run check` — the gate: `svelte-kit sync && svelte-check`. Must be
   0 errors / 0 warnings before committing.
 - `bun run test` — `node --test` over `src/**/*.test.ts` (Node's own
-  runner, no test deps). Only pure modules are tested: note history on an
-  in-memory sqlite and the line diff. They import with `.ts` extensions.
+  runner). Pure modules import with `.ts` extensions. The vault-store tests
+  load through Vite without listening on a port, with controlled requests
+  to check note-switch and autosave races.
 - `bun run build` — production build via `@sveltejs/adapter-node` → `build/`,
   run with `node build/index.js`.
 - `bun run preview` — preview the production build locally.
@@ -552,8 +558,10 @@ State channels you will touch:
   reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto
   accent split into `--accent-fill` (solid #175e54 under white text) and
   `--accent` (lifted ink #5db8aa for text, icons, thin lines; the fill is
-  unreadable as text on near-black), fonts (`--font-read` Atkinson
-  Hyperlegible Next, `--font-ui` Space Grotesk, `--font-mono` JetBrains Mono).
+  unreadable as text on near-black), fonts (`--font-read` and `--font-ui` Geist,
+  `--font-mono` JetBrains Mono; the Editor settings' Classic font sets
+  `data-font="classic"` on `<html>`, which swaps them to Atkinson
+  Hyperlegible Next and Space Grotesk).
   The old Material-style names (`--primary`, `--surface-container-*`,
   `--on-surface*`) are aliases kept for components not yet moved over; new
   code uses the tokens. Never fill with `--accent` under text.
@@ -654,7 +662,7 @@ State channels you will touch:
   .env*` — notes and secrets are never shipped.
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
-- Fonts ship as packages (`@fontsource-variable/atkinson-hyperlegible-next`,
+- Fonts ship as packages (`@fontsource-variable/geist`, `atkinson-hyperlegible-next`,
   `space-grotesk`, `jetbrains-mono`). Icons are Material Symbols Outlined
   subset to the names the code uses (`src/lib/design/material-symbols.woff2`,
   loaded by `icons.css`, FILL axis kept for the `.fill` class). After using

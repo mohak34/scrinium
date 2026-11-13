@@ -54,7 +54,6 @@ export const baseTheme = EditorView.theme(
 	{
 		'&': {
 			height: '100%',
-			fontSize: '17px',
 			fontFamily: 'var(--font-read)',
 			backgroundColor: 'var(--bg)',
 			color: 'var(--text)'

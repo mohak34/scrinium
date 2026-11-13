@@ -1,16 +1,28 @@
 <script lang="ts">
-	import { settings } from '$lib/stores/settings';
+	import { settings, type FontChoice } from '$lib/stores/settings';
 	import Toggle from './Toggle.svelte';
 
 	const ed = $derived($settings.editor);
 	const MIN = 10;
 	const MAX = 24;
+	const FONTS: [FontChoice, string][] = [
+		['geist', 'Geist'],
+		['classic', 'Classic']
+	];
 
 	function set<K extends keyof typeof ed>(key: K, value: (typeof ed)[K]) {
 		settings.update((s) => ({ ...s, editor: { ...s.editor, [key]: value } }));
 	}
 </script>
 
+<div class="row">
+	<div class="txt"><span class="lbl">Font</span><span class="hint">Code always uses JetBrains Mono</span></div>
+	<div class="stepper">
+		{#each FONTS as [id, name] (id)}
+			<button class="opt" class:on={ed.font === id} onclick={() => set('font', id)}>{name}</button>
+		{/each}
+	</div>
+</div>
 <div class="row">
 	<div class="txt"><span class="lbl">Font size</span><span class="hint">Note text in the editor</span></div>
 	<div class="stepper">
@@ -54,6 +66,18 @@
 		cursor: pointer;
 	}
 	.stepper button:hover:not(:disabled) {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.stepper button.opt {
+		width: auto;
+		padding: 0 10px;
+		font: 500 12px var(--font-ui);
+	}
+	.stepper button.opt + button.opt {
+		border-left: 1px solid var(--line-2);
+	}
+	.stepper button.on {
 		background: var(--hover);
 		color: var(--text);
 	}
