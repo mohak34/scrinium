@@ -547,18 +547,22 @@
 	.drawer {
 		position: relative;
 		flex-shrink: 0;
-		height: 100vh;
-		background: var(--panel);
-		border-left: 1px solid var(--line);
+		height: calc(100vh - 20px);
+		margin-top: 10px;
+		max-width: calc(100vw - 20px);
+		background: var(--raise);
+		border-radius: var(--r-pane);
+		box-shadow: inset 0 0 0 1px var(--rim);
+		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 	}
 	.grip {
 		position: absolute;
-		left: -4px;
+		left: 0;
 		top: 0;
 		bottom: 0;
-		width: 8px;
+		width: 6px;
 		cursor: ew-resize;
 		touch-action: none;
 		z-index: 2;
