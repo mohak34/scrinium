@@ -662,7 +662,7 @@ State channels you will touch:
   .env*` — notes and secrets are never shipped.
 - systemd unit `scrinium.service` runs `node build/index.js` on
   `localhost:3000` (MemoryMax=500M); Caddy reverse-proxies + Let's Encrypt TLS.
-- Fonts ship as packages (`@fontsource-variable/atkinson-hyperlegible-next`,
+- Fonts ship as packages (`@fontsource-variable/geist`, `atkinson-hyperlegible-next`,
   `space-grotesk`, `jetbrains-mono`). Icons are Material Symbols Outlined
   subset to the names the code uses (`src/lib/design/material-symbols.woff2`,
   loaded by `icons.css`, FILL axis kept for the `.fill` class). After using
