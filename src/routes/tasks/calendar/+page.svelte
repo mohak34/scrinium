@@ -804,7 +804,7 @@
 		border-bottom: 1px solid var(--line);
 	}
 	.big {
-		font: 600 var(--t-title) / 1.2 var(--font-ui);
+		font: 600 24px / 1.2 var(--font-ui);
 		letter-spacing: -0.01em;
 	}
 	.ag-head .sub {
