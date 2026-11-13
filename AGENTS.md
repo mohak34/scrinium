@@ -410,10 +410,7 @@ State channels you will touch:
   `@lezer/markdown` and must never import `livePreview.ts`,
   `markdownSetup.ts` or `@codemirror/lang-markdown`: any of them ships the
   whole editor to the print page and the server.
-- `src/lib/components/` — CommandPalette, ContextMenu (a point-anchored
-  menu on `@ui-sdk/svelte/menu`, which owns focus, arrows, typeahead and
-  dismissal; its docs ship in `node_modules/@ui-sdk/svelte/docs/llms.txt`),
-  FileTree, SearchBox,
+- `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), Select and DatePicker
   (the app's own select and date/time field; no native `<select>` or date
   input, they ignore the theme. Select opens ContextMenu under its button.
