@@ -792,6 +792,8 @@
 		height: 36px;
 		padding: 0 8px;
 		font: 600 var(--t-meta) var(--font-ui);
+		white-space: nowrap;
+		overflow: hidden;
 		flex-shrink: 0;
 	}
 	.aside {

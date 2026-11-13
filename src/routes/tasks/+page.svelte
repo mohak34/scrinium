@@ -239,7 +239,7 @@
 		<div class="side-foot"><AppActions /></div>
 	</aside>
 
-	<main class="main">
+	<main class="main pane">
 		<header class="page-h">
 			<h1>{heading}</h1>
 			<span class="cnt">{visible.length} {visible.length === 1 ? 'task' : 'tasks'}</span>
@@ -412,21 +412,20 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
+		gap: 10px;
 	}
 	.side {
 		width: 240px;
 		flex-shrink: 0;
-		background: var(--panel);
-		border-right: 1px solid var(--line);
 		display: flex;
 		flex-direction: column;
 		overflow-y: auto;
 	}
 	.side-head {
-		height: 56px;
+		height: 52px;
 		display: flex;
 		align-items: center;
-		padding: 0 16px;
+		padding: 0 6px;
 		flex-shrink: 0;
 	}
 	/* Pinned to the bottom, level with the page footer like the notes sidebar. */
@@ -436,16 +435,14 @@
 		align-items: center;
 		justify-content: flex-end;
 		gap: 2px;
-		height: 26px;
-		padding: 0 6px;
-		border-top: 1px solid var(--line);
+		height: 34px;
+		padding: 0;
 		flex-shrink: 0;
 	}
 	.filters {
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
-		padding: 0 8px;
 	}
 	.filt {
 		display: flex;
@@ -454,10 +451,10 @@
 		height: 32px;
 		padding: 0 10px;
 		border: none;
-		border-radius: var(--r);
+		border-radius: var(--r-md);
 		background: none;
 		color: var(--text-2);
-		font: var(--fs) var(--font-ui);
+		font: 500 var(--t-meta) var(--font-ui);
 		text-align: left;
 		cursor: pointer;
 	}
@@ -470,11 +467,12 @@
 		color: var(--text);
 	}
 	.filt.on {
-		background: var(--accent-dim);
+		background: var(--press);
+		box-shadow: inset 0 0 0 1px var(--rim);
 		color: var(--text);
 	}
-	.filt.on .material-symbols-outlined {
-		color: var(--accent);
+	.filt.on .material-symbols-outlined:not([style]) {
+		color: var(--text);
 	}
 	.fl {
 		flex: 1;
@@ -496,6 +494,8 @@
 	.main {
 		flex: 1;
 		min-width: 0;
+		margin: 10px 0;
+		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 	}
@@ -503,14 +503,14 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		height: 56px;
-		padding: 0 16px 0 24px;
-		border-bottom: 1px solid var(--line);
+		height: 60px;
+		padding: 8px 16px 0 28px;
 		flex-shrink: 0;
 	}
 	h1 {
 		margin: 0;
-		font: 700 20px var(--font-read);
+		font: 600 var(--t-title) var(--font-ui);
+		letter-spacing: -0.01em;
 		white-space: nowrap;
 	}
 	.cnt {
@@ -537,11 +537,12 @@
 	}
 	.search {
 		width: 240px;
-		height: 32px;
+		height: 30px;
 		padding: 0 10px;
-		border: 1px solid var(--accent);
+		border: none;
 		border-radius: var(--r-md);
-		background: var(--bg);
+		background: var(--inset);
+		box-shadow: inset 0 0 0 1px var(--accent);
 		color: var(--text);
 		font: var(--fs) var(--font-ui);
 		outline: none;
@@ -550,15 +551,17 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 42px;
-		margin: 14px 24px 0;
-		padding: 0 6px 0 8px;
-		border-bottom: 1px solid var(--line-2);
+		height: 44px;
+		margin: 10px 24px 0;
+		padding: 0 6px 0 12px;
+		border-radius: var(--r-lg);
+		background: var(--inset);
+		box-shadow: inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35);
 		color: var(--text-3);
 		flex-shrink: 0;
 	}
 	.adder:focus-within {
-		border-bottom-color: var(--line-3);
+		box-shadow: inset 0 0 0 1px var(--line-3), inset 0 1px 2px rgba(0, 0, 0, 0.35);
 	}
 	.title-in {
 		flex: 1;
@@ -573,17 +576,17 @@
 		color: var(--text-3);
 	}
 	.add-btn {
-		height: 28px;
+		height: 30px;
 		padding: 0 12px;
 		border: none;
 		border-radius: var(--r-md);
-		background: var(--accent-fill);
-		color: var(--on-accent);
-		font: 600 var(--fs) var(--font-ui);
+		background: linear-gradient(180deg, #ffffff, #e4e4e2);
+		color: #0b0b0b;
+		font: 600 var(--t-meta) var(--font-ui);
 		cursor: pointer;
 	}
 	.add-btn:hover:not(:disabled) {
-		background: var(--accent-fill-hi);
+		background: #ffffff;
 	}
 	.add-btn:disabled {
 		opacity: 0.4;
@@ -600,9 +603,10 @@
 		align-items: center;
 		gap: 8px;
 		margin: 0;
-		padding: 22px 2px 8px;
-		border-bottom: 2px solid var(--line);
-		font-size: var(--fs);
+		padding: 24px 8px 8px;
+		border-bottom: 1px solid var(--line);
+		color: var(--text-2);
+		font-size: var(--t-meta);
 		font-weight: 600;
 	}
 	.lg .dt {
@@ -618,15 +622,16 @@
 		grid-template-columns: 28px minmax(0, 1fr) 28px;
 		align-items: start;
 		gap: 10px;
-		padding: 7px 4px;
-		border-bottom: 1px solid var(--raise);
+		padding: 7px 8px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 	}
 	.tr:hover {
-		background: var(--bg);
+		background: var(--hover);
 	}
 	.tr.on {
-		background: var(--accent-dim);
+		background: var(--press);
+		box-shadow: inset 0 0 0 1px var(--rim);
 	}
 	.st {
 		display: grid;
