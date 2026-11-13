@@ -21,6 +21,8 @@
         "@material-symbols/font-400": "^0.45.10",
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@replit/codemirror-vim": "^6.4.0",
+        "@ui-sdk/core": "0.1.0-beta.1",
+        "@ui-sdk/svelte": "0.1.0-beta.1",
         "better-auth": "^1.2.0",
         "better-sqlite3": "^12.0.0",
         "entities": "^8.0.0",
@@ -357,6 +359,10 @@
     "@types/resolve": ["@types/resolve@1.20.2", "", {}, "sha512-60BCwRFOZCQhDncwQdxxeOEEkbc5dIMccYLwbxsS4TUNeVECQ/pBJ0j09mrHOl/JJvpRPGwO9SvE4nR2Nb/a4Q=="],
 
     "@types/trusted-types": ["@types/trusted-types@2.0.7", "", {}, "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw=="],
+
+    "@ui-sdk/core": ["@ui-sdk/core@0.1.0-beta.1", "", {}, "sha512-sWsZW8RN6Gviir7REQYuDIafm9hierHQE31OJ+2g+1Pp3lDVKp/dk0+0dxFvqOQRmBveRvlE9FiARgNlQ9dMFw=="],
+
+    "@ui-sdk/svelte": ["@ui-sdk/svelte@0.1.0-beta.1", "", { "peerDependencies": { "@ui-sdk/core": "^0.1.0-beta.1", "svelte": ">=5.33" } }, "sha512-nQQaFKn7e/M87yj/ax7JgZc3uYjiacmKs05ljCIrdOiPbkiROGcbKHgngVZUF7x0GJWhGTDg67Yc28kirKUoLA=="],
 
     "accepts": ["accepts@2.0.0", "", { "dependencies": { "mime-types": "^3.0.0", "negotiator": "^1.0.0" } }, "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng=="],
 

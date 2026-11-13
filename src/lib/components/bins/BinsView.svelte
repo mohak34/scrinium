@@ -38,6 +38,8 @@
 
 		// Modal like the settings dialog: app shortcuts never fire underneath.
 		const onKey = (e: KeyboardEvent) => {
+			// A menu open over the dialog handles its own keys (ContextMenu stops them).
+			if ((e.target as Element | null)?.closest?.('.ctx-menu')) return;
 			e.stopPropagation();
 			// An open menu or date picker takes this Esc itself.
 			if (e.key === 'Escape' && !document.querySelector('.ctx-menu, .date-pop')) {
