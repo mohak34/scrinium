@@ -499,7 +499,7 @@
 				<div class="empty">
 					<span class="material-symbols-outlined">description</span>
 					<p>Open a note from the sidebar, or start a new one.</p>
-					<button class="new" onclick={() => void startCreate('note')}>
+					<button class="btn primary new" onclick={() => void startCreate('note')}>
 						<span class="material-symbols-outlined">edit_square</span>New note
 					</button>
 				</div>
@@ -710,21 +710,7 @@
 		margin: 0;
 	}
 	.new {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		height: 32px;
 		margin-top: 6px;
-		padding: 0 14px 0 12px;
-		border: none;
-		border-radius: var(--r-md);
-		background: var(--accent-fill);
-		color: var(--on-accent);
-		font: 600 var(--fs) var(--font-ui);
-		cursor: pointer;
-	}
-	.new:hover {
-		background: var(--accent-fill-hi);
 	}
 	.img-overlay {
 		position: fixed;

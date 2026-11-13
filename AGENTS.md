@@ -410,7 +410,10 @@ State channels you will touch:
   `@lezer/markdown` and must never import `livePreview.ts`,
   `markdownSetup.ts` or `@codemirror/lang-markdown`: any of them ships the
   whole editor to the print page and the server.
-- `src/lib/components/` — CommandPalette, ContextMenu, FileTree, SearchBox,
+- `src/lib/components/` — CommandPalette, ContextMenu (a point-anchored
+  menu on `@ui-sdk/svelte/menu`, which owns focus, arrows, typeahead and
+  dismissal; its docs ship in `node_modules/@ui-sdk/svelte/docs/llms.txt`),
+  FileTree, SearchBox,
   Sidebar, TabBar, ShortcutHelp (the `?` overlay), Select and DatePicker
   (the app's own select and date/time field; no native `<select>` or date
   input, they ignore the theme. Select opens ContextMenu under its button.
@@ -440,8 +443,9 @@ State channels you will touch:
   under a Pinned band drawn like a project header in plain text color
   (its rows show file and folder icons; project pins keep the pin icon). A
   section folds under its folder path in `collapsedDirs` ("" for
-  Quotidian), so its pins fold with it. A project header is a sticky one-line
-  band in its color with its icon inside a ring that fills as the
+  Quotidian), so its pins fold with it. Each project section is a card
+  tinted in its color, and its header is a sticky band in that color
+  (the whole card when folded) with its icon inside a ring that fills as the
   project's board tasks get done (done/total beside it) (`projectStyle` in projects.ts; icon and color set
   from the header's right-click menu, stored on the `projects` row, an
   unpicked color comes from the path) so it never reads as a folder. Pins live in `pinnedPaths`; the
@@ -548,8 +552,10 @@ State channels you will touch:
   rendered headings ids and returns the contents list; a note with 3+
   headings shows it as a side column on wide screens and behind a
   Contents button elsewhere.
-- `src/lib/design/theme.css` — the only design tokens: surfaces (`--bg`
-  reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto
+- `src/lib/design/theme.css` — the only design tokens: surfaces (`--panel`
+  chrome #0b0b0b behind everything, `--bg` #151515 for the inset pane each
+  page sits in, `--raise` and `--inset` for cards and wells, `--menu` for
+  popups), type roles (`--t-title` .. `--t-micro`), text steps, the Palo Alto
   accent split into `--accent-fill` (solid #175e54 under white text) and
   `--accent` (lifted ink #5db8aa for text, icons, thin lines; the fill is
   unreadable as text on near-black), fonts (`--font-read` and `--font-ui` Geist,
@@ -559,6 +565,11 @@ State channels you will touch:
   The old Material-style names (`--primary`, `--surface-container-*`,
   `--on-surface*`) are aliases kept for components not yet moved over; new
   code uses the tokens. Never fill with `--accent` under text.
+  Shared classes: `.pane` (the rounded inset page; on Notes the active
+  tab is a notch of it, TabBar.svelte), `.well` + `.well-body` (side-column
+  cards, PanelSection), `.field` (inset input), `.btn` with `.outline` and
+  the white `.primary`, and `.seg` (segmented control, `.on` on the current
+  segment).
   It also holds the table look of the share/print sheet (`.paper`); the
   editor's table grid is styled in markdownSetup.ts.
 - App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in
@@ -597,9 +608,10 @@ State channels you will touch:
   `?project=<folder>` for one project and an empty `?project=` for
   Quotidian (`boardHref`). The calendar shows dated subtasks with their
   parent's title.
-  `/tasks` (list + filters), `/tasks/kanban` (columns or, on All, one lane
-  per project, both
-  drag and drop), `/tasks/calendar` (month grid + day agenda, drop to
+  `/tasks` (list + filters), `/tasks/kanban` (project chips, a summary
+  line for the selected board - open, done, in progress, overdue, next
+  due - then columns or, on All, one lane per project, both drag and
+  drop), `/tasks/calendar` (month grid + day agenda, drop to
   schedule) share `TaskDrawer.svelte` docked by `tasks/+layout.svelte`.
 
 ## Auth & access
