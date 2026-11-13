@@ -36,8 +36,8 @@
 	--yellow: #e8c872;
 	--sand: #d6c3a1;
 
-	--font-read: 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif;
-	--font-ui: 'Space Grotesk Variable', system-ui, sans-serif;
+	--font-read: 'Geist Variable', system-ui, sans-serif;
+	--font-ui: 'Geist Variable', system-ui, sans-serif;
 	--font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
 
 	--fs-xs: 11.5px;
@@ -115,6 +115,12 @@
 	--selection-bg: var(--sel);
 	--overlay: var(--scrim);
 	--overlay-dim: var(--scrim);
+}
+
+/* The classic font setting (settings.editor.font), set on <html> by the root layout. */
+:root[data-font='classic'] {
+	--font-read: 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif;
+	--font-ui: 'Space Grotesk Variable', system-ui, sans-serif;
 }
 
 *,

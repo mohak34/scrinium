@@ -3,6 +3,7 @@
 	import '@fontsource-variable/atkinson-hyperlegible-next/wght.css';
 	import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css';
 	import '@fontsource-variable/space-grotesk';
+	import '@fontsource-variable/geist/wght.css';
 	import '@fontsource-variable/jetbrains-mono';
 	import '$lib/design/icons.css';
 	import '$lib/design/theme.css';
@@ -113,6 +114,10 @@
 			startLeader();
 		}
 	}
+
+	$effect(() => {
+		document.documentElement.dataset.font = $settings.editor.font;
+	});
 
 	onMount(() => {
 		// Kill the browser's native right-click menu everywhere - Scrinium

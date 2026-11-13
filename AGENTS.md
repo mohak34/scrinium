@@ -552,8 +552,10 @@ State channels you will touch:
   reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto
   accent split into `--accent-fill` (solid #175e54 under white text) and
   `--accent` (lifted ink #5db8aa for text, icons, thin lines; the fill is
-  unreadable as text on near-black), fonts (`--font-read` Atkinson
-  Hyperlegible Next, `--font-ui` Space Grotesk, `--font-mono` JetBrains Mono).
+  unreadable as text on near-black), fonts (`--font-read` and `--font-ui` Geist,
+  `--font-mono` JetBrains Mono; the Editor settings' Classic font sets
+  `data-font="classic"` on `<html>`, which swaps them to Atkinson
+  Hyperlegible Next and Space Grotesk).
   The old Material-style names (`--primary`, `--surface-container-*`,
   `--on-surface*`) are aliases kept for components not yet moved over; new
   code uses the tokens. Never fill with `--accent` under text.

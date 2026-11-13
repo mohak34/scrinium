@@ -1,8 +1,13 @@
 import { writable } from 'svelte/store';
 import { projectOf } from '$lib/projects';
 
+// 'geist' sets Geist for text and chrome; 'classic' sets Atkinson Hyperlegible
+// for notes and Space Grotesk for chrome. Code is JetBrains Mono either way.
+export type FontChoice = 'geist' | 'classic';
+
 export interface EditorSettings {
 	fontSize: number; // px
+	font: FontChoice;
 	showLineNumbers: boolean;
 	wordWrap: boolean;
 	// Vim-style keyboard navigation: single-key shortcuts that only fire
@@ -30,6 +35,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
 	editor: {
 		fontSize: 17,
+		font: 'geist',
 		showLineNumbers: true,
 		wordWrap: true,
 		vimMotions: true
@@ -89,6 +95,7 @@ function loadSettings(): Settings {
 					parsed.editor.fontSize <= 24
 						? parsed.editor.fontSize
 						: DEFAULT_SETTINGS.editor.fontSize,
+				font: parsed.editor?.font === 'classic' ? 'classic' : 'geist',
 				showLineNumbers:
 					typeof parsed.editor?.showLineNumbers === 'boolean'
 						? parsed.editor.showLineNumbers
