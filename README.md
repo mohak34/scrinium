@@ -6,7 +6,7 @@ Self-hosted notes app. Notes are markdown files in a folder on the server, edite
 
 Every note is a `.md` file under `VAULT_DIR`. You can edit, back up, or move notes without the app. SQLite holds everything else: the search index, note history, tasks, share links, sign-ins, and API tokens.
 
-The editor is CodeMirror 6. It hides markdown syntax and shows it again on the line the cursor is on. Pasted or dropped files go to an `attachments` folder inside the note's project, or at the vault root for notes outside a project; Settings > Attachments changes that. To add files or whole folders from your computer without a note, drag them onto a folder in the sidebar, or right-click a folder and pick Upload files.
+The editor is CodeMirror 6. It hides markdown syntax and shows it again on the line the cursor is on. Recently opened notes appear immediately and check for server changes in the background; unsaved text takes priority. Pasted or dropped files go to an `attachments` folder inside the note's project, or at the vault root for notes outside a project; Settings > Attachments changes that. To add files or whole folders from your computer without a note, drag them onto a folder in the sidebar, or right-click a folder and pick Upload files.
 
 Tables stay rendered while you edit them. Click a cell to edit its markdown in place. Tab and Shift+Tab move between cells, Enter moves down a row (adding one at the bottom), and arrow keys cross cell edges. In a column that repeats a value, like a status column, opening a cell lists the column's values to pick from, and typing filters them. With vim motions on, j and k move between rows and `i` or `a` edits the cell. The palette adds and deletes rows and columns, aligns and sorts columns, and has "Table: edit as markdown" for the raw lines.
 
@@ -61,4 +61,3 @@ The server has these tools:
 Scrinium runs as one Node process behind Caddy. Build it with `bun run build`. The output goes to `build/`, and `node build/index.js` starts it.
 
 `deploy/` has the systemd unit (`scrinium.service`), the Caddy config (`Caddyfile`), and a backup script (`backup.sh`). A push to `main` deploys through `.github/workflows/deploy.yml`.
-

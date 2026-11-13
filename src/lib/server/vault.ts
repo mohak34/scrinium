@@ -539,14 +539,20 @@ async function freeBinName(bin: Bin, base: string): Promise<string> {
 	return `${stamp}-${base}`;
 }
 
-// Moves a vault note or folder into a bin and returns its entry.
-export function moveToBin(bin: Bin, relPath: string): Promise<BinEntry> {
+// Moves a vault note or folder into a bin and returns its entry. With a
+// `version` (noteVersion) only that text of a note moves: anything else is
+// a 412, checked under the lock so a write can't land in between.
+export function moveToBin(bin: Bin, relPath: string, version?: string): Promise<BinEntry> {
 	return withVaultLock(async () => {
 		const rel = vaultRel(relPath);
 		if (!rel || isHiddenPath(rel)) throw error(400, 'Invalid path');
 		const fullPath = safeResolve(rel);
 		const st = await fs.stat(fullPath).catch(() => null);
 		if (!st) throw error(404, 'Not found');
+		if (version !== undefined) {
+			if (!st.isFile()) throw error(400, 'Only a note has a version');
+			if (noteVersion(await fs.readFile(fullPath, 'utf-8')) !== version) throw error(412, 'Note changed');
+		}
 		await fs.mkdir(BIN_DIRS[bin], { recursive: true });
 		const name = await freeBinName(bin, path.basename(fullPath));
 		const entry = { name, originalPath: rel, movedAt: Date.now(), isDir: st.isDirectory() };

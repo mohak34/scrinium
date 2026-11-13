@@ -29,9 +29,10 @@ import { effectiveTitle } from '$lib/editor/frontmatter';
 // away is a surprise. Archived notes stay in the search index under their
 // bin path; trashed ones leave it.
 
-export async function moveIn(bin: Bin, relPath: string): Promise<BinEntry> {
+// [version]: trash only that text of the note (see moveToBin).
+export async function moveIn(bin: Bin, relPath: string, version?: string): Promise<BinEntry> {
 	const rel = vaultRel(relPath);
-	const entry = await moveToBin(bin, rel);
+	const entry = await moveToBin(bin, rel, version);
 	const to = binPath(bin, entry.name);
 	deleteNoteMetaByPrefix(rel);
 	deleteSharesByPrefix(rel);

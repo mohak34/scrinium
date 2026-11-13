@@ -216,13 +216,23 @@ let retryMs = 0;
 // it as "<name> (conflict).md" and puts text for a note gone elsewhere in
 // such a copy (saveNote in server/vault.ts). Notes without one overwrite.
 const versions = new Map<string, string>();
+// Recent server snapshots make revisits independent of network latency.
+// Unsaved/in-flight text wins; mutations that can relink notes clear these.
+const recent = new Map<string, { content: string; version: string }>();
+function remember(path: string, content: string, version: string | null) {
+	if (!version) return;
+	versions.set(path, version);
+	recent.delete(path);
+	recent.set(path, { content, version });
+	if (recent.size > 20) recent.delete(recent.keys().next().value!);
+}
 // What showNote checks to trust a read made outside the queue: `seq` counts
 // finished writes and changes, `writtenAt` is the count when each note's last
 // write finished, `changedAt` the same for the last queued change (a rename
 // or rewrite can touch any note), `changing` how many are queued or running.
 let seq = 0;
 const writtenAt = new Map<string, number>();
-const writing = new Set<string>();
+const writing = new Map<string, string>();
 let changedAt = -1;
 let changing = 0;
 
@@ -254,11 +264,11 @@ async function writePending(keepalive = false): Promise<boolean> {
 		if (content === undefined) continue;
 		pending.delete(path);
 		let ok = false;
-		writing.add(path);
+		writing.set(path, content);
 		try {
 			const res = await putNote(path, content, keepalive && content.length < 60000);
 			ok = res.ok;
-			if (ok) await saved(path, res);
+			if (ok) await saved(path, content, res);
 		} catch {
 		} finally {
 			writing.delete(path);
@@ -306,14 +316,14 @@ async function putNote(path: string, content: string, keepalive = false): Promis
 // Record a save's version. A version-checked save also says where the text
 // landed: in a conflict copy when the note was gone (the tab follows it
 // there), plus any copy kept of a version it replaced.
-async function saved(path: string, res: Response) {
+async function saved(path: string, content: string, res: Response) {
 	const version = res.headers.get('X-Note-Version');
 	if (res.status === 204) {
-		if (version) versions.set(path, version);
+		remember(path, content, version);
 		return;
 	}
 	const body: { path: string; conflict: string | null } = await res.json();
-	if (version) versions.set(body.path, version);
+	remember(body.path, body.path === path ? content : retitle(content, path, body.path), version);
 	if (body.path !== path) followGone(path, body.path);
 	if (body.path !== path || body.conflict) void loadTree();
 }
@@ -323,6 +333,7 @@ async function saved(path: string, res: Response) {
 // like a rename.
 function followGone(path: string, copy: string) {
 	versions.delete(path);
+	recent.delete(path);
 	for (const r of tracked) if (r.path === path) r.path = copy;
 	if (pendingTitleSync?.path === path) cancelTitleSync();
 	const typed = pending.get(path);
@@ -359,9 +370,11 @@ export function flushSave(keepalive = false): Promise<boolean> {
 // itself).
 function afterSaved<T>(fn: () => Promise<T>): Promise<T | null> {
 	changing++;
+	recent.clear();
 	return enqueue(async () => ((await writePending()) ? fn() : null)).finally(() => {
 		changing--;
 		changedAt = ++seq;
+		recent.clear();
 	});
 }
 
@@ -423,60 +436,79 @@ export function hideNote() {
 	shown = null;
 }
 
-// Load a note into the editor: its unsaved text when a save failed, else
-// the server copy. A note with nothing pending or being written, while no
-// rename/delete/rewrite is queued, is fetched right away, so a switch never
-// waits behind saves of the note being left; anything that touched notes
-// while that read was out sends it through the queue instead, where no
-// write of the note is in flight and text that failed to save is back in
-// pending before it is read. Skipped when the user moved on, and a read the
-// user left is aborted. A failed load of the note still selected switches
-// back to the note the editor holds (or none), so the chrome never names a
-// note whose keystrokes save elsewhere. Never rejects.
+// Paint local text immediately, then revalidate clean snapshots outside the
+// save queue. Only a read invalidated by a write or queued mutation must
+// retry in the queue. Late/aborted reads never change the text or its version.
+// A failed cold load returns to the note the editor holds. Never rejects.
 let reading: AbortController | undefined;
 export async function showNote(path: string): Promise<void> {
 	reading?.abort();
 	const ctrl = (reading = new AbortController());
 	const at = seq;
+	const wanted = () => !ctrl.signal.aborted && get(activePath) === path;
 	const quiet = () => changing === 0 && changedAt <= at && (writtenAt.get(path) ?? -1) <= at;
+	const local = () => pending.get(path) ?? writing.get(path);
+	if (changing === 0) {
+		const content = local();
+		if (content !== undefined) {
+			display(path, content);
+			return;
+		}
+		const cached = recent.get(path);
+		if (cached && cached.version === versions.get(path)) display(path, cached.content);
+	}
 	if (!pending.has(path) && !writing.has(path) && quiet()) {
+		const version = versions.get(path);
 		try {
 			const note = await fetchNote(path, ctrl.signal);
-			if (get(activePath) !== path) return;
+			if (!wanted()) return;
+			if (shown === path && versions.get(path) !== version) return;
+			const content = local();
+			if (changing === 0 && content !== undefined) {
+				display(path, content);
+				return;
+			}
 			if (!pending.has(path) && !writing.has(path) && quiet()) {
-				if (note.version) versions.set(path, note.version);
+				remember(path, note.content, note.version);
 				display(path, note.content);
 				return;
 			}
 		} catch (e) {
-			if (ctrl.signal.aborted || get(activePath) !== path) return;
+			if (!wanted() || shown === path) return;
 		}
 	}
 	return enqueue(async () => {
-		if (get(activePath) !== path) return;
+		if (!wanted()) return;
 		await writePending();
 		let content = pending.get(path);
 		if (content === undefined) {
 			try {
+				const version = versions.get(path);
 				const note = await fetchNote(path, ctrl.signal);
+				if (!wanted()) return;
+				if (shown === path && versions.get(path) !== version) return;
 				content = note.content;
-				if (note.version) versions.set(path, note.version);
+				if (!pending.has(path)) remember(path, note.content, note.version);
 			} catch (e) {
-				if (ctrl.signal.aborted || get(activePath) !== path) return;
+				if (!wanted()) return;
 				console.error(e);
 				if (shown) openTab(shown);
 				else activePath.set(null);
 				return;
 			}
 		}
-		if (get(activePath) === path) display(path, content);
+		if (wanted()) display(path, pending.get(path) ?? content);
 	});
 }
 
 function display(path: string, content: string) {
-	if (!editorHost?.show(path, content)) return;
+	const host = editorHost;
+	if (!host) return;
+	if (shown === path) {
+		if (host.read() !== content) host.replace(content);
+	} else if (!host.show(path, content)) return;
 	shown = path;
-	if (pendingHeading?.path === path) editorHost.reveal(pendingHeading.heading);
+	if (pendingHeading?.path === path) host.reveal(pendingHeading.heading);
 	pendingHeading = null;
 }
 
@@ -485,12 +517,19 @@ function display(path: string, content: string) {
 // Skipped while the note has unsaved text: that saves over the other
 // change, which is kept as a conflict copy (and in the note's history).
 // A note gone elsewhere closes, with nothing unsaved lost.
-export function refreshShown(): Promise<void> {
-	return enqueue(async () => {
-		const path = shown;
-		if (!path || pending.has(path) || !versions.has(path)) return;
+let refreshing = false;
+export async function refreshShown(): Promise<void> {
+	const path = shown;
+	if (refreshing || !path || changing || pending.has(path) || writing.has(path) || !versions.has(path)) return;
+	const read = reading;
+	const before = versions.get(path);
+	const at = seq;
+	const current = () => shown === path && reading === read && !changing && changedAt <= at &&
+		!pending.has(path) && !writing.has(path) && (writtenAt.get(path) ?? -1) <= at && versions.get(path) === before;
+	refreshing = true;
+	try {
 		const res = await fetch(`/api/notes/${encPath(path)}`).catch(() => null);
-		if (!res || shown !== path || pending.has(path)) return;
+		if (!res || !current()) return;
 		if (res.status === 404) {
 			forget(path);
 			void loadTree();
@@ -499,10 +538,12 @@ export function refreshShown(): Promise<void> {
 		const version = res.headers.get('X-Note-Version');
 		if (!res.ok || !version || version === versions.get(path)) return;
 		const content = await res.text();
-		if (shown !== path || pending.has(path)) return;
-		versions.set(path, version);
+		if (!current()) return;
+		remember(path, content, version);
 		editorHost?.replace(content);
-	});
+	} finally {
+		refreshing = false;
+	}
 }
 
 // --- Title <-> filename sync ---
@@ -630,7 +671,7 @@ async function rewriteNote(path: string, next: (content: string) => string | nul
 		if (note.version) versions.set(path, note.version);
 		const res = await putNote(path, out).catch(() => null);
 		if (!res?.ok) return false;
-		await saved(path, res).catch(() => {});
+		await saved(path, out, res).catch(() => {});
 		return true;
 	});
 	if (ok) await loadTree();
@@ -782,6 +823,7 @@ function putAway(path: string, send: () => Promise<Response>): Promise<boolean> 
 // note and is dropped.
 function forget(path: string, keepTyped = false) {
 	const under = (p: string) => p === path || p.startsWith(path + '/');
+	for (const p of recent.keys()) if (under(p)) recent.delete(p);
 	for (const p of [...pending.keys()]) if (under(p) && !(keepTyped && versions.has(p))) pending.delete(p);
 	for (const p of [...versions.keys()]) if (under(p) && !pending.has(p)) versions.delete(p);
 	for (const r of tracked) if (r.path && under(r.path)) r.path = null;
