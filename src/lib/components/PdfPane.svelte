@@ -467,9 +467,10 @@
 		width: 5ch;
 		margin-left: 10px;
 		padding: 1px 4px;
-		border: 1px solid var(--line-2);
+		border: 0;
 		border-radius: var(--r-sm);
-		background: var(--panel);
+		background: var(--inset);
+		box-shadow: inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35);
 		color: var(--text);
 		font: var(--fs) var(--font-mono);
 		appearance: textfield;
@@ -525,7 +526,7 @@
 		text-overflow: ellipsis;
 	}
 	.save.bad {
-		color: var(--error);
+		color: var(--red);
 	}
 	.btn {
 		height: 30px;

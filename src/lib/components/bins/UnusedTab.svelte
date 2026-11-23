@@ -83,7 +83,7 @@
 		<div class="tools">
 			<input type="checkbox" checked={allPicked} disabled={!files.length} onchange={toggleAll} title="Select all" />
 			<span class="sum">{files.length ? `${files.length} files · ${bytes(total)}` : ''}</span>
-			<button class="btn danger" disabled={!picked.size || busy} onclick={() => trash([...picked])}>
+			<button class="btn outline danger" disabled={!picked.size || busy} onclick={() => trash([...picked])}>
 				<span class="material-symbols-outlined">delete</span>Trash {picked.size || ''}
 			</button>
 		</div>
@@ -139,7 +139,7 @@
 					<h2>{split(sel.path).name}</h2>
 					<span class="meta">{sel.path} · {bytes(sel.size)} · modified {longDate(sel.modifiedAt)}</span>
 				</div>
-				<button class="btn danger" disabled={busy} onclick={() => trash([sel.path])}>
+				<button class="btn outline danger" disabled={busy} onclick={() => trash([sel.path])}>
 					<span class="material-symbols-outlined">delete</span>Trash
 				</button>
 			</div>
@@ -156,7 +156,6 @@
 		white-space: nowrap;
 	}
 	input[type='checkbox'] {
-		accent-color: var(--accent-fill);
 		margin: 0 4px;
 		flex-shrink: 0;
 	}

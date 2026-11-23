@@ -67,8 +67,8 @@
 	>
 		<span class="material-symbols-outlined">more_horiz</span>
 	</button>
-	<button class="btn" title="Share" onclick={() => (shareOpen = true)}>
-		<span class="material-symbols-outlined">share</span>
+	<button class="btn share" title="Share" onclick={() => (shareOpen = true)}>
+		<span class="material-symbols-outlined">ios_share</span>Share
 	</button>
 	<button
 		class="btn"
@@ -89,14 +89,12 @@
 
 <style>
 	.bar {
-		height: 44px;
+		height: 46px;
 		display: flex;
 		align-items: center;
 		gap: 2px;
 		padding: 0 10px 0 20px;
-		border-bottom: 1px solid var(--line);
 		flex-shrink: 0;
-		background: var(--bg);
 	}
 	.crumbs {
 		flex: 1;
@@ -105,7 +103,7 @@
 		align-items: center;
 		gap: 2px;
 		color: var(--text-3);
-		font-size: var(--fs);
+		font-size: var(--t-meta);
 		white-space: nowrap;
 		overflow: hidden;
 	}
@@ -137,15 +135,22 @@
 		border-radius: var(--r-md);
 		background: none;
 		color: var(--text-2);
-		font: 500 var(--fs) var(--font-ui);
+		font: 500 var(--t-meta) var(--font-ui);
 		cursor: pointer;
 		flex-shrink: 0;
+	}
+	.btn.share {
+		margin: 0 4px;
+		padding: 0 10px 0 8px;
+		background: rgba(255, 255, 255, 0.025);
+		box-shadow: inset 0 0 0 1px var(--line-2);
+		color: var(--text);
 	}
 	.btn:hover {
 		background: var(--hover);
 		color: var(--text);
 	}
 	.btn .material-symbols-outlined {
-		font-size: 18px;
+		font-size: 17px;
 	}
 </style>

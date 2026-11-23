@@ -202,11 +202,10 @@
 		position: fixed;
 		z-index: 1000;
 		width: 320px;
-		background: var(--panel);
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-lg);
+		background: var(--menu);
+		border-radius: var(--r-xl);
 		padding: 5px;
-		box-shadow: var(--shadow);
+		box-shadow: var(--menu-shadow);
 		display: flex;
 		flex-direction: column;
 	}
@@ -228,7 +227,7 @@
 		color: var(--text);
 	}
 	.item.on {
-		background: var(--accent-dim);
+		background: var(--press);
 		color: var(--text);
 	}
 	.icon {

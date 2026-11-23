@@ -22,8 +22,11 @@
 		// The control that opened the menu: pressing it again toggles the
 		// menu shut instead of closing and reopening it.
 		anchor?: HTMLElement;
+		// Opens upward with its bottom edge at `y`, for controls at the
+		// bottom of the screen.
+		above?: boolean;
 	}
-	let { x, y, width, items, onClose, anchor }: Props = $props();
+	let { x, y, width, items, onClose, anchor, above = false }: Props = $props();
 
 	let menuEl = $state<HTMLDivElement>();
 	let left = $state(0);
@@ -54,7 +57,7 @@
 		if (!menuEl) return;
 		const rect = menuEl.getBoundingClientRect();
 		left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
-		top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8));
+		top = Math.max(8, Math.min(above ? y - rect.height : y, window.innerHeight - rect.height - 8));
 	});
 
 	$effect(() => {
@@ -121,44 +124,52 @@
 	.ctx-menu {
 		position: fixed;
 		z-index: 1000;
-		min-width: 160px;
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		padding: 4px;
-		box-shadow: var(--shadow-pop);
-		display: flex;
-		flex-direction: column;
+		min-width: 180px;
 		max-width: min(360px, calc(100vw - 16px));
 		max-height: calc(100vh - 16px);
 		overflow-y: auto;
+		padding: 5px;
+		display: flex;
+		flex-direction: column;
+		background: var(--menu);
+		color: var(--text);
+		border-radius: var(--r-xl);
+		box-shadow: var(--menu-shadow);
 	}
 	.ctx-item {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 10px;
+		flex-shrink: 0;
 		width: 100%;
+		height: 32px;
+		padding: 0 10px;
 		text-align: left;
 		background: none;
 		border: none;
-		color: var(--on-surface-variant);
-		padding: 6px 8px;
-		border-radius: var(--radius);
-		font-size: var(--font-ui-small);
-		font-family: var(--font-ui);
+		border-radius: 7px;
+		color: var(--text);
+		font: var(--t-meta) var(--font-ui);
 		cursor: pointer;
+		user-select: none;
 	}
-	.ctx-item:focus-visible {
+	.ctx-item:hover,
+	.ctx-item:focus-visible,
+	.ctx-item.current {
 		outline: none;
-		background: var(--surface-container-high);
-		color: var(--on-surface);
+		background: var(--press);
 	}
-	.ctx-item:hover {
-		background: var(--surface-container-high);
-		color: var(--on-surface);
+	.ctx-item .material-symbols-outlined {
+		font-size: 17px;
+		color: var(--text-3);
 	}
-	.ctx-item:hover .material-symbols-outlined:not(.fill) {
-		color: var(--on-surface);
+	.ctx-item.danger,
+	.ctx-item.danger .material-symbols-outlined {
+		color: var(--red);
+	}
+	.ctx-item.danger:hover,
+	.ctx-item.danger:focus-visible {
+		background: color-mix(in srgb, var(--red) 14%, transparent);
 	}
 	.ctx-label {
 		min-width: 0;
@@ -168,22 +179,8 @@
 	}
 	.ctx-sep {
 		height: 1px;
+		margin: 5px 6px;
+		flex-shrink: 0;
 		background: var(--line);
-		margin: 4px 6px;
-	}
-	.ctx-item .material-symbols-outlined {
-		font-size: 16px;
-		color: var(--text-3);
-	}
-	.ctx-item.current {
-		background: var(--surface-container-high);
-		color: var(--on-surface);
-	}
-	.ctx-item.danger,
-	.ctx-item.danger .material-symbols-outlined {
-		color: var(--error);
-	}
-	.ctx-item.danger:hover {
-		background: var(--error-container);
 	}
 </style>

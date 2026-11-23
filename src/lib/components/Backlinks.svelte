@@ -142,16 +142,15 @@
 		flex-direction: column;
 		gap: 4px;
 		width: 100%;
-		margin: 6px 0;
-		padding: 9px 11px;
-		border: 1px solid var(--line);
+		margin: 0;
+		padding: 8px 10px;
+		border: none;
 		border-radius: var(--r-md);
-		background: var(--raise);
+		background: none;
 		text-align: left;
 		cursor: pointer;
 	}
 	.card:hover {
-		border-color: var(--line-2);
 		background: var(--hover);
 	}
 	.head {

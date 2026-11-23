@@ -258,6 +258,9 @@ State channels you will touch:
   mathBlock.ts (display math as a StateField: ```math fences + own-line
   `$$`, block replaces; ranges shared via mathRanges.ts so inline `$`
   in `livePreview.ts` never overlaps a block replace),
+  frontmatterBlock.ts (the `---` properties as a key/value block widget
+  while the cursor is outside them, raw dim YAML inside; a note switch
+  parks the cursor past the block so it opens rendered),
   mathRender.ts (KaTeX for the math widgets, imported with its CSS on
   the first widget drawn; a widget shows its source until then),
   mathComplete.ts (`\command` completion source, math regions only),
@@ -446,8 +449,9 @@ State channels you will touch:
   under a Pinned band drawn like a project header in plain text color
   (its rows show file and folder icons; project pins keep the pin icon). A
   section folds under its folder path in `collapsedDirs` ("" for
-  Quotidian), so its pins fold with it. A project header is a sticky one-line
-  band in its color with its icon inside a ring that fills as the
+  Quotidian), so its pins fold with it. Each project section is a card
+  tinted in its color, and its header is a sticky band in that color
+  (the whole card when folded) with its icon inside a ring that fills as the
   project's board tasks get done (done/total beside it) (`projectStyle` in projects.ts; icon and color set
   from the header's right-click menu, stored on the `projects` row, an
   unpicked color comes from the path) so it never reads as a folder. Pins live in `pinnedPaths`; the
@@ -554,25 +558,35 @@ State channels you will touch:
   rendered headings ids and returns the contents list; a note with 3+
   headings shows it as a side column on wide screens and behind a
   Contents button elsewhere.
-- `src/lib/design/theme.css` — the only design tokens: surfaces (`--bg`
-  reading area #0a0a0a, `--panel` chrome #030303), text steps, the Palo Alto
+- `src/lib/design/theme.css` — the only design tokens: surfaces (`--panel`
+  chrome #0b0b0b behind everything, `--bg` #151515 for the inset pane each
+  page sits in, `--raise` and `--inset` for cards and wells, `--menu` for
+  popups), type roles (`--t-title` .. `--t-micro`), text steps, the Palo Alto
   accent split into `--accent-fill` (solid #175e54 under white text) and
   `--accent` (lifted ink #5db8aa for text, icons, thin lines; the fill is
   unreadable as text on near-black), fonts (`--font-read` and `--font-ui` Geist,
   `--font-mono` JetBrains Mono; the Editor settings' Classic font sets
   `data-font="classic"` on `<html>`, which swaps them to Atkinson
   Hyperlegible Next and Space Grotesk).
-  The old Material-style names (`--primary`, `--surface-container-*`,
-  `--on-surface*`) are aliases kept for components not yet moved over; new
-  code uses the tokens. Never fill with `--accent` under text.
+  Never fill with `--accent` under text; a selected row or item is
+  `--press`. Popups, menus and small dialogs sit on `--menu` with
+  `--menu-shadow`, `--r-xl` and no border; inputs are inset (`--inset`
+  plus a `--rim` ring).
+  Shared classes: `.pane` (the rounded inset page; on Notes the active
+  tab is a notch of it, TabBar.svelte), `.well` + `.well-body` (side-column
+  cards, PanelSection), `.field` (inset input), `.btn` (ghost) with
+  `.outline`, the white `.primary` and red `.danger`, and `.seg`
+  (segmented control, `.on` on the current segment). Checkboxes are
+  styled globally.
   It also holds the table look of the share/print sheet (`.paper`); the
   editor's table grid is styled in markdownSetup.ts.
 - App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in
   `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
   `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`
   (crumbs + preview/download/print/more/Share/right-panel toggle), `StatusBar.svelte`,
-  `AppActions.svelte` (Archive/Trash/Settings/Sign out buttons: notes sidebar, Tasks
-  sidebar, Board footer via `PageFooter actions`; not on Calendar),
+  `AppActions.svelte` (the Account chip whose menu holds Settings, Archive, Trash and
+  Sign out: notes sidebar, Tasks sidebar, Board footer via `PageFooter actions`; not
+  on Calendar),
   `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,
   NoteTasks, NoteFiles (the files the note links or embeds), Tags, FileInfo in that order), `PageFooter.svelte`.
 - Tasks: `src/lib/taskModel.ts` is the single list of statuses (`inbox`,
@@ -603,9 +617,10 @@ State channels you will touch:
   `?project=<folder>` for one project and an empty `?project=` for
   Quotidian (`boardHref`). The calendar shows dated subtasks with their
   parent's title.
-  `/tasks` (list + filters), `/tasks/kanban` (columns or, on All, one lane
-  per project, both
-  drag and drop), `/tasks/calendar` (month grid + day agenda, drop to
+  `/tasks` (list + filters), `/tasks/kanban` (project chips, a summary
+  line for the selected board - open, done, in progress, overdue, next
+  due - then columns or, on All, one lane per project, both drag and
+  drop), `/tasks/calendar` (month grid + day agenda, drop to
   schedule) share `TaskDrawer.svelte` docked by `tasks/+layout.svelte`.
 
 ## Auth & access

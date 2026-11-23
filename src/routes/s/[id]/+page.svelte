@@ -227,8 +227,8 @@
 	collapsing URL bar. */
 	.shared {
 		min-height: 100dvh;
-		background: #000;
-		color: #eee;
+		background: var(--panel);
+		color: var(--text);
 		-webkit-text-size-adjust: 100%;
 		text-size-adjust: 100%;
 	}
@@ -240,14 +240,14 @@
 		align-items: center;
 		gap: 0.6rem;
 		text-align: center;
-		background: #0d0d0d;
-		border: 1px solid #262626;
+		background: var(--raise);
+		border: 1px solid var(--line-2);
 		border-radius: 12px;
 		padding: 2rem 1.5rem;
 	}
 	.lock .material-symbols-outlined {
 		font-size: 28px;
-		color: #888;
+		color: var(--text-3);
 	}
 	.lock h1 {
 		font-size: 1.05rem;
@@ -255,28 +255,28 @@
 	}
 	.lock p {
 		margin: 0;
-		color: #888;
+		color: var(--text-3);
 		font-size: 0.85rem;
 	}
 	.lock input {
 		width: 100%;
-		background: #000;
-		border: 1px solid #333;
+		background: var(--inset);
+		border: 1px solid var(--line-3);
 		border-radius: 8px;
-		color: #eee;
+		color: var(--text);
 		padding: 0.55rem 0.75rem;
 		font-size: 0.9rem;
 		outline: none;
 	}
 	.lock input:focus {
-		border-color: #666;
+		border-color: var(--line-3);
 	}
 	.lock button {
 		width: 100%;
 		border: none;
 		border-radius: 8px;
-		background: #eee;
-		color: #000;
+		background: var(--text);
+		color: var(--panel);
 		font-weight: 600;
 		padding: 0.55rem;
 		cursor: pointer;
@@ -286,20 +286,20 @@
 		cursor: default;
 	}
 	.err {
-		color: #f19494 !important;
+		color: var(--red) !important;
 	}
 	.bar {
 		position: sticky;
 		top: 0;
 		z-index: 20;
-		background: #000;
+		background: var(--panel);
 		width: 100%;
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
 		gap: 8px;
 		padding: 8px 16px;
-		border-bottom: 1px solid #222;
+		border-bottom: 1px solid var(--line);
 		font-size: 0.8rem;
 	}
 	.doc {
@@ -308,18 +308,18 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		color: #fff;
+		color: var(--text);
 		font-weight: 600;
 	}
 	.tag {
-		color: #888;
-		border: 1px solid #333;
+		color: var(--text-3);
+		border: 1px solid var(--line-3);
 		border-radius: 999px;
 		padding: 0 8px;
 		white-space: nowrap;
 	}
 	.time {
-		color: #888;
+		color: var(--text-3);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
@@ -337,7 +337,7 @@
 		justify-content: center;
 		border: none;
 		background: none;
-		color: #888;
+		color: var(--text-3);
 		border-radius: 6px;
 		cursor: pointer;
 		padding: 0;
@@ -346,8 +346,8 @@
 		font-size: 17px;
 	}
 	.tbtn:hover:not(:disabled) {
-		background: #1a1a1a;
-		color: #eee;
+		background: var(--hover);
+		color: var(--text);
 	}
 	.tbtn:disabled {
 		opacity: 0.35;
@@ -357,7 +357,7 @@
 		min-width: 48px;
 		background: none;
 		border: none;
-		color: #888;
+		color: var(--text-3);
 		font-size: 0.75rem;
 		font-variant-numeric: tabular-nums;
 		text-align: center;
@@ -366,8 +366,8 @@
 		border-radius: 6px;
 	}
 	.pct:hover {
-		background: #1a1a1a;
-		color: #eee;
+		background: var(--hover);
+		color: var(--text);
 	}
 	@media (pointer: coarse) {
 		.tbtn {
@@ -389,8 +389,8 @@
 		display: flex;
 	}
 	.tbtn.open {
-		background: #1a1a1a;
-		color: #eee;
+		background: var(--hover);
+		color: var(--text);
 	}
 	.contents {
 		position: relative;
@@ -401,7 +401,7 @@
 		padding-top: 5px;
 		padding-bottom: 5px;
 		padding-right: 12px;
-		color: #888;
+		color: var(--text-3);
 		text-decoration: none;
 		line-height: 1.35;
 		overflow: hidden;
@@ -409,10 +409,10 @@
 		white-space: nowrap;
 	}
 	.toc a:hover {
-		color: #fff;
+		color: var(--text);
 	}
 	.toc a.on {
-		color: #5db8aa;
+		color: var(--accent);
 	}
 	.menu {
 		position: absolute;
@@ -422,14 +422,17 @@
 		width: min(300px, calc(100vw - 2rem));
 		max-height: 70vh;
 		overflow-y: auto;
-		padding: 6px 0;
-		background: #000;
-		border: 1px solid #2a2a2a;
-		border-radius: 6px;
+		padding: 6px;
+		background: var(--menu);
+		box-shadow: var(--menu-shadow);
+		border-radius: var(--r-xl);
 		font-size: 0.85rem;
 	}
+	.menu a {
+		border-radius: 7px;
+	}
 	.menu a:hover {
-		background: #111;
+		background: var(--press);
 	}
 	/* Fixed left of the 880px sheet, shown only when there is room for it. */
 	.rail {
@@ -439,11 +442,11 @@
 		width: 220px;
 		max-height: calc(100vh - 96px);
 		overflow-y: auto;
-		border-left: 1px solid #222;
+		border-left: 1px solid var(--line);
 		font-size: 0.8rem;
 	}
 	.rail a.on {
-		box-shadow: inset 1px 0 #5db8aa;
+		box-shadow: inset 1px 0 var(--accent);
 	}
 	@media (max-width: 1399px) {
 		.rail {
@@ -467,7 +470,7 @@
 	.zoom-sep {
 		width: 1px;
 		height: 16px;
-		background: #333;
+		background: var(--line-3);
 		margin: 0 4px;
 	}
 	.paper {

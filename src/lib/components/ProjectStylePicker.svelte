@@ -77,10 +77,9 @@
 		z-index: 1000;
 		width: 236px;
 		padding: 8px;
-		background: var(--raise);
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-md);
-		box-shadow: var(--shadow-pop);
+		background: var(--menu);
+		border-radius: var(--r-xl);
+		box-shadow: var(--menu-shadow);
 	}
 	.icons {
 		display: grid;

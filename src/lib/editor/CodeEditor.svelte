@@ -31,6 +31,8 @@ import { perDoc } from './docRanges';
 	import { tree, archiveEntries, insertIntoNote, shownNote, trackPath } from '$lib/stores/vault';
 	import { projects } from '$lib/stores/tasks';
 	import { mathBlockField } from './mathBlock';
+	import { frontmatterField } from './frontmatterBlock';
+	import { parseFrontmatter } from './frontmatter';
 	import { syncCell, tableBlockField, tableCommands, tableMenu, tableVim } from './tableBlock';
 	import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import { vimMode, type VimChromeMode } from '$lib/stores/vim';
@@ -396,8 +398,8 @@ import { perDoc } from './docRanges';
 				Prec.highest(
 					EditorView.theme({
 						'& .cm-vimMode.cm-vimMode .cm-line': {
-							'&::selection': { backgroundColor: 'var(--selection-bg) !important' },
-							'& ::selection': { backgroundColor: 'var(--selection-bg) !important' }
+							'&::selection': { backgroundColor: 'var(--sel) !important' },
+							'& ::selection': { backgroundColor: 'var(--sel) !important' }
 						}
 					})
 				),
@@ -502,6 +504,7 @@ import { perDoc } from './docRanges';
 				tagCtxField,
 				livePreview,
 				mathBlockField,
+				frontmatterField,
 				tableBlockField,
 				tableMenu.of((x, y, items) => (colMenu = { x, y, items })),
 				tableVim.of({
@@ -696,9 +699,12 @@ import { perDoc } from './docRanges';
 		}
 		view.dispatch({
 			changes: { from, to, insert: newValue.slice(from, end) },
-			// Note switches park the cursor on line 1; same-note pushes
+			// Note switches park the cursor at the body's start, past the
+			// properties block so it opens rendered; same-note pushes
 			// (rename syncs, link conversions) leave it alone.
-			selection: resetCursor ? { anchor: 0 } : undefined,
+			selection: resetCursor
+				? { anchor: Math.min(parseFrontmatter(newValue)?.bodyStart ?? 0, newValue.length) }
+				: undefined,
 			effects: resetCursor ? [EditorView.scrollIntoView(0)] : []
 		});
 		docText = newValue;
@@ -811,13 +817,11 @@ import { perDoc } from './docRanges';
 		pointer-events: none;
 	}
 	.toast {
-		font-family: var(--font-mono);
-		font-size: var(--font-ui-small);
-		color: var(--on-surface);
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius);
-		box-shadow: var(--shadow-pop);
+		font: var(--fs-sm) var(--font-mono);
+		color: var(--text-2);
+		background: var(--menu);
+		border-radius: var(--r-md);
+		box-shadow: var(--menu-shadow);
 		padding: 4px 10px;
 		max-width: 320px;
 	}
@@ -828,12 +832,11 @@ import { perDoc } from './docRanges';
 		right: 0;
 		bottom: 0;
 		z-index: 30;
-		background: var(--surface-container);
-		border-top: 1px solid var(--border-raised);
+		background: var(--panel);
+		border-top: 1px solid var(--line-2);
 		padding: 4px 12px;
-		font-family: var(--font-mono);
-		font-size: var(--font-ui-small);
-		color: var(--on-surface);
+		font: var(--fs-sm) var(--font-mono);
+		color: var(--text);
 	}
 	.cmdline.open {
 		display: block;

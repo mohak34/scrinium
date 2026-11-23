@@ -134,6 +134,14 @@
 	const todayCount = $derived(pool.filter((t) => t.status !== 'done' && isDueToday(t)).length);
 	const inboxCount = $derived(pool.filter((t) => t.status === 'inbox').length);
 	const lanes = $derived<ProjectKey[]>([null, ...$projects.map((p) => p.path)]);
+	const doingCount = $derived(pool.filter((t) => t.status === 'doing').length);
+	// The summary line's ring counts every card on this board, done ones of any age.
+	const doneShare = $derived(pool.length ? doneTotal / pool.length : 0);
+	const nextDue = $derived(
+		pool
+			.filter((t) => t.status !== 'done' && t.due_at != null && !isOverdue(t))
+			.sort((a, b) => (a.due_at ?? 0) - (b.due_at ?? 0))[0] ?? null
+	);
 
 	function weekRange(): string {
 		const now = new Date();
@@ -411,7 +419,6 @@
 <div class="page" {@attach keyNav}>
 	<header class="page-h">
 		<AppSwitcher current="board" size="lg" />
-		<span class="cnt">{openCount} open</span>
 		<span class="sp"></span>
 		{#if boardView === 'all'}
 			<div class="seg" role="group" aria-label="Board view">
@@ -424,7 +431,7 @@
 			</div>
 		{/if}
 		<button
-			class="solid"
+			class="btn primary"
 			onclick={() => {
 				view = 'columns';
 				startAdd(cellKey('inbox'));
@@ -433,27 +440,58 @@
 			<span class="material-symbols-outlined">add</span>New task
 		</button>
 	</header>
+	<div class="pane body">
 	<nav class="tabs" aria-label="Project">
-		<button class:on={boardView === 'all'} onclick={() => openBoard('all')}>
-			All<span class="n">{openOn('all')}</span>
+		<button class="chip" class:on={boardView === 'all'} onclick={() => openBoard('all')}>
+			<span class="material-symbols-outlined">apps</span>All<span class="n">{openOn('all')}</span>
 		</button>
 		{#each lanes as key (key ?? '')}
 			{@const ps = styleOf(key)}
-			<button class:on={boardView !== 'all' && boardView.project === key} onclick={() => openBoard({ project: key })}>
-				<span class="material-symbols-outlined" style:color={colorVar(ps.color)}>{ps.icon}</span>
+			<button
+				class="chip"
+				class:on={boardView !== 'all' && boardView.project === key}
+				style:--c={colorVar(ps.color)}
+				onclick={() => openBoard({ project: key })}
+			>
+				<span class="material-symbols-outlined fill">{ps.icon}</span>
 				{projectLabel(key)}<span class="n">{openOn({ project: key })}</span>
 			</button>
 		{/each}
 		<button class="icon" title="New project" onclick={() => newProjectOpen.set(true)}>
 			<span class="material-symbols-outlined">add</span>
 		</button>
+	</nav>
+	<div class="sum">
+		{#if boardView === 'all'}
+			<span class="material-symbols-outlined sum-i">apps</span>
+		{:else}
+			{@const ps = styleOf(boardView.project)}
+			<span class="ring" style:--c={colorVar(ps.color)} title="{doneTotal} of {pool.length} done">
+				<svg viewBox="0 0 30 30" aria-hidden="true">
+					<circle class="track" cx="15" cy="15" r="12" />
+					{#if doneTotal > 0}
+						<circle class="arc" cx="15" cy="15" r="12" pathLength="100" stroke-dasharray="{doneShare * 100} 100" />
+					{/if}
+				</svg>
+				<span class="material-symbols-outlined fill">{ps.icon}</span>
+			</span>
+		{/if}
+		<strong>{boardView === 'all' ? 'All projects' : projectLabel(boardView.project)}</strong>
+		<span class="facts">
+			<span>{openCount} open</span>
+			{#if boardView !== 'all'}<span>{doneTotal} of {pool.length} done</span>{/if}
+			<span class:warn={doingCount > DOING_LIMIT}>{doingCount} in progress</span>
+			{#if overdueCount > 0}<span class="over">{overdueCount} overdue</span>{/if}
+			{#if todayCount > 0}<span class="today">{todayCount} due today</span>{/if}
+			{#if nextDue}<span>Next: {nextDue.title}, {dueLabel(nextDue.due_at)}</span>{/if}
+		</span>
 		<span class="sp"></span>
 		{#if proj}
-			<button class="icon" title="Remove project" onclick={() => void dropProject(proj.path)}>
-				<span class="material-symbols-outlined">folder_off</span>
+			<button class="btn" title="Remove project" onclick={() => void dropProject(proj.path)}>
+				<span class="material-symbols-outlined">folder_off</span>Remove project
 			</button>
 		{/if}
-	</nav>
+	</div>
 
 	{#if !lanesOn}
 		<div class="board">
@@ -554,11 +592,9 @@
 		</div>
 	{/if}
 
-	<PageFooter actions>
-		<span>{openCount} open</span>
-		{#if todayCount > 0}<span>{todayCount} due today</span>{/if}
-		{#if overdueCount > 0}<span class="red">{overdueCount} overdue</span>{/if}
-	</PageFooter>
+	</div>
+
+	<PageFooter actions />
 </div>
 
 <style>
@@ -571,55 +607,68 @@
 	.page-h {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		height: 56px;
-		padding: 0 16px 0 24px;
-		border-bottom: 1px solid var(--line);
+		gap: 10px;
+		height: 52px;
+		padding: 0 6px 0 14px;
 		flex-shrink: 0;
+	}
+	.body {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 	.tabs {
 		display: flex;
 		align-items: center;
-		gap: 2px;
-		height: 40px;
-		padding: 0 16px 0 18px;
-		border-bottom: 1px solid var(--line);
+		gap: 6px;
+		padding: 12px 16px 0;
 		flex-shrink: 0;
 		overflow-x: auto;
 		scrollbar-width: none;
 	}
-	.tabs > button:not(.icon) {
+	.chip {
+		--c: var(--text-2);
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		height: 40px;
-		padding: 0 10px;
+		gap: 7px;
+		height: 30px;
+		padding: 0 11px 0 9px;
 		border: none;
-		border-bottom: 2px solid transparent;
+		border-radius: 9px;
 		background: none;
-		color: var(--text-3);
-		font: var(--fs) var(--font-ui);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--text-2);
+		font: 500 var(--t-meta) var(--font-ui);
 		white-space: nowrap;
 		cursor: pointer;
 	}
-	.tabs > button:not(.icon):hover {
+	.chip:hover {
+		background: var(--hover);
 		color: var(--text);
 	}
-	.tabs > button .material-symbols-outlined {
+	.chip .material-symbols-outlined {
 		font-size: 16px;
+		color: var(--c);
 	}
-	.tabs .n {
-		font-size: var(--fs-xs);
+	.chip .n {
+		color: var(--text-3);
+		font-variant-numeric: tabular-nums;
 	}
-	.tabs > button.on {
+	.chip.on {
+		background: color-mix(in srgb, var(--c) 14%, var(--raise));
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 40%, transparent);
 		color: var(--text);
-		border-bottom-color: var(--accent);
+	}
+	.chip.on .n {
+		color: var(--text-2);
 	}
 	.icon {
 		display: grid;
 		place-items: center;
-		width: 28px;
-		height: 28px;
+		width: 30px;
+		height: 30px;
 		border: none;
 		border-radius: var(--r-md);
 		background: none;
@@ -633,57 +682,85 @@
 	.icon .material-symbols-outlined {
 		font-size: 18px;
 	}
-	.cnt {
-		color: var(--text-3);
+	.sum {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-height: 52px;
+		margin: 12px 16px 4px;
+		padding: 0 6px 0 10px;
+		border-radius: var(--r-xl);
+		background: var(--raise);
+		box-shadow: inset 0 0 0 1px var(--rim);
+		flex-shrink: 0;
+		overflow: hidden;
+	}
+	.sum strong {
+		font: 600 var(--t-label) var(--font-ui);
 		white-space: nowrap;
+	}
+	.sum-i {
+		width: 30px;
+		text-align: center;
+		color: var(--text-3);
+	}
+	.facts {
+		display: flex;
+		gap: 0;
+		min-width: 0;
+		overflow: hidden;
+		color: var(--text-3);
+		font-size: var(--t-meta);
+		white-space: nowrap;
+	}
+	.facts > span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.facts > span + span::before {
+		content: '·';
+		margin: 0 8px;
+		color: var(--text-4);
+	}
+	.facts .over {
+		color: var(--red);
+	}
+	.facts .today {
+		color: var(--accent);
+	}
+	.facts .warn {
+		color: var(--orange);
+	}
+	.ring {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 30px;
+		height: 30px;
+		flex-shrink: 0;
+	}
+	.ring svg {
+		position: absolute;
+		inset: 0;
+		transform: rotate(-90deg);
+	}
+	.ring circle {
+		fill: none;
+		stroke-width: 2.5;
+	}
+	.ring .track {
+		stroke: color-mix(in srgb, var(--c) 22%, transparent);
+	}
+	.ring .arc {
+		stroke: var(--c);
+		stroke-linecap: round;
+	}
+	.ring .material-symbols-outlined {
+		font-size: 15px;
+		color: var(--c);
 	}
 	.sp {
 		flex: 1;
-	}
-	.seg {
-		display: inline-flex;
-		gap: 2px;
-		padding: 2px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-md);
-	}
-	.seg button {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 26px;
-		padding: 0 10px;
-		border: none;
-		border-radius: var(--r);
-		background: none;
-		color: var(--text-3);
-		font: var(--fs) var(--font-ui);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.seg button .material-symbols-outlined {
-		font-size: 17px;
-	}
-	.seg button.on {
-		background: var(--raise);
-		color: var(--text);
-	}
-	.solid {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 32px;
-		padding: 0 14px 0 10px;
-		border: none;
-		border-radius: var(--r-md);
-		background: var(--accent-fill);
-		color: var(--on-accent);
-		font: 600 var(--fs) var(--font-ui);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.solid:hover {
-		background: var(--accent-fill-hi);
 	}
 	.board {
 		flex: 1;
@@ -691,36 +768,33 @@
 		overflow: auto;
 		display: grid;
 		grid-template-columns: repeat(5, minmax(220px, 1fr));
-		gap: 20px;
-		padding: 6px 20px 16px;
+		gap: 10px;
+		padding: 8px 16px 16px;
 		align-items: start;
-		background: #000;
 	}
 	.col {
 		display: flex;
 		flex-direction: column;
 		max-height: 100%;
 		min-height: 120px;
+		padding: 4px;
+		border-radius: var(--r-xl);
+		background: var(--raise);
+		box-shadow: inset 0 0 0 1px var(--rim);
+	}
+	.col.drop {
+		box-shadow: inset 0 0 0 1px var(--accent);
 	}
 	.col-h {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 44px;
-		padding: 0 2px;
-		margin-bottom: 10px;
-		border-bottom: 2px solid var(--line);
-		font-weight: 600;
+		height: 36px;
+		padding: 0 8px;
+		font: 600 var(--t-meta) var(--font-ui);
+		white-space: nowrap;
+		overflow: hidden;
 		flex-shrink: 0;
-	}
-	.col-h.doing {
-		border-bottom-color: color-mix(in srgb, var(--accent) 35%, transparent);
-	}
-	.col-h.waiting {
-		border-bottom-color: color-mix(in srgb, var(--yellow) 27%, transparent);
-	}
-	.col.drop .col-h {
-		border-bottom-color: var(--accent);
 	}
 	.aside {
 		margin-left: auto;
@@ -761,18 +835,21 @@
 		color: var(--accent);
 	}
 	.cards {
-		padding: 0 0 8px;
+		padding: 4px;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 4px;
 		overflow-y: auto;
 		min-height: 0;
+		border-radius: 9px;
+		background: var(--inset);
+		box-shadow: inset 0 0 0 1px var(--rim);
 	}
 	.kc {
 		position: relative;
-		background: var(--bg);
-		border: 1px solid var(--line);
+		background: #2a2a2a;
 		border-radius: var(--r-md);
+		box-shadow: inset 0 0 0 1px var(--rim), 0 1px 2px rgba(0, 0, 0, 0.4);
 		padding: 10px 12px;
 		display: flex;
 		flex-direction: column;
@@ -780,10 +857,10 @@
 		cursor: grab;
 	}
 	.kc:hover {
-		border-color: var(--line-3);
+		background: #2f2f2f;
 	}
 	.kc.on {
-		border-color: var(--accent);
+		box-shadow: inset 0 0 0 1px var(--accent), 0 1px 2px rgba(0, 0, 0, 0.4);
 	}
 	.kc.dragging {
 		opacity: 0.4;
@@ -795,6 +872,7 @@
 		column-gap: 8px;
 		padding: 8px 12px;
 		background: none;
+		box-shadow: none;
 	}
 	.kc.done .km {
 		grid-column: 2;
@@ -859,7 +937,7 @@
 		right: 6px;
 		display: none;
 		gap: 1px;
-		background: var(--bg);
+		background: #2f2f2f;
 		border-radius: var(--r);
 	}
 	.kc:hover .ops,
@@ -917,9 +995,10 @@
 	.add-in {
 		height: 36px;
 		padding: 0 10px;
-		border: 1px solid var(--accent);
+		border: none;
 		border-radius: var(--r-md);
-		background: var(--bg);
+		box-shadow: inset 0 0 0 1px var(--accent);
+		background: #2a2a2a;
 		color: var(--text);
 		font: var(--fs-md) var(--font-ui);
 		outline: none;
@@ -929,7 +1008,6 @@
 		min-height: 0;
 		overflow: auto;
 		padding: 0 16px 16px;
-		background: #000;
 	}
 	.grid {
 		display: grid;
@@ -943,7 +1021,7 @@
 		gap: 8px;
 		height: 44px;
 		padding: 0 10px;
-		background: #000;
+		background: var(--bg);
 		border-bottom: 1px solid var(--line);
 		font-weight: 600;
 	}

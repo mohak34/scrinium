@@ -97,7 +97,7 @@
 	<div class="modal" role="dialog" aria-label="Share note">
 		<header>
 			<span class="title">Share</span>
-			<button class="x" onclick={onClose} title="Close (Esc)">
+			<button class="ib" onclick={onClose} title="Close (Esc)">
 				<span class="material-symbols-outlined">close</span>
 			</button>
 		</header>
@@ -117,10 +117,10 @@
 						</span>
 						<span class="url" class:dead={expiryLabel(s.expiresAt) === 'expired'}>{linkFor(s.id)}</span>
 						{#if s.expiresAt !== null}<span class="exp">{expiryLabel(s.expiresAt)}</span>{/if}
-						<button class="btn" title={copiedId === s.id ? 'Copied' : 'Copy link'} onclick={() => copy(s.id)}>
+						<button class="ib" title={copiedId === s.id ? 'Copied' : 'Copy link'} onclick={() => copy(s.id)}>
 							<span class="material-symbols-outlined">{copiedId === s.id ? 'check' : 'content_copy'}</span>
 						</button>
-						<button class="btn danger" title="Revoke link" onclick={() => void revoke(s.id)}>
+						<button class="ib danger" title="Revoke link" onclick={() => void revoke(s.id)}>
 							<span class="material-symbols-outlined">delete</span>
 						</button>
 					</li>
@@ -144,7 +144,7 @@
 			</div>
 			{#if usePassword}
 				<input
-					class="pw"
+					class="pw field"
 					type="password"
 					placeholder="Link password (4+ chars)"
 					autocomplete="new-password"
@@ -155,7 +155,7 @@
 					}}
 				/>
 			{/if}
-			<button class="create" onclick={() => void create()} disabled={creating || (usePassword && password.length < 4)}>
+			<button class="btn primary create" onclick={() => void create()} disabled={creating || (usePassword && password.length < 4)}>
 				{creating ? 'Creating…' : 'Create new link'}
 			</button>
 		</div>
@@ -168,7 +168,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 900;
-		background: rgba(0, 0, 0, 0.6);
+		background: var(--scrim);
 		display: flex;
 		align-items: flex-start;
 		justify-content: center;
@@ -176,11 +176,11 @@
 	}
 	.modal {
 		width: min(480px, calc(100vw - 2rem));
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		padding: 1rem 1.1rem 1.1rem;
-		color: var(--on-surface);
+		background: var(--menu);
+		border-radius: var(--r-xl);
+		box-shadow: var(--menu-shadow);
+		padding: 14px 16px 16px;
+		color: var(--text);
 	}
 	header {
 		display: flex;
@@ -188,42 +188,29 @@
 	}
 	.title {
 		flex: 1;
-		font-weight: 600;
-	}
-	.x {
-		display: flex;
-		border: none;
-		background: none;
-		color: var(--outline);
-		cursor: pointer;
-		border-radius: var(--radius);
-		padding: 2px;
-	}
-	.x:hover {
-		background: var(--surface-container-high);
-		color: var(--on-surface);
+		font: 600 var(--fs-lg) var(--font-ui);
 	}
 	.note-name {
-		margin: 0.25rem 0 0;
-		font-size: var(--font-ui-small);
-		color: var(--outline);
+		margin: 2px 0 0;
+		font-size: var(--t-meta);
+		color: var(--text-3);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.hint {
-		margin: 0.5rem 0 0.75rem;
-		font-size: var(--font-ui-small);
-		color: var(--on-surface-variant);
+		margin: 8px 0 12px;
+		font-size: var(--t-meta);
+		color: var(--text-2);
 	}
 	.state {
-		color: var(--outline);
-		font-size: var(--font-ui-small);
-		margin: 0.5rem 0;
+		color: var(--text-3);
+		font-size: var(--t-meta);
+		margin: 8px 0;
 	}
 	.links {
 		list-style: none;
-		margin: 0 0 0.75rem;
+		margin: 0 0 12px;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
@@ -233,14 +220,14 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		background: var(--surface-container-low);
-		border-radius: var(--radius);
-		padding: 4px 4px 4px 8px;
+		background: var(--inset);
+		box-shadow: inset 0 0 0 1px var(--rim);
+		border-radius: var(--r-md);
+		padding: 3px 3px 3px 8px;
 	}
 	.lock {
 		font-size: 16px;
-		color: var(--outline);
-		flex-shrink: 0;
+		color: var(--text-3);
 	}
 	.url {
 		flex: 1;
@@ -248,50 +235,52 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-size: var(--font-ui-small);
-		font-family: var(--font-mono);
+		font-size: var(--t-meta);
+		color: var(--text-2);
 	}
 	.url.dead {
-		color: var(--outline);
+		color: var(--text-4);
 		text-decoration: line-through;
 	}
 	.exp {
 		flex-shrink: 0;
-		font-size: var(--font-ui-small);
-		color: var(--outline);
+		font-size: var(--t-caption);
+		color: var(--text-3);
 	}
-	.btn {
-		display: flex;
+	.ib {
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
 		border: none;
+		border-radius: var(--r);
 		background: none;
-		color: var(--outline);
+		color: var(--text-3);
 		cursor: pointer;
-		border-radius: var(--radius);
-		padding: 4px;
 	}
-	.btn:hover {
-		background: var(--surface-container-high);
-		color: var(--on-surface);
+	.ib:hover {
+		background: var(--hover);
+		color: var(--text);
 	}
-	.btn.danger:hover {
-		color: var(--error);
+	.ib.danger:hover {
+		color: var(--red);
 	}
-	.btn .material-symbols-outlined {
+	.ib .material-symbols-outlined {
 		font-size: 17px;
 	}
 	.new {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		border-top: 1px solid var(--border-default);
-		padding-top: 0.75rem;
+		gap: 10px;
+		border-top: 1px solid var(--line);
+		padding-top: 12px;
 	}
 	.pwrow {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		font-size: var(--font-ui-small);
-		color: var(--on-surface-variant);
+		font-size: var(--t-meta);
+		color: var(--text-2);
 		cursor: pointer;
 	}
 	.opts {
@@ -301,37 +290,19 @@
 		gap: 8px;
 	}
 	.pw {
-		background: var(--surface);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		color: var(--on-surface);
-		font-size: var(--font-ui-small);
-		padding: 6px 8px;
+		height: 32px;
+		padding: 0 10px;
+		border: none;
+		color: var(--text);
+		font-size: var(--t-meta);
 		outline: none;
 	}
-	.pw:focus {
-		border-color: var(--primary);
-	}
 	.create {
-		border: 1px solid var(--border-strong);
-		border-radius: var(--radius);
-		background: none;
-		color: var(--on-surface);
-		font-size: var(--font-ui-small);
-		font-weight: 600;
-		padding: 7px;
-		cursor: pointer;
-	}
-	.create:hover:not(:disabled) {
-		background: var(--surface-container-low);
-	}
-	.create:disabled {
-		opacity: 0.4;
-		cursor: default;
+		justify-content: center;
 	}
 	.err {
-		color: var(--error);
-		font-size: var(--font-ui-small);
-		margin: 0.5rem 0 0;
+		color: var(--red);
+		font-size: var(--t-meta);
+		margin: 8px 0 0;
 	}
 </style>

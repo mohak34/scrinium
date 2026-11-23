@@ -71,56 +71,74 @@
 
 <style>
 	.strip {
-		height: 40px;
+		height: 48px;
 		display: flex;
-		align-items: stretch;
-		border-bottom: 1px solid var(--line);
+		align-items: flex-end;
+		gap: 2px;
 		overflow-x: auto;
 		overflow-y: hidden;
 		scrollbar-width: none;
 		flex-shrink: 0;
-		background: var(--panel);
 	}
 	.tab {
 		position: relative;
 		display: flex;
 		align-items: center;
-		gap: 9px;
-		min-width: 130px;
+		gap: 8px;
+		min-width: 120px;
 		max-width: 220px;
-		padding: 0 8px 0 14px;
-		border-right: 1px solid var(--line);
-		color: var(--text-3);
-		font-size: var(--fs);
+		height: 34px;
+		margin-bottom: 3px;
+		padding: 0 6px 0 12px;
+		border-radius: 10px;
+		color: var(--text-2);
+		font: 500 var(--t-meta) var(--font-ui);
 		cursor: pointer;
 		white-space: nowrap;
 		user-select: none;
 		flex-shrink: 0;
 	}
 	.tab:hover {
-		color: var(--text-2);
-	}
-	.tab.active {
+		background: var(--hover);
 		color: var(--text);
+	}
+	/* The active tab is a notch of the pane below: same fill, joined to it by
+	   two inverted corners. */
+	.tab.active {
+		height: 41px;
+		margin: 0 10px;
 		background: var(--bg);
+		color: var(--text);
+		border-radius: 10px 10px 0 0;
+		box-shadow: inset 1px 1px 0 var(--rim), inset -1px 0 0 var(--rim);
 	}
-	/* Active tab merges into the page: accent rule on top, no bottom edge. */
-	.tab.active::before {
-		content: '';
-		position: absolute;
-		inset: 0 0 auto;
-		height: 1.5px;
-		background: var(--accent);
-	}
+	.tab.active::before,
 	.tab.active::after {
 		content: '';
 		position: absolute;
-		inset: auto 0 -1px;
-		height: 1px;
-		background: var(--bg);
+		bottom: 0;
+		width: 10px;
+		height: 10px;
+		background: radial-gradient(circle at var(--cx) 0, transparent 9.5px, var(--bg) 10px);
+	}
+	.tab.active::before {
+		left: -10px;
+		--cx: 0;
+	}
+	.tab.active::after {
+		right: -10px;
+		--cx: 10px;
+	}
+	/* Flush with the pane's square corner, so no left joint. */
+	.tab.active:first-child {
+		margin-left: 0;
+	}
+	.tab.active:first-child::before {
+		display: none;
 	}
 	.doc {
 		font-size: 16px;
+		color: var(--text-3);
 	}
 	.tab.active .doc {
 		color: var(--accent);
@@ -137,7 +155,7 @@
 		width: 20px;
 		height: 20px;
 		border: none;
-		border-radius: var(--r-sm);
+		border-radius: 5px;
 		background: none;
 		color: var(--text-3);
 		cursor: pointer;
@@ -157,14 +175,13 @@
 		color: var(--text);
 	}
 	.ib {
-		align-self: center;
 		display: grid;
 		place-items: center;
-		width: 28px;
-		height: 28px;
-		margin: 0 4px;
+		width: 30px;
+		height: 30px;
+		margin-bottom: 5px;
 		border: none;
-		border-radius: var(--r);
+		border-radius: var(--r-md);
 		background: none;
 		color: var(--text-3);
 		cursor: pointer;
@@ -175,6 +192,6 @@
 		color: var(--text);
 	}
 	.ib.side {
-		margin-left: 8px;
+		margin-right: 4px;
 	}
 </style>

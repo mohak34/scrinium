@@ -62,6 +62,8 @@
 		// palette, tab switching) never fire underneath it. Default actions
 		// still run, so typing and button activation work as usual.
 		const onKey = (e: KeyboardEvent) => {
+			// A menu open over the dialog handles its own keys (ContextMenu stops them).
+			if ((e.target as Element | null)?.closest?.('.ctx-menu')) return;
 			e.stopPropagation();
 			// An open menu or date picker takes this Esc itself.
 			if (e.key === 'Escape' && !document.querySelector('.ctx-menu, .date-pop')) {
@@ -173,11 +175,11 @@
 		color: var(--text);
 	}
 	.ni.on {
-		background: var(--accent-dim);
+		background: var(--press);
 		color: var(--text);
 	}
 	.ni.on .material-symbols-outlined {
-		color: var(--accent);
+		color: var(--text);
 	}
 	.body {
 		flex: 1;
@@ -257,65 +259,20 @@
 		color: var(--text-3);
 		font-size: var(--fs-sm);
 	}
-	.dlg :global(.btn) {
-		height: 28px;
-		padding: 0 11px;
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r);
-		background: var(--raise);
-		color: var(--text);
-		font: var(--fs-sm) var(--font-ui);
-		white-space: nowrap;
-		cursor: pointer;
-	}
-	.dlg :global(.btn .material-symbols-outlined) {
-		font-size: 16px;
-	}
-	.dlg :global(.btn:hover:not(:disabled)) {
-		background: var(--hover);
-		border-color: var(--line-3);
-	}
-	.dlg :global(.btn:disabled) {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.dlg :global(.btn.primary) {
-		background: var(--accent-fill);
-		border-color: var(--accent-fill);
-		color: var(--on-accent);
-	}
-	.dlg :global(.btn.primary:hover:not(:disabled)) {
-		background: var(--accent-fill-hi);
-		border-color: var(--accent-fill-hi);
-	}
-	.dlg :global(.btn.danger) {
-		color: var(--red);
-	}
-	.dlg :global(.btn.danger:hover:not(:disabled)) {
-		background: color-mix(in srgb, var(--red) 12%, transparent);
-		border-color: color-mix(in srgb, var(--red) 35%, transparent);
-	}
-	.dlg :global(.btn.ghost) {
-		background: none;
-		border-color: transparent;
-		color: var(--text-2);
-	}
 	.dlg :global(.input) {
 		width: 220px;
 		height: 28px;
 		padding: 0 10px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r);
-		background: var(--panel);
+		border: 0;
+		border-radius: var(--r-md);
+		background: var(--inset);
+		box-shadow: inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35);
 		color: var(--text);
-		font: 12px var(--font-mono);
+		font: var(--t-meta) var(--font-ui);
 	}
 	.dlg :global(.input:focus) {
 		outline: none;
-		border-color: var(--accent);
+		box-shadow: inset 0 0 0 1px var(--line-3);
 	}
 	.dlg :global(.mono) {
 		font-family: var(--font-mono);

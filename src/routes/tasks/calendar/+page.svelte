@@ -382,7 +382,7 @@
 			<button class="ib" title="Next month" onclick={() => shiftMonth(1)} aria-label="Next month">
 				<span class="material-symbols-outlined">chevron_right</span>
 			</button>
-			<button class="line" onclick={goToday}>Today</button>
+			<button class="btn outline" onclick={goToday}>Today</button>
 			<span class="sp"></span>
 			{#each calendars as cal (cal.name)}
 				{@const off = hidden.includes(cal.name)}
@@ -396,12 +396,13 @@
 				>
 			{/each}
 			{#if calendarState === 'disconnected' || connectFailed}
-				<button class="line" onclick={() => void connect()}>
+				<button class="btn outline" onclick={() => void connect()}>
 					<span class="material-symbols-outlined">add_link</span>Connect Google Calendar
 				</button>
 			{/if}
 		</header>
 
+		<div class="pane gridwrap">
 		<div class="grid" role="grid" aria-label="Task calendar" style="--weeks: {cells.length / 7}" bind:clientHeight={gridH}>
 			{#each WEEKDAYS as w (w)}
 				<div class="dow">{w}</div>
@@ -473,6 +474,7 @@
 					{/if}
 				</div>
 			{/each}
+		</div>
 		</div>
 		<PageFooter>
 			<span>{undated.length} without a date</span>
@@ -574,6 +576,14 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
+		gap: 10px;
+	}
+	.gridwrap {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 	.main {
 		flex: 1;
@@ -585,9 +595,8 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 56px;
-		padding: 0 16px 0 24px;
-		border-bottom: 1px solid var(--line);
+		height: 52px;
+		padding: 0 6px 0 14px;
 		flex-shrink: 0;
 	}
 	.vsep {
@@ -598,7 +607,7 @@
 	}
 	.mo {
 		min-width: 150px;
-		font: 700 18px var(--font-read);
+		font: 600 var(--t-label) var(--font-ui);
 		white-space: nowrap;
 	}
 	.sp {
@@ -619,41 +628,19 @@
 		background: var(--hover);
 		color: var(--text);
 	}
-	.line {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 30px;
-		margin-left: 6px;
-		padding: 0 12px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-md);
-		background: none;
-		color: var(--text-2);
-		font: var(--fs) var(--font-ui);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.line .material-symbols-outlined {
-		font-size: 17px;
-	}
-	.line:hover {
-		color: var(--text);
-		border-color: var(--line-3);
-	}
 	.grid {
 		flex: 1;
 		min-height: 0;
 		display: grid;
 		grid-template-columns: repeat(7, minmax(0, 1fr));
-		grid-template-rows: 34px repeat(var(--weeks), minmax(0, 1fr));
+		grid-template-rows: 38px repeat(var(--weeks), minmax(0, 1fr));
 	}
 	.dow {
 		display: flex;
 		align-items: center;
 		padding: 0 12px;
 		color: var(--text-3);
-		font-size: var(--fs-sm);
+		font: 500 var(--t-caption) var(--font-ui);
 		border-right: 1px solid var(--line);
 		border-bottom: 1px solid var(--line);
 	}
@@ -674,14 +661,14 @@
 		border-right: 0;
 	}
 	.day.wk {
-		background: #080808;
+		background: rgba(0, 0, 0, 0.18);
 	}
 	.day:hover {
-		background: var(--raise);
+		background: var(--hover);
 	}
 	.day.sel {
-		background: var(--raise);
-		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+		background: var(--press);
+		box-shadow: inset 0 0 0 1px var(--line-3);
 	}
 	.day.drop {
 		background: var(--accent-dim);
@@ -701,8 +688,8 @@
 		color: var(--text-4);
 	}
 	.day.today .dn {
-		background: var(--accent-fill);
-		color: var(--on-accent);
+		background: #ededeb;
+		color: #0b0b0b;
 		font-weight: 600;
 	}
 	.ev {
@@ -804,8 +791,11 @@
 	.agenda {
 		width: 320px;
 		flex-shrink: 0;
-		background: var(--panel);
-		border-left: 1px solid var(--line);
+		margin: 10px 0;
+		background: var(--raise);
+		border-radius: var(--r-pane);
+		box-shadow: inset 0 0 0 1px var(--rim);
+		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 	}
@@ -814,7 +804,8 @@
 		border-bottom: 1px solid var(--line);
 	}
 	.big {
-		font: 700 24px / 1.2 var(--font-read);
+		font: 600 24px / 1.2 var(--font-ui);
+		letter-spacing: -0.01em;
 	}
 	.ag-head .sub {
 		margin-top: 4px;
@@ -845,7 +836,7 @@
 		background: var(--raise);
 	}
 	.ag-row.t.on {
-		background: var(--accent-dim);
+		background: var(--press);
 	}
 	.ag-row.t.over {
 		box-shadow: inset 2px 0 0 var(--red);

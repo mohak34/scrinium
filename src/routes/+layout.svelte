@@ -208,13 +208,11 @@ scroll the page, which phones need for native scrolling and pinch zoom. -->
 		left: 12px;
 		bottom: 12px;
 		z-index: 940;
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius);
-		box-shadow: var(--shadow-pop);
-		color: var(--on-surface-variant);
-		font-family: var(--font-mono);
-		font-size: var(--font-ui-small);
+		background: var(--menu);
+		border-radius: var(--r-md);
+		box-shadow: var(--menu-shadow);
+		color: var(--text-2);
+		font: var(--fs-sm) var(--font-mono);
 		padding: 4px 10px;
 	}
 </style>

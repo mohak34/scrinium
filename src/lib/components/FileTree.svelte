@@ -368,7 +368,8 @@
 		color: var(--text-3);
 	}
 	.file.active {
-		background: var(--accent-dim);
+		background: var(--press);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 		color: var(--text);
 	}
 	.file-label {
@@ -384,17 +385,23 @@
 		background: var(--hover);
 		color: var(--text-2);
 	}
+	/* Create and rename edit in place: the row's size, its text where note
+	   names start. */
 	.rename-input {
 		display: block;
-		margin: 1px 0 1px calc(8px + var(--depth, 0) * var(--step));
-		width: calc(100% - 8px - var(--depth, 0) * var(--step));
-		height: 27px;
-		background: var(--bg);
-		border: 1px solid var(--accent);
+		width: 100%;
+		height: 29px;
+		margin: 0;
+		padding: 0 8px 0 calc(30px + var(--depth, 0) * var(--step));
+		background: var(--inset);
+		border: none;
 		border-radius: var(--r);
+		box-shadow: inset 0 0 0 1px var(--line-3);
 		color: var(--text);
-		padding: 0 8px;
 		font: var(--fs) var(--font-ui);
 		outline: none;
+	}
+	.rename-input::placeholder {
+		color: var(--text-3);
 	}
 </style>

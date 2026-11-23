@@ -39,8 +39,9 @@ class BlockMathWidget extends WidgetType {
 		fillMath(div, view, this.content, true);
 		return div;
 	}
+	// A click places the cursor on the formula, which reveals its source.
 	ignoreEvent() {
-		return true;
+		return false;
 	}
 }
 

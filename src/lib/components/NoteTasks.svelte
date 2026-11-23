@@ -132,9 +132,10 @@
 		height: 30px;
 		margin: 4px 0;
 		padding: 0 10px;
-		border: 1px solid var(--accent);
-		border-radius: var(--r);
+		border: none;
+		border-radius: var(--r-md);
 		background: var(--bg);
+		box-shadow: inset 0 0 0 1px var(--accent);
 		color: var(--text);
 		font: var(--fs) var(--font-ui);
 		outline: none;

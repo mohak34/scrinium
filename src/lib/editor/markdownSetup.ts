@@ -134,24 +134,65 @@ export const baseTheme = EditorView.theme(
 		},
 		'.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--line)' },
 		'.cm-panels.cm-panels-bottom': { borderTop: '1px solid var(--line)' },
-		'.cm-search': { fontSize: 'var(--fs-sm)', padding: '6px 10px' },
-		'.cm-search input, .cm-search button': {
+		'.cm-search': { fontSize: 'var(--t-meta)', padding: '6px 40px 6px 10px' },
+		'.cm-search > *': { verticalAlign: 'middle' },
+		'.cm-search .cm-textfield': {
+			width: '220px',
+			height: '28px',
+			margin: '3px 4px 3px 0',
+			padding: '0 10px',
 			fontFamily: 'var(--font-ui)',
-			fontSize: 'var(--fs-sm)',
-			backgroundColor: 'var(--raise)',
-			backgroundImage: 'none',
+			fontSize: 'var(--t-meta)',
 			color: 'var(--text)',
-			border: '1px solid var(--line-2)',
-			borderRadius: '6px',
-			padding: '3px 8px'
+			background: 'var(--inset)',
+			border: 'none',
+			borderRadius: 'var(--r-md)',
+			boxShadow: 'inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35)',
+			outline: 'none'
 		},
-		'.cm-search input:focus': { borderColor: 'var(--accent)', outline: 'none' },
-		'.cm-search label': { color: 'var(--text-2)' },
+		'.cm-search .cm-textfield:focus': { boxShadow: 'inset 0 0 0 1px var(--line-3)' },
+		'.cm-search .cm-button': {
+			height: '28px',
+			margin: '3px 2px',
+			padding: '0 9px',
+			fontFamily: 'var(--font-ui)',
+			fontSize: 'var(--t-meta)',
+			fontWeight: '500',
+			color: 'var(--text-2)',
+			background: 'none',
+			backgroundImage: 'none',
+			border: 'none',
+			borderRadius: 'var(--r-md)',
+			textTransform: 'capitalize',
+			cursor: 'pointer'
+		},
+		'.cm-search .cm-button:hover': { background: 'var(--hover)', color: 'var(--text)' },
+		'.cm-search .cm-button:active': { backgroundImage: 'none', background: 'var(--press)' },
+		'.cm-search label': {
+			display: 'inline-flex',
+			alignItems: 'center',
+			gap: '6px',
+			margin: '0 4px',
+			color: 'var(--text-2)',
+			fontSize: 'var(--t-meta)',
+			textTransform: 'capitalize',
+			cursor: 'pointer'
+		},
 		'.cm-search button[name=close]': {
+			top: '8px',
+			right: '8px',
+			width: '28px',
+			height: '28px',
+			padding: '0',
+			fontSize: '18px',
+			lineHeight: '1',
 			color: 'var(--text-3)',
-			backgroundColor: 'transparent',
-			border: 'none'
+			background: 'none',
+			border: 'none',
+			borderRadius: 'var(--r)',
+			cursor: 'pointer'
 		},
+		'.cm-search button[name=close]:hover': { background: 'var(--hover)', color: 'var(--text)' },
 
 		'.cm-heading-1': {
 			fontSize: '2em',
@@ -206,12 +247,37 @@ export const baseTheme = EditorView.theme(
 			borderRadius: '3px'
 		},
 		'.cm-tag': {
-			color: 'var(--violet)',
-			backgroundColor: 'color-mix(in srgb, var(--violet) 12%, transparent)',
+			color: 'var(--text-2)',
+			backgroundColor: 'var(--inset)',
+			boxShadow: 'inset 0 0 0 1px var(--rim)',
 			fontFamily: 'var(--font-ui)',
 			fontSize: '0.85em',
-			padding: '0.05em 0.4em',
-			borderRadius: '4px'
+			padding: '0.1em 0.45em',
+			borderRadius: '5px'
+		},
+		'.cm-tag-hash': { color: 'var(--text-4)' },
+		// Properties block (frontmatterBlock.ts): padding, never margin.
+		'.cm-props': {
+			display: 'grid',
+			gridTemplateColumns: 'minmax(5em, max-content) 1fr',
+			gap: '0.45em 1.5em',
+			padding: '0.2em 0 0.9em',
+			borderBottom: '1px solid var(--rim)',
+			fontFamily: 'var(--font-ui)',
+			fontSize: '0.9em',
+			cursor: 'text'
+		},
+		'.cm-props-key': { color: 'var(--text-3)' },
+		'.cm-props-val': { color: 'var(--text)', display: 'flex', flexWrap: 'wrap', gap: '0.35em' },
+		// Raw YAML while the cursor is in it: the markdown highlighter reads
+		// the closing `---` as a setext heading and `[a, b]` as links.
+		'.cm-fm-line': { fontSize: '0.85em' },
+		'.cm-fm-line, .cm-fm-line *': {
+			fontFamily: 'var(--font-mono)',
+			fontWeight: 'normal',
+			fontStyle: 'normal',
+			textDecoration: 'none',
+			color: 'var(--text-3)'
 		},
 		// Rendered image: full-width lines, unmounted when the cursor leaves.
 		// NOTE: no vertical margin - CodeMirror measures block widgets without
@@ -227,36 +293,17 @@ export const baseTheme = EditorView.theme(
 			borderRadius: '8px',
 			objectFit: 'contain'
 		},
+		// The box itself is the global checkbox (theme.css); this only sets
+		// it in the text line.
 		'.cm-task-checkbox': {
-			appearance: 'none',
-			WebkitAppearance: 'none',
-			width: '17px',
-			height: '17px',
-			margin: '0 0.55em 0 0',
-			verticalAlign: '-0.2em',
-			cursor: 'pointer',
-			borderRadius: '4px',
-			border: '1.5px solid #4a4744',
-			backgroundColor: 'transparent',
+			width: '16px',
+			height: '16px',
+			margin: '0 0.5em 0 0',
+			verticalAlign: 'middle',
 			position: 'relative',
-			flexShrink: '0'
+			top: '-0.1em'
 		},
-		'.cm-task-checkbox:hover': { borderColor: 'var(--accent)' },
-		'.cm-task-checkbox:checked': {
-			backgroundColor: 'var(--accent-fill)',
-			borderColor: 'var(--accent-fill)'
-		},
-		'.cm-task-checkbox:checked::after': {
-			content: '""',
-			position: 'absolute',
-			left: '4.5px',
-			top: '1px',
-			width: '4px',
-			height: '9px',
-			border: 'solid var(--on-accent)',
-			borderWidth: '0 2px 2px 0',
-			transform: 'rotate(45deg)'
-		},
+		'.cm-task-checkbox:not(:checked):hover': { boxShadow: 'inset 0 0 0 1px var(--accent)' },
 		'.cm-codeblock-line': {
 			backgroundColor: 'var(--panel)',
 			borderLeft: '1px solid var(--line)',
@@ -452,10 +499,10 @@ export const baseTheme = EditorView.theme(
 		// The Contains input (askText) and the date cell's calendar.
 		'.cm-table-ask': { position: 'fixed', zIndex: '1000' },
 		'.cm-table-ask, .cm-tooltip.cm-date-pop': {
-			background: 'var(--raise)',
-			border: '1px solid var(--line-3)',
-			borderRadius: '8px',
-			boxShadow: '0 12px 32px rgba(0,0,0,.6)',
+			background: 'var(--menu)',
+			border: 'none',
+			borderRadius: 'var(--r-xl)',
+			boxShadow: 'var(--menu-shadow)',
 			padding: '4px',
 			font: '13px/20px var(--font-ui)',
 			color: 'var(--text-2)'
@@ -465,14 +512,15 @@ export const baseTheme = EditorView.theme(
 			width: '220px',
 			height: '28px',
 			padding: '0 8px',
-			background: 'var(--bg)',
-			border: '1px solid var(--line-2)',
-			borderRadius: '4px',
+			background: 'var(--inset)',
+			border: 'none',
+			boxShadow: 'inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35)',
+			borderRadius: 'var(--r)',
 			color: 'var(--text)',
 			font: '13px var(--font-ui)',
 			outline: 'none'
 		},
-		'.cm-table-ask input:focus': { borderColor: 'var(--line-3)' },
+		'.cm-table-ask input:focus': { boxShadow: 'inset 0 0 0 1px var(--line-3)' },
 		'.cm-table-ask input::placeholder': { color: 'var(--text-4)' },
 		'.cm-tooltip.cm-date-pop': { width: '240px', padding: '8px', cursor: 'default' },
 		'.cm-date-pop button': {
@@ -602,23 +650,24 @@ export const baseTheme = EditorView.theme(
 			'--callout-bg': 'rgba(168, 165, 160, 0.05)'
 		},
 		'.cm-tooltip': {
-			backgroundColor: 'var(--panel)',
-			border: '1px solid var(--line-2)',
-			borderRadius: '8px',
+			backgroundColor: 'var(--menu)',
+			border: 'none',
+			borderRadius: 'var(--r-xl)',
+			boxShadow: 'var(--menu-shadow)',
 			color: 'var(--text)'
 		},
 		'.cm-tooltip-autocomplete': {
-			backgroundColor: 'var(--panel)',
-			border: '1px solid var(--line-2)',
-			borderRadius: '10px',
-			boxShadow: 'var(--shadow)',
+			backgroundColor: 'var(--menu)',
+			border: 'none',
+			borderRadius: 'var(--r-xl)',
+			boxShadow: 'var(--menu-shadow)',
 			color: 'var(--text)',
 			padding: '4px'
 		},
-		'.cm-tooltip-autocomplete ul': { fontFamily: 'var(--font-ui)' },
+		'.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--font-ui)' },
 		'.cm-tooltip-autocomplete ul li': { borderRadius: '6px', padding: '3px 8px !important' },
-		'.cm-tooltip-autocomplete li[aria-selected]': {
-			backgroundColor: 'var(--hover)',
+		'.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+			backgroundColor: 'var(--press)',
 			color: 'var(--text)'
 		},
 		'.cm-tooltip-autocomplete .cm-completionDetail': {

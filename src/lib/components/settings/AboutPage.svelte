@@ -39,7 +39,7 @@
 		<span class="lbl">Reset preferences</span>
 		<span class="hint">Editor, keyboard and attachment settings in this browser</span>
 	</div>
-	<button class="btn" onclick={reset}>Reset</button>
+	<button class="btn outline" onclick={reset}>Reset</button>
 </div>
 
 <style>

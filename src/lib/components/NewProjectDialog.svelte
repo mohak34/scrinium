@@ -77,8 +77,8 @@
 			</div>
 		{/if}
 		<div class="actions">
-			<button type="button" class="ghost" onclick={close}>Cancel</button>
-			<button type="submit" class="solid" disabled={busy || !name.trim()}>Create</button>
+			<button type="button" class="btn" onclick={close}>Cancel</button>
+			<button type="submit" class="btn primary" disabled={busy || !name.trim()}>Create</button>
 		</div>
 	</form>
 </div>
@@ -96,9 +96,9 @@
 	}
 	.dlg {
 		width: min(420px, calc(100vw - 2rem));
-		background: var(--raise);
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-lg);
+		background: var(--menu);
+		border-radius: var(--r-xl);
+		box-shadow: var(--menu-shadow);
 		padding: 16px;
 		color: var(--text);
 		font: var(--fs) var(--font-ui);
@@ -111,15 +111,16 @@
 		width: 100%;
 		height: 34px;
 		padding: 0 10px;
-		background: var(--bg);
-		border: 1px solid var(--line-3);
-		border-radius: var(--r);
+		background: var(--inset);
+		border: none;
+		border-radius: var(--r-md);
+		box-shadow: inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35);
 		color: var(--text);
 		font: inherit;
 		outline: none;
 	}
 	input:focus {
-		border-color: var(--accent);
+		box-shadow: inset 0 0 0 1px var(--line-3);
 	}
 	.hint {
 		margin: 6px 0 14px;
@@ -166,32 +167,5 @@
 		justify-content: flex-end;
 		gap: 8px;
 		margin-top: 14px;
-	}
-	.actions button {
-		height: 30px;
-		padding: 0 12px;
-		border: none;
-		border-radius: var(--r);
-		font: inherit;
-		cursor: pointer;
-	}
-	.ghost {
-		background: none;
-		color: var(--text-2);
-	}
-	.ghost:hover {
-		background: var(--hover);
-		color: var(--text);
-	}
-	.solid {
-		background: var(--accent-fill);
-		color: var(--on-accent);
-	}
-	.solid:hover:not(:disabled) {
-		background: var(--accent-fill-hi);
-	}
-	.solid:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 </style>

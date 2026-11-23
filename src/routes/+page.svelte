@@ -466,7 +466,7 @@
 			></div>
 		{/if}
 	</div>
-	<div class="main">
+	<div class="main" class:solo={collapsed}>
 		<TabBar
 			activePath={$activePath}
 			onActivate={openNote}
@@ -474,6 +474,7 @@
 			onToggleSidebar={toggleCollapse}
 			onNewNote={() => void startCreate('note')}
 		/>
+		<div class="pane note-pane" class:first={!collapsed && $openTabs[0] === $activePath}>
 		{#if $activePath}
 			<NoteBar
 				path={$activePath}
@@ -498,7 +499,7 @@
 				<div class="empty">
 					<span class="material-symbols-outlined">description</span>
 					<p>Open a note from the sidebar, or start a new one.</p>
-					<button class="new" onclick={() => void startCreate('note')}>
+					<button class="btn primary new" onclick={() => void startCreate('note')}>
 						<span class="material-symbols-outlined">edit_square</span>New note
 					</button>
 				</div>
@@ -507,6 +508,7 @@
 		{#if $activePath}
 			<StatusBar content={panelContent} />
 		{/if}
+		</div>
 	</div>
 	{#if $activePath && !rightCollapsed}
 		<aside class="rightbar" aria-label="Note details">
@@ -587,9 +589,20 @@
 	.layout {
 		display: flex;
 		height: 100vh;
+		padding: 0 10px 10px 0;
+	}
+	.note-pane {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	/* The first tab joins the pane's top-left corner, so it stays square. */
+	.note-pane.first {
+		border-top-left-radius: 0;
 	}
 	.sidebar-wrap {
-		width: var(--sidebar-width);
 		flex-shrink: 0;
 		height: 100vh;
 		overflow: hidden;
@@ -620,9 +633,7 @@
 	.rightbar {
 		width: 290px;
 		flex-shrink: 0;
-		height: 100vh;
-		background: var(--panel);
-		border-left: 1px solid var(--line);
+		margin-left: 10px;
 		display: flex;
 		flex-direction: column;
 	}
@@ -630,15 +641,15 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 40px;
-		padding: 0 8px 0 16px;
-		border-bottom: 1px solid var(--line);
+		height: 48px;
+		padding: 0 2px 0 6px;
 		flex-shrink: 0;
 	}
 	.rtitle {
 		flex: 1;
 		min-width: 0;
-		font-weight: 600;
+		font: 500 var(--t-meta) var(--font-ui);
+		color: var(--text-2);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -646,10 +657,10 @@
 	.rclose {
 		display: grid;
 		place-items: center;
-		width: 26px;
-		height: 26px;
+		width: 30px;
+		height: 30px;
 		border: none;
-		border-radius: var(--r);
+		border-radius: var(--r-md);
 		background: none;
 		color: var(--text-3);
 		cursor: pointer;
@@ -662,14 +673,19 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
-		padding: 4px 0 24px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		scrollbar-width: none;
 	}
 	.main {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
-		background: var(--bg);
+	}
+	.main.solo {
+		padding-left: 10px;
 	}
 	.editor-scroll {
 		flex: 1;
@@ -693,21 +709,7 @@
 		margin: 0;
 	}
 	.new {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		height: 32px;
 		margin-top: 6px;
-		padding: 0 14px 0 12px;
-		border: none;
-		border-radius: var(--r-md);
-		background: var(--accent-fill);
-		color: var(--on-accent);
-		font: 600 var(--fs) var(--font-ui);
-		cursor: pointer;
-	}
-	.new:hover {
-		background: var(--accent-fill-hi);
 	}
 	.img-overlay {
 		position: fixed;
@@ -740,10 +742,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.35rem;
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		padding: 0.3rem;
+		background: var(--menu);
+		box-shadow: var(--menu-shadow);
+		border-radius: var(--r-xl);
+		padding: 4px;
 		z-index: 1;
 	}
 	.zoom-btn {
@@ -754,36 +756,38 @@
 		justify-content: center;
 		background: none;
 		border: none;
-		border-radius: var(--radius);
-		color: var(--on-surface);
+		border-radius: var(--r);
+		color: var(--text-2);
 		font-size: 1rem;
 		cursor: pointer;
 	}
 	.zoom-btn:hover {
-		background: var(--surface-container-high);
+		background: var(--hover);
+		color: var(--text);
 	}
 	.zoom-btn.close:hover {
-		background: var(--error-container);
-		color: var(--error);
+		background: color-mix(in srgb, var(--red) 14%, transparent);
+		color: var(--red);
 	}
 	.zoom-sep {
 		width: 1px;
 		height: 18px;
-		background: var(--border-default);
+		background: var(--line-2);
 		margin: 0 0.1rem;
 	}
 	.zoom-pct {
 		min-width: 52px;
 		background: none;
 		border: none;
-		color: var(--on-surface);
-		font-size: 0.8rem;
+		color: var(--text-2);
+		font: var(--fs-sm) var(--font-mono);
 		text-align: center;
 		cursor: pointer;
 		padding: 0.15rem 0.25rem;
-		border-radius: var(--radius);
+		border-radius: var(--r);
 	}
 	.zoom-pct:hover {
-		background: var(--surface-container-high);
+		background: var(--hover);
+		color: var(--text);
 	}
 </style>

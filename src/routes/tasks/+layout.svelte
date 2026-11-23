@@ -37,7 +37,9 @@
 	.shell {
 		height: 100vh;
 		display: flex;
-		background: var(--bg);
+		gap: 10px;
+		padding: 0 10px;
+		background: var(--panel);
 		color: var(--text);
 	}
 	.content {

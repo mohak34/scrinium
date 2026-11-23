@@ -558,8 +558,9 @@
 		height: 28px;
 		font: var(--fs) var(--font-ui);
 		color: var(--text);
-		background: var(--bg);
-		border: 1px solid var(--line-2);
+		background: var(--inset);
+		border: 0;
+		box-shadow: inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35);
 		border-radius: var(--r);
 		padding: 0 8px;
 		outline: none;
@@ -568,7 +569,7 @@
 		flex: 0 1 80px;
 	}
 	.in:focus {
-		border-color: var(--accent);
+		box-shadow: inset 0 0 0 1px var(--line-3);
 	}
 	.pill {
 		font-size: var(--fs-xs);

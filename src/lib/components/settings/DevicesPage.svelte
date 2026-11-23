@@ -49,11 +49,11 @@
 					Added {day(t.created_at)}, {t.last_used_at ? `last used ${day(t.last_used_at)}` : 'never used'}
 				</span>
 			</div>
-			<button class="btn ghost" onclick={() => copy(t.token_hash)}>
+			<button class="btn" onclick={() => copy(t.token_hash)}>
 				<span class="material-symbols-outlined">{copied === t.token_hash ? 'check' : 'content_copy'}</span>
 				{copied === t.token_hash ? 'Copied' : 'Copy'}
 			</button>
-			<button class="btn danger" disabled={busy === t.token_hash} onclick={() => revoke(t)}>Revoke</button>
+			<button class="btn outline danger" disabled={busy === t.token_hash} onclick={() => revoke(t)}>Revoke</button>
 		</div>
 	{/each}
 {/if}

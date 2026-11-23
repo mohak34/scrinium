@@ -38,6 +38,8 @@
 
 		// Modal like the settings dialog: app shortcuts never fire underneath.
 		const onKey = (e: KeyboardEvent) => {
+			// A menu open over the dialog handles its own keys (ContextMenu stops them).
+			if ((e.target as Element | null)?.closest?.('.ctx-menu')) return;
 			e.stopPropagation();
 			// An open menu or date picker takes this Esc itself.
 			if (e.key === 'Escape' && !document.querySelector('.ctx-menu, .date-pop')) {
@@ -133,11 +135,11 @@
 		color: var(--text);
 	}
 	.tab.on {
-		background: var(--accent-dim);
+		background: var(--press);
 		color: var(--text);
 	}
 	.tab.on .material-symbols-outlined {
-		color: var(--accent);
+		color: var(--text);
 	}
 	.c {
 		color: var(--text-3);
@@ -245,7 +247,7 @@
 		background: var(--hover);
 	}
 	.bins :global(.row.on) {
-		background: var(--accent-dim);
+		background: var(--press);
 	}
 	.bins :global(.row .kind) {
 		font-size: 18px;
@@ -356,46 +358,5 @@
 	.bins :global(.chip.on) {
 		color: var(--text);
 		border-color: var(--accent);
-	}
-	.bins :global(.btn) {
-		height: 28px;
-		padding: 0 11px;
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		border: 1px solid var(--line-2);
-		border-radius: var(--r);
-		background: var(--raise);
-		color: var(--text);
-		font: var(--fs-sm) var(--font-ui);
-		white-space: nowrap;
-		cursor: pointer;
-	}
-	.bins :global(.btn .material-symbols-outlined) {
-		font-size: 16px;
-	}
-	.bins :global(.btn:hover:not(:disabled)) {
-		background: var(--hover);
-		border-color: var(--line-3);
-	}
-	.bins :global(.btn:disabled) {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.bins :global(.btn.primary) {
-		background: var(--accent-fill);
-		border-color: var(--accent-fill);
-		color: var(--on-accent);
-	}
-	.bins :global(.btn.primary:hover:not(:disabled)) {
-		background: var(--accent-fill-hi);
-		border-color: var(--accent-fill-hi);
-	}
-	.bins :global(.btn.danger) {
-		color: var(--red);
-	}
-	.bins :global(.btn.danger:hover:not(:disabled)) {
-		background: color-mix(in srgb, var(--red) 12%, transparent);
-		border-color: color-mix(in srgb, var(--red) 35%, transparent);
 	}
 </style>

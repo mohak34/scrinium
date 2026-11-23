@@ -388,8 +388,9 @@ class InlineMathWidget extends WidgetType {
 		fillMath(span, view, this.content, false);
 		return span;
 	}
+	// A click places the cursor on the formula, which reveals its source.
 	ignoreEvent() {
-		return true;
+		return false;
 	}
 }
 
@@ -639,11 +640,14 @@ function buildDecorations(view: EditorView): DecorationSet {
 				// Turn a bare bullet marker ("-", "*", "+") into a "•" dot while
 				// the cursor is elsewhere. Ordered-list markers ("1.") are left
 				// alone, hence the single-char check.
+				// A task's checkbox stands in for its bullet, so the marker and
+				// its space hide instead.
 				if (node.name === 'ListMark' && !active && !inFm(node.from) && /^[-*+]$/.test(view.state.doc.sliceString(node.from, node.to))) {
+					const task = node.node.nextSibling?.name === 'Task';
 					pending.push({
 						from: node.from,
-						to: node.to,
-						deco: Decoration.replace({ widget: new BulletWidget() })
+						to: task ? node.to + 1 : node.to,
+						deco: task ? Decoration.replace({}) : Decoration.replace({ widget: new BulletWidget() })
 					});
 				}
 
@@ -805,6 +809,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 			continue;
 		if (inWikilink(t.from, t.to)) continue;
 		pending.push({ from: t.from, to: t.to, deco: Decoration.mark({ class: 'cm-tag' }) });
+		pending.push({ from: t.from, to: t.from + 1, deco: Decoration.mark({ class: 'cm-tag-hash' }) });
 	}
 
 	// Inline math: single-line `$...$` only. Block math (```math fences and
