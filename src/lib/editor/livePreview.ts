@@ -640,11 +640,14 @@ function buildDecorations(view: EditorView): DecorationSet {
 				// Turn a bare bullet marker ("-", "*", "+") into a "•" dot while
 				// the cursor is elsewhere. Ordered-list markers ("1.") are left
 				// alone, hence the single-char check.
+				// A task's checkbox stands in for its bullet, so the marker and
+				// its space hide instead.
 				if (node.name === 'ListMark' && !active && !inFm(node.from) && /^[-*+]$/.test(view.state.doc.sliceString(node.from, node.to))) {
+					const task = node.node.nextSibling?.name === 'Task';
 					pending.push({
 						from: node.from,
-						to: node.to,
-						deco: Decoration.replace({ widget: new BulletWidget() })
+						to: task ? node.to + 1 : node.to,
+						deco: task ? Decoration.replace({}) : Decoration.replace({ widget: new BulletWidget() })
 					});
 				}
 

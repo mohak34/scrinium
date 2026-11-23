@@ -293,36 +293,17 @@ export const baseTheme = EditorView.theme(
 			borderRadius: '8px',
 			objectFit: 'contain'
 		},
+		// The box itself is the global checkbox (theme.css); this only sets
+		// it in the text line.
 		'.cm-task-checkbox': {
-			appearance: 'none',
-			WebkitAppearance: 'none',
-			width: '17px',
-			height: '17px',
-			margin: '0 0.55em 0 0',
-			verticalAlign: '-0.2em',
-			cursor: 'pointer',
-			borderRadius: '4px',
-			border: '1.5px solid #4a4744',
-			backgroundColor: 'transparent',
+			width: '16px',
+			height: '16px',
+			margin: '0 0.5em 0 0',
+			verticalAlign: 'middle',
 			position: 'relative',
-			flexShrink: '0'
+			top: '-0.1em'
 		},
-		'.cm-task-checkbox:hover': { borderColor: 'var(--accent)' },
-		'.cm-task-checkbox:checked': {
-			backgroundColor: 'var(--accent-fill)',
-			borderColor: 'var(--accent-fill)'
-		},
-		'.cm-task-checkbox:checked::after': {
-			content: '""',
-			position: 'absolute',
-			left: '4.5px',
-			top: '1px',
-			width: '4px',
-			height: '9px',
-			border: 'solid var(--on-accent)',
-			borderWidth: '0 2px 2px 0',
-			transform: 'rotate(45deg)'
-		},
+		'.cm-task-checkbox:not(:checked):hover': { boxShadow: 'inset 0 0 0 1px var(--accent)' },
 		'.cm-codeblock-line': {
 			backgroundColor: 'var(--panel)',
 			borderLeft: '1px solid var(--line)',
