@@ -32,9 +32,11 @@
 
 <div class="print-screen">
 	<div class="print-toolbar no-print">
-		<button type="button" onclick={() => history.back()}>← Back</button>
+		<button type="button" class="btn" onclick={() => history.back()}>
+			<span class="material-symbols-outlined">arrow_back</span>Back
+		</button>
 		<span class="print-path">{notePath}</span>
-		<button type="button" class="print-btn" onclick={() => window.print()}>
+		<button type="button" class="btn primary" onclick={() => window.print()}>
 			Print / Save as PDF
 		</button>
 	</div>
@@ -53,7 +55,7 @@
 	.print-screen {
 		height: 100vh;
 		overflow-y: auto;
-		background: var(--surface-container-low);
+		background: var(--panel);
 		color: #111;
 	}
 	.print-toolbar {
@@ -63,44 +65,30 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		padding: 10px 16px;
-		background: var(--surface-container);
-		border-bottom: 1px solid var(--border-default);
-		color: var(--on-surface);
+		padding: 8px 12px;
+		background: var(--panel);
+		border-bottom: 1px solid var(--line);
+		color: var(--text);
 	}
 	.print-path {
 		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-size: var(--font-ui-small);
-		color: var(--outline);
-	}
-	.print-toolbar button {
-		background: var(--surface-container-high);
-		border: 1px solid var(--border-default);
-		border-radius: var(--radius);
-		color: var(--on-surface);
-		font-size: var(--font-ui-small);
-		padding: 6px 12px;
-		cursor: pointer;
-	}
-	.print-btn {
-		background: var(--primary-container) !important;
-		border-color: transparent !important;
-		color: var(--on-primary-container) !important;
-		font-weight: 600;
+		font-size: var(--t-meta);
+		color: var(--text-3);
 	}
 	.print-error {
 		padding: 2rem;
 		text-align: center;
+		color: var(--text-2);
 	}
 	.print-tip {
 		max-width: 720px;
 		margin: 12px auto 0;
 		padding: 0 8px;
-		color: var(--outline);
-		font-size: var(--font-ui-small);
+		color: var(--text-3);
+		font-size: var(--t-caption);
 	}
 	.paper {
 		background: #fff;
