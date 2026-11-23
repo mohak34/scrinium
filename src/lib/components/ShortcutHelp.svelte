@@ -21,7 +21,7 @@
 				{#each sec.rows as row (row.keys + row.desc)}
 					<div class="row">
 						<span class="desc">{row.desc}</span>
-						<kbd>{row.keys}</kbd>
+						<kbd class="kbd">{row.keys}</kbd>
 					</div>
 				{/each}
 			</div>
@@ -38,20 +38,19 @@
 		position: fixed;
 		inset: 0;
 		z-index: 940;
-		background: var(--overlay);
+		background: var(--scrim);
 		display: flex;
 		align-items: flex-start;
 		justify-content: center;
 		padding-top: 12vh;
 	}
 	.help {
-		width: min(420px, 90vw);
+		width: min(440px, 90vw);
 		max-height: 70vh;
 		overflow-y: auto;
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-pop);
+		background: var(--menu);
+		border-radius: var(--r-xl);
+		box-shadow: var(--menu-shadow);
 		padding: 12px 16px 14px;
 	}
 	.head {
@@ -61,33 +60,30 @@
 		margin-bottom: 4px;
 	}
 	.title {
-		font-size: var(--font-ui-medium);
-		font-weight: var(--font-ui-medium-weight);
-		color: var(--on-surface);
+		font: 600 var(--fs-lg) var(--font-ui);
+		color: var(--text);
 	}
 	.icon-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
 		border: none;
-		border-radius: var(--radius);
+		border-radius: var(--r);
 		background: none;
-		color: var(--on-surface-variant);
+		color: var(--text-3);
 		cursor: pointer;
 	}
 	.icon-btn:hover {
-		background: var(--surface-container-low);
-		color: var(--on-surface);
+		background: var(--hover);
+		color: var(--text);
 	}
 	.section {
-		margin-top: 10px;
+		margin-top: 12px;
 	}
 	.section-title {
-		font-size: var(--fs-sm);
-		font-weight: 600;
-		color: var(--text);
+		font: 600 var(--fs-sm) var(--font-ui);
+		color: var(--text-3);
 		margin-bottom: 2px;
 	}
 	.row {
@@ -95,26 +91,17 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 12px;
-		padding: 5px 0;
-		border-top: 1px solid var(--border-default);
+		padding: 6px 0;
+		border-top: 1px solid var(--line);
 	}
 	.desc {
-		font-size: var(--font-ui-small);
-		color: var(--on-surface-variant);
-	}
-	kbd {
-		font-family: var(--font-mono);
-		font-size: var(--font-ui-micro);
-		background: var(--surface-container-high);
-		border-radius: 4px;
-		padding: 1px 6px;
-		color: var(--on-surface);
-		white-space: nowrap;
+		font-size: var(--t-meta);
+		color: var(--text-2);
 	}
 	.foot {
 		margin-top: 12px;
-		font-size: var(--font-ui-micro);
-		color: var(--outline);
+		font-size: var(--t-caption);
+		color: var(--text-3);
 		line-height: 1.5;
 	}
 </style>

@@ -56,7 +56,7 @@
 				<span class="material-symbols-outlined">search</span>
 				<input bind:value={filter} placeholder="Filter {$trashEntries.length} items" spellcheck="false" />
 			</label>
-			<button class="btn danger" disabled={!$trashEntries.length || busy} onclick={empty}>
+			<button class="btn outline danger" disabled={!$trashEntries.length || busy} onclick={empty}>
 				<span class="material-symbols-outlined">delete_forever</span>Empty
 			</button>
 		</div>
@@ -118,7 +118,7 @@
 						{split(sel.originalPath).dir || 'Vault root'} · deleted {longDate(sel.deletedAt)}
 					</span>
 				</div>
-				<button class="btn danger" disabled={busy} onclick={() => purge(sel)}>
+				<button class="btn outline danger" disabled={busy} onclick={() => purge(sel)}>
 					<span class="material-symbols-outlined">delete_forever</span>Delete forever
 				</button>
 				<button class="btn primary" disabled={busy} onclick={() => restore(sel)}>

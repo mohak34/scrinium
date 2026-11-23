@@ -228,7 +228,7 @@
 		color: var(--text);
 	}
 	.item.on {
-		background: var(--accent-dim);
+		background: var(--press);
 		color: var(--text);
 	}
 	.icon {

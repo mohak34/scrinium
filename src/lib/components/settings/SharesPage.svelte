@@ -123,14 +123,14 @@
 							: `, ${expiryLabel(s.expiresAt)}`}
 					</span>
 				</div>
-				<button class="btn ghost" onclick={() => copy(s.id)}>
+				<button class="btn" onclick={() => copy(s.id)}>
 					<span class="material-symbols-outlined">{copied === s.id ? 'check' : 'content_copy'}</span>
 					{copied === s.id ? 'Copied' : 'Copy'}
 				</button>
-				<button class="btn" disabled={busy === s.id} onclick={() => edit(s)}>
+				<button class="btn outline" disabled={busy === s.id} onclick={() => edit(s)}>
 					{s.hasPassword ? 'Password' : 'Add password'}
 				</button>
-				<button class="btn danger" disabled={busy === s.id} onclick={() => void revoke(s)}>Revoke</button>
+				<button class="btn outline danger" disabled={busy === s.id} onclick={() => void revoke(s)}>Revoke</button>
 			</div>
 			{#if editing === s.id}
 				<form
@@ -153,11 +153,11 @@
 						Save
 					</button>
 					{#if s.hasPassword}
-						<button type="button" class="btn danger" disabled={busy === s.id} onclick={() => void savePassword(s, null)}>
+						<button type="button" class="btn outline danger" disabled={busy === s.id} onclick={() => void savePassword(s, null)}>
 							Remove password
 						</button>
 					{/if}
-					<button type="button" class="btn ghost" onclick={() => (editing = null)}>Cancel</button>
+					<button type="button" class="btn" onclick={() => (editing = null)}>Cancel</button>
 					{#if error}<span class="err">{error}</span>{/if}
 				</form>
 			{/if}

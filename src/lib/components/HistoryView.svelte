@@ -273,7 +273,7 @@
 		background: var(--hover);
 	}
 	.row.on {
-		background: var(--accent-dim);
+		background: var(--press);
 	}
 	.kind {
 		font-size: 18px;
@@ -319,30 +319,6 @@
 	.meta {
 		font-size: var(--fs-sm);
 		color: var(--text-3);
-	}
-	.btn {
-		height: 28px;
-		padding: 0 11px;
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		border: 1px solid var(--accent-fill);
-		border-radius: var(--r);
-		background: var(--accent-fill);
-		color: var(--on-accent);
-		font: var(--fs-sm) var(--font-ui);
-		cursor: pointer;
-	}
-	.btn .material-symbols-outlined {
-		font-size: 16px;
-	}
-	.btn:hover:not(:disabled) {
-		background: var(--accent-fill-hi);
-		border-color: var(--accent-fill-hi);
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 	.vbody {
 		flex: 1;

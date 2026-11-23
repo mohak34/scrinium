@@ -88,10 +88,10 @@
 					onchange={(v) => (days = Number(v))}
 				/>
 			</div>
-			<button class="btn" disabled={!picked.size || busy} onclick={() => bulk(archivePaths, [...picked])}>
+			<button class="btn outline" disabled={!picked.size || busy} onclick={() => bulk(archivePaths, [...picked])}>
 				<span class="material-symbols-outlined">inventory_2</span>Archive {picked.size || ''}
 			</button>
-			<button class="btn danger" disabled={!picked.size || busy} onclick={() => trash([...picked])}>
+			<button class="btn outline danger" disabled={!picked.size || busy} onclick={() => trash([...picked])}>
 				<span class="material-symbols-outlined">delete</span>Trash
 			</button>
 		</div>
@@ -162,10 +162,10 @@
 					<h2>{sel.title}</h2>
 					<span class="meta">{sel.path} · last edited {longDate(sel.updatedAt)}</span>
 				</div>
-				<button class="btn" onclick={() => open(sel.path)}>
+				<button class="btn outline" onclick={() => open(sel.path)}>
 					<span class="material-symbols-outlined">open_in_new</span>Open
 				</button>
-				<button class="btn danger" disabled={busy} onclick={() => trash([sel.path])}>
+				<button class="btn outline danger" disabled={busy} onclick={() => trash([sel.path])}>
 					<span class="material-symbols-outlined">delete</span>Trash
 				</button>
 				<button class="btn primary" disabled={busy} onclick={() => bulk(archivePaths, [sel.path])}>
@@ -188,7 +188,6 @@
 		white-space: nowrap;
 	}
 	input[type='checkbox'] {
-		accent-color: var(--accent-fill);
 		margin: 0 4px;
 		flex-shrink: 0;
 	}

@@ -151,7 +151,7 @@
 		</span>
 	</div>
 	<span class="mono url">{mcpUrl}</span>
-	<button class="btn ghost" onclick={() => copy(mcpUrl)}>
+	<button class="btn" onclick={() => copy(mcpUrl)}>
 		<span class="material-symbols-outlined">{copied === mcpUrl ? 'check' : 'content_copy'}</span>
 		{copied === mcpUrl ? 'Copied' : 'Copy'}
 	</button>
@@ -168,7 +168,7 @@
 			<span class="lbl mono tok">{fresh.token}</span>
 			<span class="hint">Token for {fresh.label}. Copy it now, it is not shown again</span>
 		</div>
-		<button class="btn" onclick={() => copy(fresh!.token)}>
+		<button class="btn outline" onclick={() => copy(fresh!.token)}>
 			<span class="material-symbols-outlined">{copied === fresh.token ? 'check' : 'content_copy'}</span>
 			{copied === fresh.token ? 'Copied' : 'Copy'}
 		</button>
@@ -192,18 +192,18 @@
 				</span>
 			</div>
 			<button
-				class="btn ghost"
+				class="btn"
 				class:on={open?.key === t.token_hash}
 				onclick={() => toggleActivity(t.token_hash, `/api/tokens/activity?token_hash=${encodeURIComponent(t.token_hash)}`)}
 			>
 				<span class="material-symbols-outlined">history</span>
 				Activity
 			</button>
-			<button class="btn ghost" onclick={() => copy(t.token_hash)}>
+			<button class="btn" onclick={() => copy(t.token_hash)}>
 				<span class="material-symbols-outlined">{copied === t.token_hash ? 'check' : 'content_copy'}</span>
 				{copied === t.token_hash ? 'Copied' : 'Copy'}
 			</button>
-			<button class="btn danger" disabled={busy === t.token_hash} onclick={() => revoke(t)}>Revoke</button>
+			<button class="btn outline danger" disabled={busy === t.token_hash} onclick={() => revoke(t)}>Revoke</button>
 		</div>
 		{#if open?.key === t.token_hash}{@render activity(open.actions)}{/if}
 	{/each}
@@ -226,14 +226,14 @@
 				</span>
 			</div>
 			<button
-				class="btn ghost"
+				class="btn"
 				class:on={open?.key === a.client_id}
 				onclick={() => toggleActivity(a.client_id, `/api/apps/activity?client_id=${encodeURIComponent(a.client_id)}`)}
 			>
 				<span class="material-symbols-outlined">history</span>
 				Activity
 			</button>
-			<button class="btn danger" disabled={busy === a.client_id} onclick={() => disconnect(a)}>Disconnect</button>
+			<button class="btn outline danger" disabled={busy === a.client_id} onclick={() => disconnect(a)}>Disconnect</button>
 		</div>
 		{#if open?.key === a.client_id}{@render activity(open.actions)}{/if}
 	{/each}
@@ -255,8 +255,9 @@
 		font-size: 12.5px;
 		word-break: break-all;
 	}
-	:global(.dlg) .btn.ghost.on {
-		color: var(--accent);
+	.btn.on {
+		background: var(--press);
+		color: var(--text);
 	}
 	.log {
 		padding: 6px 0 12px 40px;

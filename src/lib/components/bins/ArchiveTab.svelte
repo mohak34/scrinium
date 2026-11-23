@@ -157,7 +157,7 @@
 						{split(sel.originalPath).dir || 'Vault root'} · archived {longDate(sel.archivedAt)}
 					</span>
 				</div>
-				<button class="btn danger" disabled={busy} onclick={() => trash(sel)}>
+				<button class="btn outline danger" disabled={busy} onclick={() => trash(sel)}>
 					<span class="material-symbols-outlined">delete</span>Move to trash
 				</button>
 				<button class="btn primary" disabled={busy} onclick={() => restore(sel)}>

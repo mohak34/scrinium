@@ -38,7 +38,7 @@
 		<span class="hint">Google sign-in, checked against the server allowlist</span>
 	</div>
 	{#if email}
-		<button class="btn" onclick={signOut}><span class="material-symbols-outlined">logout</span>Sign out</button>
+		<button class="btn outline" onclick={signOut}><span class="material-symbols-outlined">logout</span>Sign out</button>
 	{/if}
 </div>
 <div class="row">
@@ -50,7 +50,7 @@
 	{#if calendar === 'connected'}
 		<span class="state"><span class="dot"></span>Connected</span>
 	{:else if calendar === 'disconnected'}
-		<button class="btn" onclick={() => void connect()}>
+		<button class="btn outline" onclick={() => void connect()}>
 			<span class="material-symbols-outlined">add_link</span>Connect
 		</button>
 	{/if}
