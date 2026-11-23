@@ -817,13 +817,11 @@ import { perDoc } from './docRanges';
 		pointer-events: none;
 	}
 	.toast {
-		font-family: var(--font-mono);
-		font-size: var(--font-ui-small);
-		color: var(--on-surface);
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius);
-		box-shadow: var(--shadow-pop);
+		font: var(--fs-sm) var(--font-mono);
+		color: var(--text-2);
+		background: var(--menu);
+		border-radius: var(--r-md);
+		box-shadow: var(--menu-shadow);
 		padding: 4px 10px;
 		max-width: 320px;
 	}
@@ -834,12 +832,11 @@ import { perDoc } from './docRanges';
 		right: 0;
 		bottom: 0;
 		z-index: 30;
-		background: var(--surface-container);
-		border-top: 1px solid var(--border-raised);
+		background: var(--panel);
+		border-top: 1px solid var(--line-2);
 		padding: 4px 12px;
-		font-family: var(--font-mono);
-		font-size: var(--font-ui-small);
-		color: var(--on-surface);
+		font: var(--fs-sm) var(--font-mono);
+		color: var(--text);
 	}
 	.cmdline.open {
 		display: block;

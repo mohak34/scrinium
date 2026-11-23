@@ -836,7 +836,7 @@
 		background: var(--raise);
 	}
 	.ag-row.t.on {
-		background: var(--accent-dim);
+		background: var(--press);
 	}
 	.ag-row.t.over {
 		box-shadow: inset 2px 0 0 var(--red);

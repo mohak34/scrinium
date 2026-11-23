@@ -134,10 +134,9 @@
 		max-height: min(420px, calc(100vh - 92px));
 		display: flex;
 		flex-direction: column;
-		background: var(--raise);
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-md);
-		box-shadow: 0 12px 32px rgb(0 0 0 / 0.8);
+		background: var(--menu);
+		border-radius: var(--r-xl);
+		box-shadow: var(--menu-shadow);
 		font-family: var(--font-ui);
 	}
 	.hd {

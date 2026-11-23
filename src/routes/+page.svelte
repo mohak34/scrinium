@@ -743,10 +743,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.35rem;
-		background: var(--surface-container);
-		border: 1px solid var(--border-raised);
-		border-radius: var(--radius-lg);
-		padding: 0.3rem;
+		background: var(--menu);
+		box-shadow: var(--menu-shadow);
+		border-radius: var(--r-xl);
+		padding: 4px;
 		z-index: 1;
 	}
 	.zoom-btn {
@@ -757,36 +757,38 @@
 		justify-content: center;
 		background: none;
 		border: none;
-		border-radius: var(--radius);
-		color: var(--on-surface);
+		border-radius: var(--r);
+		color: var(--text-2);
 		font-size: 1rem;
 		cursor: pointer;
 	}
 	.zoom-btn:hover {
-		background: var(--surface-container-high);
+		background: var(--hover);
+		color: var(--text);
 	}
 	.zoom-btn.close:hover {
-		background: var(--error-container);
-		color: var(--error);
+		background: color-mix(in srgb, var(--red) 14%, transparent);
+		color: var(--red);
 	}
 	.zoom-sep {
 		width: 1px;
 		height: 18px;
-		background: var(--border-default);
+		background: var(--line-2);
 		margin: 0 0.1rem;
 	}
 	.zoom-pct {
 		min-width: 52px;
 		background: none;
 		border: none;
-		color: var(--on-surface);
-		font-size: 0.8rem;
+		color: var(--text-2);
+		font: var(--fs-sm) var(--font-mono);
 		text-align: center;
 		cursor: pointer;
 		padding: 0.15rem 0.25rem;
-		border-radius: var(--radius);
+		border-radius: var(--r);
 	}
 	.zoom-pct:hover {
-		background: var(--surface-container-high);
+		background: var(--hover);
+		color: var(--text);
 	}
 </style>

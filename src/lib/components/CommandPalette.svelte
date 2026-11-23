@@ -362,10 +362,9 @@
 	}
 	.palette {
 		width: min(600px, 92vw);
-		background: var(--panel);
-		border: 1px solid var(--line-2);
+		background: var(--menu);
 		border-radius: var(--r-xl);
-		box-shadow: var(--shadow);
+		box-shadow: var(--menu-shadow);
 		overflow: hidden;
 	}
 	.palette-input {

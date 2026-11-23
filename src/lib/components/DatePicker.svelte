@@ -280,9 +280,10 @@
 		align-items: center;
 		gap: 6px;
 		padding: 0 10px 0 8px;
-		border: 1px solid var(--line-2);
+		border: 0;
 		border-radius: var(--r);
-		background: var(--bg);
+		background: var(--inset);
+		box-shadow: inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35);
 		color: var(--text);
 		font: var(--fs) var(--font-ui);
 		cursor: pointer;
@@ -316,10 +317,9 @@
 		z-index: 1000;
 		display: flex;
 		max-width: calc(100vw - 16px);
-		background: var(--raise);
-		border: 1px solid var(--line-2);
-		border-radius: var(--r-lg);
-		box-shadow: var(--shadow);
+		background: var(--menu);
+		border-radius: var(--r-xl);
+		box-shadow: var(--menu-shadow);
 		font: var(--fs-sm) var(--font-ui);
 		color: var(--text);
 	}

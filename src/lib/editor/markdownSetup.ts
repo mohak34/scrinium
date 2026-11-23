@@ -518,10 +518,10 @@ export const baseTheme = EditorView.theme(
 		// The Contains input (askText) and the date cell's calendar.
 		'.cm-table-ask': { position: 'fixed', zIndex: '1000' },
 		'.cm-table-ask, .cm-tooltip.cm-date-pop': {
-			background: 'var(--raise)',
-			border: '1px solid var(--line-3)',
-			borderRadius: '8px',
-			boxShadow: '0 12px 32px rgba(0,0,0,.6)',
+			background: 'var(--menu)',
+			border: 'none',
+			borderRadius: 'var(--r-xl)',
+			boxShadow: 'var(--menu-shadow)',
 			padding: '4px',
 			font: '13px/20px var(--font-ui)',
 			color: 'var(--text-2)'
@@ -531,14 +531,15 @@ export const baseTheme = EditorView.theme(
 			width: '220px',
 			height: '28px',
 			padding: '0 8px',
-			background: 'var(--bg)',
-			border: '1px solid var(--line-2)',
-			borderRadius: '4px',
+			background: 'var(--inset)',
+			border: 'none',
+			boxShadow: 'inset 0 0 0 1px var(--rim), inset 0 1px 2px rgba(0, 0, 0, 0.35)',
+			borderRadius: 'var(--r)',
 			color: 'var(--text)',
 			font: '13px var(--font-ui)',
 			outline: 'none'
 		},
-		'.cm-table-ask input:focus': { borderColor: 'var(--line-3)' },
+		'.cm-table-ask input:focus': { boxShadow: 'inset 0 0 0 1px var(--line-3)' },
 		'.cm-table-ask input::placeholder': { color: 'var(--text-4)' },
 		'.cm-tooltip.cm-date-pop': { width: '240px', padding: '8px', cursor: 'default' },
 		'.cm-date-pop button': {
@@ -668,23 +669,24 @@ export const baseTheme = EditorView.theme(
 			'--callout-bg': 'rgba(168, 165, 160, 0.05)'
 		},
 		'.cm-tooltip': {
-			backgroundColor: 'var(--panel)',
-			border: '1px solid var(--line-2)',
-			borderRadius: '8px',
+			backgroundColor: 'var(--menu)',
+			border: 'none',
+			borderRadius: 'var(--r-xl)',
+			boxShadow: 'var(--menu-shadow)',
 			color: 'var(--text)'
 		},
 		'.cm-tooltip-autocomplete': {
-			backgroundColor: 'var(--panel)',
-			border: '1px solid var(--line-2)',
-			borderRadius: '10px',
-			boxShadow: 'var(--shadow)',
+			backgroundColor: 'var(--menu)',
+			border: 'none',
+			borderRadius: 'var(--r-xl)',
+			boxShadow: 'var(--menu-shadow)',
 			color: 'var(--text)',
 			padding: '4px'
 		},
 		'.cm-tooltip-autocomplete ul': { fontFamily: 'var(--font-ui)' },
 		'.cm-tooltip-autocomplete ul li': { borderRadius: '6px', padding: '3px 8px !important' },
 		'.cm-tooltip-autocomplete li[aria-selected]': {
-			backgroundColor: 'var(--hover)',
+			backgroundColor: 'var(--press)',
 			color: 'var(--text)'
 		},
 		'.cm-tooltip-autocomplete .cm-completionDetail': {

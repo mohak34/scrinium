@@ -1216,7 +1216,7 @@
 		color: var(--accent);
 	}
 	.view-pick.pin-drop {
-		box-shadow: inset 0 0 0 1px var(--border-raised);
+		box-shadow: inset 0 0 0 1px var(--line-3);
 	}
 	.view-pick.pin-drop.on .material-symbols-outlined {
 		color: var(--accent);
