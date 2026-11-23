@@ -398,8 +398,8 @@ import { perDoc } from './docRanges';
 				Prec.highest(
 					EditorView.theme({
 						'& .cm-vimMode.cm-vimMode .cm-line': {
-							'&::selection': { backgroundColor: 'var(--selection-bg) !important' },
-							'& ::selection': { backgroundColor: 'var(--selection-bg) !important' }
+							'&::selection': { backgroundColor: 'var(--sel) !important' },
+							'& ::selection': { backgroundColor: 'var(--sel) !important' }
 						}
 					})
 				),

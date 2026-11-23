@@ -603,7 +603,6 @@
 		border-top-left-radius: 0;
 	}
 	.sidebar-wrap {
-		width: var(--sidebar-width);
 		flex-shrink: 0;
 		height: 100vh;
 		overflow: hidden;

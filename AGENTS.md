@@ -568,14 +568,16 @@ State channels you will touch:
   `--font-mono` JetBrains Mono; the Editor settings' Classic font sets
   `data-font="classic"` on `<html>`, which swaps them to Atkinson
   Hyperlegible Next and Space Grotesk).
-  The old Material-style names (`--primary`, `--surface-container-*`,
-  `--on-surface*`) are aliases kept for components not yet moved over; new
-  code uses the tokens. Never fill with `--accent` under text.
+  Never fill with `--accent` under text; a selected row or item is
+  `--press`. Popups, menus and small dialogs sit on `--menu` with
+  `--menu-shadow`, `--r-xl` and no border; inputs are inset (`--inset`
+  plus a `--rim` ring).
   Shared classes: `.pane` (the rounded inset page; on Notes the active
   tab is a notch of it, TabBar.svelte), `.well` + `.well-body` (side-column
-  cards, PanelSection), `.field` (inset input), `.btn` with `.outline` and
-  the white `.primary`, and `.seg` (segmented control, `.on` on the current
-  segment).
+  cards, PanelSection), `.field` (inset input), `.btn` (ghost) with
+  `.outline`, the white `.primary` and red `.danger`, and `.seg`
+  (segmented control, `.on` on the current segment). Checkboxes are
+  styled globally.
   It also holds the table look of the share/print sheet (`.paper`); the
   editor's table grid is styled in markdownSetup.ts.
 - App chrome: `AppSwitcher.svelte` (top-left title on every page; app list in

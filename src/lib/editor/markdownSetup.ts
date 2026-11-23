@@ -683,9 +683,9 @@ export const baseTheme = EditorView.theme(
 			color: 'var(--text)',
 			padding: '4px'
 		},
-		'.cm-tooltip-autocomplete ul': { fontFamily: 'var(--font-ui)' },
+		'.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--font-ui)' },
 		'.cm-tooltip-autocomplete ul li': { borderRadius: '6px', padding: '3px 8px !important' },
-		'.cm-tooltip-autocomplete li[aria-selected]': {
+		'.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
 			backgroundColor: 'var(--press)',
 			color: 'var(--text)'
 		},

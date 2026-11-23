@@ -48,6 +48,6 @@ export const yankFlashField = StateField.define<DecorationSet>({
 // Reuses the selection background: a yank flash reads as "marked", same as
 // a visual selection, with no new theme color to keep in sync.
 export const yankFlashTheme = EditorView.theme({
-	'.cm-yank-flash': { backgroundColor: 'var(--selection-bg)' },
+	'.cm-yank-flash': { backgroundColor: 'var(--sel)' },
 	'.cm-remote-flash': { backgroundColor: 'color-mix(in srgb, var(--accent) 16%, transparent)' }
 });
