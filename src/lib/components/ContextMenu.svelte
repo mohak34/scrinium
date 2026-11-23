@@ -22,8 +22,11 @@
 		// The control that opened the menu: pressing it again toggles the
 		// menu shut instead of closing and reopening it.
 		anchor?: HTMLElement;
+		// Opens upward with its bottom edge at `y`, for controls at the
+		// bottom of the screen.
+		above?: boolean;
 	}
-	let { x, y, width, items, onClose, anchor }: Props = $props();
+	let { x, y, width, items, onClose, anchor, above = false }: Props = $props();
 
 	let menuEl = $state<HTMLDivElement>();
 	let left = $state(0);
@@ -54,7 +57,7 @@
 		if (!menuEl) return;
 		const rect = menuEl.getBoundingClientRect();
 		left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
-		top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8));
+		top = Math.max(8, Math.min(above ? y - rect.height : y, window.innerHeight - rect.height - 8));
 	});
 
 	$effect(() => {

@@ -4,12 +4,12 @@
 	import ReminderBell from './ReminderBell.svelte';
 
 	// Bottom strip for Tasks, Board and Calendar, matching the notes status bar.
-	// `actions` puts Trash/Settings/Sign out at the left on pages without a sidebar.
+	// `actions` puts the account menu at the left on pages without a sidebar.
 	let { children, actions = false }: { children?: Snippet; actions?: boolean } = $props();
 </script>
 
 <footer>
-	{#if actions}<span class="actions"><AppActions /></span>{/if}
+	{#if actions}<AppActions />{/if}
 	<span class="sp"></span>
 	<ReminderBell />
 	{@render children?.()}
@@ -29,10 +29,6 @@
 	}
 	.sp {
 		flex: 1;
-	}
-	.actions {
-		display: flex;
-		gap: 2px;
 	}
 	footer :global(.red) {
 		color: var(--red);

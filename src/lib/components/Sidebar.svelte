@@ -885,9 +885,9 @@
 		{/each}
 	</div>
 	<div class="footer">
-		<span class="count">{noteCount} {noteCount === 1 ? 'note' : 'notes'}</span>
-		<span class="sp"></span>
 		<AppActions />
+		<span class="sp"></span>
+		<span class="count">{noteCount} {noteCount === 1 ? 'note' : 'notes'}</span>
 	</div>
 	{#if menu}
 		<ContextMenu
@@ -1293,8 +1293,8 @@
 		align-items: center;
 		gap: 2px;
 		height: 40px;
-		margin: 0 8px 0 10px;
-		padding: 0 0 0 6px;
+		margin: 0 8px;
+		padding: 0 6px 0 0;
 		border-top: 1px solid var(--line);
 		flex-shrink: 0;
 	}

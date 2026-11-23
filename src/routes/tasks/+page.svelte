@@ -433,8 +433,6 @@
 		margin-top: auto;
 		display: flex;
 		align-items: center;
-		justify-content: flex-end;
-		gap: 2px;
 		height: 34px;
 		padding: 0;
 		flex-shrink: 0;

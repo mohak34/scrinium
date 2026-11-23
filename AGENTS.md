@@ -584,8 +584,9 @@ State channels you will touch:
   `src/lib/apps.ts`, `Ctrl+Shift+1..4` handled in the root layout - plain
   `Ctrl+digit` belongs to editor headings and browser tabs), `NoteBar.svelte`
   (crumbs + preview/download/print/more/Share/right-panel toggle), `StatusBar.svelte`,
-  `AppActions.svelte` (Archive/Trash/Settings/Sign out buttons: notes sidebar, Tasks
-  sidebar, Board footer via `PageFooter actions`; not on Calendar),
+  `AppActions.svelte` (the Account chip whose menu holds Settings, Archive, Trash and
+  Sign out: notes sidebar, Tasks sidebar, Board footer via `PageFooter actions`; not
+  on Calendar),
   `PanelSection.svelte` (right-panel section frame: Outline, Backlinks,
   NoteTasks, NoteFiles (the files the note links or embeds), Tags, FileInfo in that order), `PageFooter.svelte`.
 - Tasks: `src/lib/taskModel.ts` is the single list of statuses (`inbox`,
