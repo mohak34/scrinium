@@ -1314,11 +1314,15 @@ const cellExtensions = [
 		icons: false,
 		addToOptions: [choiceDot]
 	}),
-	// The note theme styles the list, but inside the cell editor its own
-	// base styles are more specific for these two.
+	// The note theme styles the list, but inside the cell editor CodeMirror's
+	// base styles win for these, and the list inherits the column's alignment.
 	EditorView.theme(
 		{
-			'.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--font-ui)' },
+			'.cm-tooltip.cm-tooltip-autocomplete > ul': {
+				fontFamily: 'var(--font-ui)',
+				minWidth: '64px',
+				textAlign: 'left'
+			},
 			'.cm-tooltip-autocomplete ul li[aria-selected]': {
 				backgroundColor: 'var(--hover)',
 				color: 'var(--text)'
