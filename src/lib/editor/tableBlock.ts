@@ -1568,12 +1568,14 @@ function filterItems(view: EditorView, t: TableRange, col: number, x: number, y:
 		else delete all[key];
 		return apply({ ...meta, filter: all });
 	};
-	const pick = (f: ColFilter) => () => {
-		set(f)();
-		const now = findTableRanges(view.state).find((r) => r.from === t.from);
-		if (now) view.state.facet(tableMenu)?.(x, y, filterItems(view, now, col, x, y));
-		return !!now;
-	};
+	const pick = (f: ColFilter) => ({
+		keepOpen: true,
+		action: () => {
+			set(f)();
+			const now = findTableRanges(view.state).find((r) => r.from === t.from);
+			if (now) view.state.facet(tableMenu)?.(x, y, filterItems(view, now, col, x, y));
+		}
+	});
 	const items: ContextMenuItem[] = [];
 	if (type === 'status') {
 		const values = readTable(view.state, t).rows.slice(1).map((r) => r[col] ?? '');
@@ -1584,7 +1586,7 @@ function filterItems(view: EditorView, t: TableRange, col: number, x: number, y:
 				label: `${hidden ? 'Show' : 'Hide'} ${v}`,
 				icon: hidden ? 'visibility' : 'visibility_off',
 				color: statusColor(options, v),
-				action: pick({ ...filter, hide: toggled(filter.hide, v) })
+				...pick({ ...filter, hide: toggled(filter.hide, v) })
 			});
 		}
 	} else if (type === 'date' || type === 'deadline') {
@@ -1594,7 +1596,7 @@ function filterItems(view: EditorView, t: TableRange, col: number, x: number, y:
 				label: o.label,
 				icon: on ? 'check' : 'date_range',
 				current: on,
-				action: pick({ ...filter, date: toggled(filter.date, o.range) })
+				...pick({ ...filter, date: toggled(filter.date, o.range) })
 			});
 		}
 	} else {
@@ -1603,7 +1605,7 @@ function filterItems(view: EditorView, t: TableRange, col: number, x: number, y:
 				label: `Contains "${text}"`,
 				icon: 'check',
 				current: true,
-				action: pick({ ...filter, text: toggled(filter.text, text) })
+				...pick({ ...filter, text: toggled(filter.text, text) })
 			});
 		}
 		items.push({
@@ -1619,7 +1621,7 @@ function filterItems(view: EditorView, t: TableRange, col: number, x: number, y:
 	items.push({
 		label: filter.filled ? 'Show empty rows' : 'Hide empty rows',
 		icon: filter.filled ? 'visibility' : 'visibility_off',
-		action: pick({ ...filter, filled: filter.filled ? undefined : true })
+		...pick({ ...filter, filled: filter.filled ? undefined : true })
 	});
 	if (Object.keys(filter).length) {
 		items.push({ label: 'Remove filter', icon: 'close', divider: true, action: set({}) });

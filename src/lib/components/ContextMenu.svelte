@@ -9,8 +9,9 @@
 		divider?: boolean;
 		// Marks the option that is in use, for menus that pick one.
 		current?: boolean;
-		// Returning true keeps the menu open, for a choice that shows new items.
-		action: () => unknown;
+		// Leaves the menu open, for an action that shows new items in it.
+		keepOpen?: boolean;
+		action: () => void;
 	}
 
 	interface Props {
@@ -111,7 +112,8 @@
 			role="menuitem"
 			aria-current={item.current || undefined}
 			onclick={() => {
-				if (item.action() !== true) onClose();
+				item.action();
+				if (!item.keepOpen) onClose();
 			}}
 		>
 			{#if item.icon}
