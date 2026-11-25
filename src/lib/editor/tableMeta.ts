@@ -24,11 +24,12 @@ export interface ColumnMeta {
 export interface ColFilter {
 	// Status values left out.
 	hide?: string[];
-	date?: DateRange;
+	// Keeps rows dated in any of these.
+	date?: DateRange[];
 	// Drops rows with this column empty.
 	filled?: boolean;
-	// Keeps rows whose source contains this, ignoring case.
-	text?: string;
+	// Keeps rows whose source contains any of these, ignoring case.
+	text?: string[];
 }
 
 export interface TableMeta {
@@ -44,6 +45,7 @@ const RANGES: readonly string[] = ['overdue', 'upcoming', 'week', 'month'];
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
 	typeof v === 'object' && v !== null && !Array.isArray(v);
+const isRange = (v: string): v is DateRange => RANGES.includes(v);
 const strings = (v: unknown): string[] | undefined =>
 	Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
 
@@ -81,10 +83,13 @@ export function parseMeta(line: string): TableMeta | null {
 			if (!isRecord(f)) continue;
 			const out: ColFilter = {};
 			const hide = strings(f.hide);
+			// Notes may hold a lone string for these two.
+			const date = strings([f.date].flat())?.filter(isRange);
+			const text = strings([f.text].flat())?.filter(Boolean);
 			if (hide?.length) out.hide = hide;
-			if (RANGES.includes(f.date as string)) out.date = f.date as DateRange;
+			if (date?.length) out.date = date;
 			if (f.filled === true) out.filled = true;
-			if (typeof f.text === 'string' && f.text) out.text = f.text;
+			if (text?.length) out.text = text;
 			if (Object.keys(out).length) filter[k] = out;
 		}
 		meta.filter = filter;
@@ -177,14 +182,14 @@ export function tableView(body: string[][], meta: TableMeta | null, keep: readon
 	let rows = body.map((_, i) => i);
 	for (const [k, f] of Object.entries(meta?.filter ?? {})) {
 		const col = Number(k);
-		const text = f.text?.toLowerCase();
+		const text = f.text?.map((x) => x.toLowerCase());
 		rows = rows.filter((i) => {
 			if (keep.includes(i)) return true;
 			const v = body[i][col] ?? '';
 			if (f.filled && !v) return false;
 			if (f.hide?.includes(v)) return false;
-			if (f.date && !inRange(v, f.date, today)) return false;
-			if (text && !v.toLowerCase().includes(text)) return false;
+			if (f.date && !f.date.some((r) => inRange(v, r, today))) return false;
+			if (text && !text.some((x) => v.toLowerCase().includes(x))) return false;
 			return true;
 		});
 	}
