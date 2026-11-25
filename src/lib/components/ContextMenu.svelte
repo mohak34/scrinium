@@ -56,6 +56,8 @@
 	}
 
 	$effect(() => {
+		// A `keepOpen` pick changes the items, so the size too.
+		items;
 		if (!menuEl) return;
 		const rect = menuEl.getBoundingClientRect();
 		left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
