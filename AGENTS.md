@@ -322,8 +322,8 @@ State channels you will touch:
   `contains` (`filter[i].text`, typed into `askText`, a small input
   inside the editor DOM so the editor theme reaches it). A column holds
   several contains texts or date ranges, and a row stays when it matches
-  any; the filter menu stays open while picking (an item `action` that
-  returns true keeps a ContextMenu open). The toolbar above the table also counts rows, shows the markdown
+  any; the filter menu stays open while picking (`keepOpen` on
+  its ContextMenu items). The toolbar above the table also counts rows, shows the markdown
   and, below the table, adds a row. Ranges from
   tableRanges.ts so `livePreview.ts` never decorates inside a table),
   docRanges.ts (`perDoc`: a whole-doc scan cached per document and
