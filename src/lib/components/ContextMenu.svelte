@@ -9,7 +9,8 @@
 		divider?: boolean;
 		// Marks the option that is in use, for menus that pick one.
 		current?: boolean;
-		action: () => void;
+		// Returning true keeps the menu open, for a choice that shows new items.
+		action: () => unknown;
 	}
 
 	interface Props {
@@ -79,21 +80,23 @@
 			e.preventDefault();
 			e.stopPropagation();
 		};
-		// A long menu scrolls itself; any other scroll moves the page under it.
-		const onScroll = (e: Event) => {
+		// A long menu scrolls itself; scrolling anything else moves the page
+		// under it. Not `scroll`: a pick that keeps the menu open can redraw
+		// the page, which restores scroll positions.
+		const onWheel = (e: WheelEvent) => {
 			if (!menuEl?.contains(e.target as Node)) onClose();
 		};
 		window.addEventListener('pointerdown', onPointerDown, true);
 		window.addEventListener('keydown', onKey, true);
 		window.addEventListener('blur', onClose);
 		window.addEventListener('resize', onClose);
-		window.addEventListener('scroll', onScroll, true);
+		window.addEventListener('wheel', onWheel, { capture: true, passive: true });
 		return () => {
 			window.removeEventListener('pointerdown', onPointerDown, true);
 			window.removeEventListener('keydown', onKey, true);
 			window.removeEventListener('blur', onClose);
 			window.removeEventListener('resize', onClose);
-			window.removeEventListener('scroll', onScroll, true);
+			window.removeEventListener('wheel', onWheel, true);
 		};
 	});
 </script>
@@ -108,8 +111,7 @@
 			role="menuitem"
 			aria-current={item.current || undefined}
 			onclick={() => {
-				item.action();
-				onClose();
+				if (item.action() !== true) onClose();
 			}}
 		>
 			{#if item.icon}

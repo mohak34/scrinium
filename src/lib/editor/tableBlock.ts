@@ -635,9 +635,9 @@ function resizeColumn(e: MouseEvent, view: EditorView, div: HTMLElement, t: Tabl
 function filterText(f: ColFilter): string {
 	const parts: string[] = [];
 	if (f.hide?.length) parts.push(`hides ${f.hide.join(', ')}`);
-	if (f.date) parts.push(DATE_RANGE_LABEL[f.date]);
+	if (f.date) parts.push(f.date.map((r) => DATE_RANGE_LABEL[r]).join(' or '));
 	if (f.filled) parts.push('not empty');
-	if (f.text) parts.push(`contains "${f.text}"`);
+	if (f.text) parts.push(`contains ${f.text.map((x) => `"${x}"`).join(' or ')}`);
 	return parts.join(', ');
 }
 
@@ -1511,19 +1511,18 @@ function columnNames(view: EditorView, t: TableRange): string[] {
 }
 
 // A menu opened from another menu's item waits for that one to close.
-const later = (open: () => void) => () => queueMicrotask(open);
+const later = (open: () => void) => () => void setTimeout(open);
 
 /**
  * A one-line input at a screen point, for menu items that need text.
  * Enter or leaving it keeps the text, Esc drops it.
  */
-function askText(view: EditorView, x: number, y: number, value: string, done: (text: string) => void) {
+function askText(view: EditorView, x: number, y: number, done: (text: string) => void) {
 	const box = document.createElement('div');
 	box.className = 'cm-table-ask';
 	const input = document.createElement('input');
 	input.placeholder = 'Contains...';
 	input.spellcheck = false;
-	input.value = value;
 	box.append(input);
 	view.dom.append(box);
 	box.style.left = `${Math.max(8, Math.min(x, innerWidth - box.offsetWidth - 8))}px`;
@@ -1545,21 +1544,35 @@ function askText(view: EditorView, x: number, y: number, value: string, done: (t
 	});
 	input.addEventListener('blur', () => close(true));
 	input.focus();
-	input.select();
 }
 
-/** Filter choices for one column; x and y place the Contains input. */
+/** `list` with `v` added, or removed when it is there; undefined when empty. */
+function toggled<T>(list: T[] | undefined, v: T): T[] | undefined {
+	const next = list?.includes(v) ? list.filter((o) => o !== v) : [...(list ?? []), v];
+	return next.length ? next : undefined;
+}
+
+/**
+ * Filter choices for one column; x and y are where the menu is. Picking one
+ * shows the menu again with the new choices, so several can be picked.
+ */
 function filterItems(view: EditorView, t: TableRange, col: number, x: number, y: number): ContextMenuItem[] {
 	const meta: TableMeta = t.meta ?? { v: 1 };
 	const type = colType(meta, col);
 	const key = String(col);
 	const filter = meta.filter?.[key] ?? {};
 	const apply = metaSetter(view, t);
-	const withFilter = (f: ColFilter): TableMeta => {
+	const set = (f: ColFilter) => {
 		const all = { ...meta.filter };
-		if (Object.keys(f).length) all[key] = f;
+		if (Object.values(f).some(Boolean)) all[key] = f;
 		else delete all[key];
-		return { ...meta, filter: all };
+		return apply({ ...meta, filter: all });
+	};
+	const pick = (f: ColFilter) => () => {
+		set(f)();
+		const now = findTableRanges(view.state).find((r) => r.from === t.from);
+		if (now) view.state.facet(tableMenu)?.(x, y, filterItems(view, now, col, x, y));
+		return !!now;
 	};
 	const items: ContextMenuItem[] = [];
 	if (type === 'status') {
@@ -1567,40 +1580,49 @@ function filterItems(view: EditorView, t: TableRange, col: number, x: number, y:
 		const options = statusOptions(meta, col, values);
 		for (const v of options) {
 			const hidden = !!filter.hide?.includes(v);
-			const hide = hidden ? filter.hide!.filter((h) => h !== v) : [...(filter.hide ?? []), v];
 			items.push({
 				label: `${hidden ? 'Show' : 'Hide'} ${v}`,
 				icon: hidden ? 'visibility' : 'visibility_off',
 				color: statusColor(options, v),
-				action: apply(withFilter({ ...filter, hide: hide.length ? hide : undefined }))
+				action: pick({ ...filter, hide: toggled(filter.hide, v) })
 			});
 		}
 	} else if (type === 'date' || type === 'deadline') {
 		for (const o of RANGE_ITEMS) {
+			const on = !!filter.date?.includes(o.range);
 			items.push({
 				label: o.label,
-				icon: 'date_range',
-				current: filter.date === o.range,
-				action: apply(withFilter({ ...filter, date: filter.date === o.range ? undefined : o.range }))
+				icon: on ? 'check' : 'date_range',
+				current: on,
+				action: pick({ ...filter, date: toggled(filter.date, o.range) })
 			});
 		}
 	} else {
+		for (const text of filter.text ?? []) {
+			items.push({
+				label: `Contains "${text}"`,
+				icon: 'check',
+				current: true,
+				action: pick({ ...filter, text: toggled(filter.text, text) })
+			});
+		}
 		items.push({
-			label: filter.text ? `Contains "${filter.text}"` : 'Contains...',
+			label: filter.text ? 'Or contains...' : 'Contains...',
 			icon: 'search',
-			current: !!filter.text,
 			action: later(() =>
-				askText(view, x, y, filter.text ?? '', (text) => apply(withFilter({ ...filter, text: text || undefined }))())
+				askText(view, x, y, (text) => {
+					if (text && !filter.text?.includes(text)) set({ ...filter, text: [...(filter.text ?? []), text] })();
+				})
 			)
 		});
 	}
 	items.push({
 		label: filter.filled ? 'Show empty rows' : 'Hide empty rows',
 		icon: filter.filled ? 'visibility' : 'visibility_off',
-		action: apply(withFilter({ ...filter, filled: filter.filled ? undefined : true }))
+		action: pick({ ...filter, filled: filter.filled ? undefined : true })
 	});
 	if (Object.keys(filter).length) {
-		items.push({ label: 'Remove filter', icon: 'close', divider: true, action: apply(withFilter({})) });
+		items.push({ label: 'Remove filter', icon: 'close', divider: true, action: set({}) });
 	}
 	return items;
 }
